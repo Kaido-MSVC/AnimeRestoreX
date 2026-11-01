@@ -22,6 +22,7 @@
 #include <QUrl>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStandardItemModel>
 
 #include <functional>
 #include <QApplication>
@@ -390,10 +391,22 @@ void TestUi::oneXNeedsDenoise()
     QCOMPARE(scale->currentData().toInt(), 2);  // default stays 2x
     QVERIFY(scale->findData(1) >= 0);
 
+    // "None" is disabled with 1x and comes back with 2x / 4x.
+    auto *model = qobject_cast<QStandardItemModel *>(noise->model());
+    QVERIFY(model);
+    const int none = noise->findData(-1);
+    noise->setCurrentIndex(none);
+    QVERIFY(model->item(none)->isEnabled());
     scale->setCurrentIndex(scale->findData(1));
-    noise->setCurrentIndex(noise->findData(1));
+    QVERIFY(!model->item(none)->isEnabled());
+    QCOMPARE(noise->currentData().toInt(), arx::AppSettings::kDefaultNoise);  // moved off "None"
     QVERIFY(start->isEnabled());
-    noise->setCurrentIndex(noise->findData(-1));  // 1x + no denoise does nothing
+    scale->setCurrentIndex(scale->findData(4));
+    QVERIFY(model->item(none)->isEnabled());
+    scale->setCurrentIndex(scale->findData(1));
+
+    // Second line of defense: 1x + no denoise (set from code) still cannot start.
+    noise->setCurrentIndex(none);
     QVERIFY(!start->isEnabled());
     QVERIFY(start->toolTip().contains(QStringLiteral("1x")));
     QVERIFY(w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text().contains(QStringLiteral("1x")));
@@ -543,6 +556,14 @@ void TestUi::keyboardShortcuts()
     QAction *start = findAction(QKeySequence(Qt::CTRL | Qt::Key_Return));
     QVERIFY(start);
     QVERIFY(start->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_Enter)));  // keypad Enter
+    QCOMPARE(start->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_Enter));  // shown as "Ctrl+Enter"
+
+    // Same access key for "Add Folder" in the menu and on the button (O, not F:
+    // Alt+F opens the File menu).
+    auto *folderButton = w.findChild<QPushButton *>(QStringLiteral("addFolderButton"));
+    QAction *folderAction = findAction(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    QCOMPARE(folderAction->text(), folderButton->text());
+    QVERIFY(folderAction->text().contains(QStringLiteral("&o")));
     QVERIFY(!start->isEnabled());  // empty list, like the Start button
 
     // Delete removes the selected items while the list has the focus.
@@ -634,7 +655,7 @@ void TestUi::aboutDialogContents()
 {
     AboutDialog dlg;
     const QString text = dlg.bodyText();
-    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.1.0"),
+    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.1.1"),
                              QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
                              QStringLiteral("waifu2x-ncnn-vulkan"), QStringLiteral("ncnn (Tencent)"),
                              QStringLiteral("nagadomi/waifu2x"), QStringLiteral("Qt 6.12"),
@@ -756,8 +777,23 @@ void TestUi::minimumSizeWithinBudgetAllLanguages()
         QTest::qWait(50);
         const QSize framed = w.minimumSizeHint().grownBy(f);
         QVERIFY2(framed.width() <= budget.width() && framed.height() <= budget.height(),
-                 qPrintable(QStringLiteral("%1: %2x%3").arg(arx::languageCode(lang))
-                                .arg(framed.width()).arg(framed.height())));
+                 qPrintable(QStringLiteral("%1: %2x%3 (list min %4)").arg(arx::languageCode(lang))
+                                .arg(framed.width()).arg(framed.height())
+                                .arg(w.findChild<QTreeWidget *>(QStringLiteral("fileList"))->minimumWidth())));
+
+        // The two-line empty-list hint is never wrapped or cut, even at the minimum size.
+        w.resize(w.minimumSizeHint());
+        QTest::qWait(50);
+        QLabel *hint = nullptr;
+        for (auto *l : w.findChild<QTreeWidget *>(QStringLiteral("fileList"))->viewport()->findChildren<QLabel *>())
+            if (l->isVisible())
+                hint = l;
+        QVERIFY(hint);
+        QCOMPARE(hint->text().count(QLatin1Char('\n')), 1);
+        QVERIFY(!hint->wordWrap());
+        QVERIFY2(hint->sizeHint().width() <= hint->width(),
+                 qPrintable(QStringLiteral("%1: hint %2 > %3").arg(arx::languageCode(lang))
+                                .arg(hint->sizeHint().width()).arg(hint->width())));
     }
     LanguageManager::instance().apply(arx::Language::English);
 }
@@ -819,9 +855,11 @@ void TestUi::detailColumnFollowsListWidth()
         w.resize(width, 600);
         QTest::qWait(50);
         const int view = list->viewport()->width();
-        // The name column keeps at least half of the list.
-        QVERIFY2(list->header()->sectionSize(0) >= view / 2,
+        // The name column keeps at least 40% of the list.
+        QVERIFY2(list->header()->sectionSize(0) >= view * 2 / 5,
                  qPrintable(QStringLiteral("name %1 of %2").arg(list->header()->sectionSize(0)).arg(view)));
+        if (width == 1100)  // the default window size shows all three columns
+            QVERIFY(!list->isColumnHidden(2));
     }
 }
 

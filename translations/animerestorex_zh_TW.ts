@@ -259,10 +259,6 @@
         <translation>匯入圖片(&amp;I)…</translation>
     </message>
     <message>
-        <source>Add &amp;Folder...</source>
-        <translation>匯入資料夾(&amp;F)…</translation>
-    </message>
-    <message>
         <source>&amp;Start Processing</source>
         <translation>開始處理(&amp;S)</translation>
     </message>
@@ -287,10 +283,16 @@
         <translation>關於 AnimeRestoreX(&amp;A)</translation>
     </message>
     <message>
-        <source>No images yet.
-Drag images or folders here, or use &quot;Add Images...&quot; / &quot;Add Folder...&quot;.</source>
-        <translation>尚未匯入圖片。
-可將圖片或資料夾拖曳到這裡，或按「匯入圖片…」／「匯入資料夾…」。</translation>
+        <source>No images yet</source>
+        <translation>尚未匯入圖片</translation>
+    </message>
+    <message>
+        <source>Drag images or folders here</source>
+        <translation>拖曳圖片或資料夾到這裡</translation>
+    </message>
+    <message>
+        <source>&quot;No upscaling (1×)&quot; always denoises: denoise level set to %1.</source>
+        <translation>「不放大（1×）」一定會降噪，已將降噪強度設為 %1。</translation>
     </message>
     <message>
         <source>Lossy</source>
@@ -479,6 +481,10 @@ Drag images or folders here, or use &quot;Add Images...&quot; / &quot;Add Folder
     <message>
         <source>No images added yet.</source>
         <translation>尚未匯入圖片。</translation>
+    </message>
+    <message>
+        <source>Results appear here after processing.</source>
+        <translation>處理完成後在此顯示結果</translation>
     </message>
     <message>
         <source>Not processed yet.</source>

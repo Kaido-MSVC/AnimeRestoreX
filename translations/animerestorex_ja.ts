@@ -259,10 +259,6 @@
         <translation>画像を追加(&amp;I)…</translation>
     </message>
     <message>
-        <source>Add &amp;Folder...</source>
-        <translation>フォルダーを追加(&amp;F)…</translation>
-    </message>
-    <message>
         <source>&amp;Start Processing</source>
         <translation>処理開始(&amp;S)</translation>
     </message>
@@ -287,10 +283,16 @@
         <translation>AnimeRestoreX について(&amp;A)</translation>
     </message>
     <message>
-        <source>No images yet.
-Drag images or folders here, or use &quot;Add Images...&quot; / &quot;Add Folder...&quot;.</source>
-        <translation>画像がまだありません。
-画像やフォルダーをここにドラッグするか、「画像を追加…」／「フォルダーを追加…」を使ってください。</translation>
+        <source>No images yet</source>
+        <translation>画像がまだありません</translation>
+    </message>
+    <message>
+        <source>Drag images or folders here</source>
+        <translation>画像やフォルダーをドラッグ</translation>
+    </message>
+    <message>
+        <source>&quot;No upscaling (1×)&quot; always denoises: denoise level set to %1.</source>
+        <translation>「拡大しない（1×）」は常にノイズ除去を行うため、ノイズ除去レベルを %1 にしました。</translation>
     </message>
     <message>
         <source>Lossy</source>
@@ -479,6 +481,10 @@ Drag images or folders here, or use &quot;Add Images...&quot; / &quot;Add Folder
     <message>
         <source>No images added yet.</source>
         <translation>画像がまだ追加されていません。</translation>
+    </message>
+    <message>
+        <source>Results appear here after processing.</source>
+        <translation>処理が終わるとここに結果を表示します</translation>
     </message>
     <message>
         <source>Not processed yet.</source>

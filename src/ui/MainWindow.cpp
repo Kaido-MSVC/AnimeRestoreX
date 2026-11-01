@@ -14,6 +14,7 @@
 #include "ui/SettingsDialog.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDir>
@@ -27,7 +28,11 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
+#include <QProxyStyle>
+#include <QStandardItemModel>
 #include <QStatusBar>
+#include <QStyleFactory>
+#include <QStyleOptionMenuItem>
 #include <QUrl>
 
 #include <algorithm>
@@ -68,6 +73,29 @@ protected:
     }
 };
 
+// The Windows 11 style leaves only a few pixels between the longest menu text
+// and its shortcut. Items with a shortcut ("text\tCtrl+O") get a wider gap.
+class MenuGapStyle : public QProxyStyle {
+public:
+    explicit MenuGapStyle(QObject *parent)
+        : QProxyStyle(QStyleFactory::create(QApplication::style()->name()))
+    {
+        setParent(parent);
+    }
+
+    QSize sizeFromContents(ContentsType type, const QStyleOption *option, const QSize &size,
+                           const QWidget *widget) const override
+    {
+        QSize s = QProxyStyle::sizeFromContents(type, option, size, widget);
+        if (type == CT_MenuItem) {
+            if (const auto *mi = qstyleoption_cast<const QStyleOptionMenuItem *>(option);
+                mi && mi->text.contains(QLatin1Char('\t')))
+                s.rwidth() += mi->fontMetrics.averageCharWidth() * 4;
+        }
+        return s;
+    }
+};
+
 // Rich-text tooltips wrap long lines instead of being cut off.
 QString wrapTooltip(const QString &text)
 {
@@ -77,6 +105,8 @@ QString wrapTooltip(const QString &text)
 }
 
 } // namespace
+
+static QString stateText(MainWindow::ItemState s);
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -98,7 +128,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_addFolderAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
     m_fileMenu->addSeparator();
     m_startAction = m_fileMenu->addAction(QString(), this, &MainWindow::start);
-    m_startAction->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Return), QKeySequence(Qt::CTRL | Qt::Key_Enter)});
+    // The first sequence is the one shown ("Ctrl+Enter"); both Enter keys work.
+    m_startAction->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Enter), QKeySequence(Qt::CTRL | Qt::Key_Return)});
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(QString(), this, &QWidget::close);
     m_toolsMenu = menuBar()->addMenu(QString());
@@ -106,6 +137,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_settingsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
     m_helpMenu = menuBar()->addMenu(QString());
     m_aboutAction = m_helpMenu->addAction(QString(), this, &MainWindow::openAbout);
+    auto *menuStyle = new MenuGapStyle(this);
+    for (QMenu *menu : {m_fileMenu, m_toolsMenu, m_helpMenu})
+        menu->setStyle(menuStyle);
     // Delete removes the selected items, only while the list has the focus.
     m_removeAction = new QAction(this);
     m_removeAction->setShortcut(QKeySequence::Delete);
@@ -116,10 +150,12 @@ MainWindow::MainWindow(QWidget *parent)
     setAcceptDrops(true);
     populateCombos();
 
-    // Empty list: a centered hint instead of a blank white area.
+    // Empty list: a centered hint instead of a blank white area. Two short
+    // lines, not wrapped (wrapping would split CJK words); the list is kept
+    // at least as wide as the hint (updateEmptyHintWidth).
     m_emptyHint = new QLabel(ui->fileList->viewport());
     m_emptyHint->setAlignment(Qt::AlignCenter);
-    m_emptyHint->setWordWrap(true);
+    m_emptyHint->setWordWrap(false);
     m_emptyHint->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_emptyHint->setForegroundRole(QPalette::PlaceholderText);
     m_dropOverlay = new DropOverlay(ui->fileList->viewport());
@@ -131,10 +167,10 @@ MainWindow::MainWindow(QWidget *parent)
     QHeaderView *header = ui->fileList->header();
     header->setStretchLastSection(false);
     header->setSectionResizeMode(ColFile, QHeaderView::Stretch);
-    header->setSectionResizeMode(ColStatus, QHeaderView::ResizeToContents);
+    // Status has a fixed width that fits every state text plus some air
+    // (updateStatusColumnWidth), so the column titles do not run together.
+    header->setSectionResizeMode(ColStatus, QHeaderView::Fixed);
     header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
-    // A small window shrinks the preview first; the list keeps room for names.
-    ui->fileList->setMinimumWidth(fontMetrics().averageCharWidth() * 24);
     // The Details column follows the list width so the name column keeps most of it.
     ui->fileList->viewport()->installEventFilter(this);
     updateDetailColumnWidth();
@@ -170,6 +206,7 @@ MainWindow::MainWindow(QWidget *parent)
         onOutputSpecChanged();
     });
     connect(ui->scaleCombo, &QComboBox::currentIndexChanged, this, [this] {
+        updateNoiseChoices();
         onOutputSpecChanged();
         onProcessingChanged();
     });
@@ -284,19 +321,72 @@ void MainWindow::retranslate()
 {
     m_fileMenu->setTitle(tr("&File"));
     m_addImagesAction->setText(tr("Add &Images..."));
-    m_addFolderAction->setText(tr("Add &Folder..."));
+    // Same text and access key (O) as the button: Alt+F stays with the File menu.
+    m_addFolderAction->setText(tr("Add F&older..."));
     m_startAction->setText(tr("&Start Processing"));
     m_exitAction->setText(tr("E&xit"));
     m_toolsMenu->setTitle(tr("&Tools"));
     m_settingsAction->setText(tr("&Settings..."));
     m_helpMenu->setTitle(tr("&Help"));
     m_aboutAction->setText(tr("&About AnimeRestoreX"));
-    m_emptyHint->setText(tr("No images yet.\nDrag images or folders here, or use \"Add Images...\" / \"Add Folder...\"."));
+    m_emptyHint->setText(tr("No images yet") + QLatin1Char('\n') + tr("Drag images or folders here"));
+    updateEmptyHintWidth();
     populateCombos();
     updateQualityControls();
     for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
         refreshItemTexts(ui->fileList->topLevelItem(i));
+    updateDetailColumnWidth();  // also sizes the Status column for the new texts
     updateButtons();
+}
+
+void MainWindow::updateEmptyHintWidth()
+{
+    // A small window shrinks the preview first; the list keeps room for
+    // names and for the unwrapped empty-list hint.
+    const int ch = fontMetrics().averageCharWidth();
+    const int hint = m_emptyHint->fontMetrics()
+                         .boundingRect(QRect(), Qt::AlignCenter, m_emptyHint->text())
+                         .width();
+    const int frame = 2 * ui->fileList->frameWidth();
+    ui->fileList->setMinimumWidth(std::max(ch * 24, hint + 2 * ch + frame));
+}
+
+int MainWindow::statusColumnWidth() const
+{
+    // Widest of the column title and every state text (Failed has an icon),
+    // plus padding so "Status" and "Details" do not touch.
+    const QFontMetrics itemFm = ui->fileList->fontMetrics();
+    const QFontMetrics headFm = ui->fileList->header()->fontMetrics();
+    const int icon = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, ui->fileList);
+    int w = headFm.horizontalAdvance(ui->fileList->headerItem()->text(ColStatus));
+    for (auto s : {ItemState::Pending, ItemState::Processing, ItemState::Done, ItemState::Failed,
+                   ItemState::NotProcessed}) {
+        const int extra = s == ItemState::Failed ? icon + itemFm.averageCharWidth() : 0;
+        w = std::max(w, itemFm.horizontalAdvance(stateText(s)) + extra);
+    }
+    return w + itemFm.averageCharWidth() * 2;
+}
+
+void MainWindow::updateNoiseChoices()
+{
+    // 1x is denoise only, so "None" is disabled there and comes back with
+    // 2x / 4x. If "None" was selected, a denoise level is picked for this
+    // session; the saved choice is left alone.
+    const bool oneX = ui->scaleCombo->currentData().toInt() == 1;
+    const int noneIndex = ui->noiseCombo->findData(-1);
+    if (auto *model = qobject_cast<QStandardItemModel *>(ui->noiseCombo->model());
+        model && noneIndex >= 0)
+        model->item(noneIndex)->setEnabled(!oneX);
+    if (oneX && ui->noiseCombo->currentData().toInt() < 0) {
+        const int saved = m_settings->noiseLevel();
+        const int level = saved >= 0 ? saved : arx::AppSettings::kDefaultNoise;
+        {
+            const QSignalBlocker block(ui->noiseCombo);
+            ui->noiseCombo->setCurrentIndex(ui->noiseCombo->findData(level));
+        }
+        m_status->setText(tr("\"No upscaling (1×)\" always denoises: denoise level set to %1.")
+                              .arg(ui->noiseCombo->currentText()));
+    }
 }
 
 void MainWindow::populateCombos()
@@ -334,6 +424,7 @@ void MainWindow::populateCombos()
     select(ui->webpModeCombo, mode, false);
     select(ui->scaleCombo, scale, 2);
     select(ui->noiseCombo, noise, m_settings->noiseLevel());
+    updateNoiseChoices();  // the items were rebuilt
 }
 
 void MainWindow::updateQualityControls()
@@ -871,7 +962,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == ui->fileList->viewport() && event->type() == QEvent::Resize) {
         updateDetailColumnWidth();
-        const int margin = fontMetrics().averageCharWidth() * 2;
+        const int margin = fontMetrics().averageCharWidth();
         m_emptyHint->setGeometry(ui->fileList->viewport()->rect().adjusted(margin, 0, -margin, 0));
     }
     return QMainWindow::eventFilter(watched, event);
@@ -883,11 +974,17 @@ void MainWindow::updateDetailColumnWidth()
     // available in the File / Status tooltips.
     const int ch = ui->fileList->fontMetrics().averageCharWidth();
     const int view = ui->fileList->viewport()->width();
-    const bool show = view >= ch * 40;
+    // The name column always keeps at least 40% of the list; in a very
+    // narrow list the Status text is elided (full text in the tooltip).
+    const int nameMin = view * 2 / 5;
+    const int status = std::min(statusColumnWidth(), view - nameMin);
+    ui->fileList->header()->resizeSection(ColStatus, status);
+    const int room = view - nameMin - status;
+    const bool show = room >= ch * 10;
     if (ui->fileList->isColumnHidden(ColDetail) == show)
         ui->fileList->setColumnHidden(ColDetail, !show);
     if (show)
-        ui->fileList->header()->resizeSection(ColDetail, std::clamp(view * 3 / 10, ch * 6, ch * 24));
+        ui->fileList->header()->resizeSection(ColDetail, std::min(room, std::clamp(view * 35 / 100, ch * 10, ch * 30)));
 }
 
 void MainWindow::changeEvent(QEvent *event)

@@ -51,6 +51,9 @@ private:
     void scanAndAdd(const QStringList &dirs, const QStringList &files);
     void setDropHighlight(bool on);
     void updateDetailColumnWidth();
+    int statusColumnWidth() const;      // preferred width of the Status column
+    void updateEmptyHintWidth();
+    void updateNoiseChoices();          // "None" is not offered with 1x
     QString processingProblem() const;  // empty if upscale / denoise can be run
     void onProcessingChanged();
     int pendingCount() const;           // items that Start would process

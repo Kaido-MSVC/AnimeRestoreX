@@ -1,4 +1,4 @@
-AnimeRestoreX 1.1.0
+AnimeRestoreX 1.1.1
 ====================
 
 動漫插畫 AI 降噪與 1×（只降噪）/ 2× / 4× 放大工具（waifu2x CUnet，Vulkan GPU）。

@@ -224,7 +224,7 @@ void PreviewPane::refreshMessages()
         if (!isResult)
             return m_hasItems ? tr("Select an image in the list.") : tr("No images added yet.");
         if (m_sourcePath.isEmpty())
-            return {};
+            return tr("Results appear here after processing.");
         switch (m_hint) {
         case ResultHint::NotYet:       return tr("Not processed yet.");
         case ResultHint::Processing:   return tr("Processing...");
