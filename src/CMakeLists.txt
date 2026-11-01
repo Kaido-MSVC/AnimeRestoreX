@@ -24,6 +24,8 @@ qt_add_library(arxui STATIC
     ui/SettingsDialog.h ui/SettingsDialog.cpp
     ui/LanguageManager.h ui/LanguageManager.cpp
     ui/AboutDialog.h ui/AboutDialog.cpp
+    ui/ElidedLabel.h ui/ElidedLabel.cpp
+    ui/WindowPlacement.h ui/WindowPlacement.cpp
     ui/AppIcon.h
 )
 target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets)

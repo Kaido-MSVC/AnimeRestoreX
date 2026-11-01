@@ -120,6 +120,13 @@
     </message>
 </context>
 <context>
+    <name>ElidedLabel</name>
+    <message>
+        <source>Copy</source>
+        <translation>複製</translation>
+    </message>
+</context>
+<context>
     <name>ImageEncoder</name>
     <message>
         <source>Out of memory while preparing the output image.</source>

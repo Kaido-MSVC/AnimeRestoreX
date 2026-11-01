@@ -13,6 +13,8 @@ const QString kSourceKey = QStringLiteral("paths/sourceDir");
 const QString kOutputKey = QStringLiteral("paths/outputDir");
 const QString kNoiseKey = QStringLiteral("model/noiseLevel");
 const QString kTileKey = QStringLiteral("model/tileSize");
+const QString kGeometryKey = QStringLiteral("window/geometry");
+const QString kSplitterKey = QStringLiteral("window/splitter");
 
 bool isExistingDir(const QString &dir)
 {
@@ -63,6 +65,11 @@ int AppSettings::tileSize() const
 }
 
 void AppSettings::setTileSize(int tile) { m_s->setValue(kTileKey, tile); }
+
+QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey).toByteArray(); }
+void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }
+QByteArray AppSettings::splitterState() const { return m_s->value(kSplitterKey).toByteArray(); }
+void AppSettings::setSplitterState(const QByteArray &state) { m_s->setValue(kSplitterKey, state); }
 
 bool AppSettings::sync()
 {

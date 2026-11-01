@@ -2,6 +2,7 @@
 
 #include "core/Language.h"
 
+#include <QByteArray>
 #include <QString>
 
 #include <memory>
@@ -35,6 +36,12 @@ public:
     void setNoiseLevel(int level);
     int tileSize() const;        // 0 (auto), 400, 200, 100; invalid -> default
     void setTileSize(int tile);
+
+    // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
+    QByteArray windowGeometry() const;
+    void setWindowGeometry(const QByteArray &state);
+    QByteArray splitterState() const;
+    void setSplitterState(const QByteArray &state);
 
     // Flushes to storage; false if the settings could not be saved.
     bool sync();

@@ -6,6 +6,8 @@
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
 #include "ui/CompletionDialog.h"
+#include "ui/ElidedLabel.h"
+#include "ui/WindowPlacement.h"
 #include "ui/JobWorker.h"
 #include "ui/LanguageManager.h"
 #include "ui/SettingsDialog.h"
@@ -20,6 +22,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QStatusBar>
+
+#include <algorithm>
 
 namespace {
 
@@ -52,6 +57,10 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     setWindowIcon(appIcon());
+    // One-line status bar: long messages are elided instead of growing the window.
+    m_status = new ElidedLabel(this);
+    m_status->setObjectName(QStringLiteral("statusLabel"));
+    statusBar()->addWidget(m_status, 1);
     m_settingsAction = menuBar()->addAction(QString());
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
     m_helpMenu = menuBar()->addMenu(QString());
@@ -68,7 +77,9 @@ MainWindow::MainWindow(QWidget *parent)
     header->setSectionResizeMode(ColFile, QHeaderView::Stretch);
     header->setSectionResizeMode(ColStatus, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
-    header->resizeSection(ColDetail, 140);
+    // The Details column follows the list width so the name column keeps most of it.
+    ui->fileList->viewport()->installEventFilter(this);
+    updateDetailColumnWidth();
     resetProgress();
 
     m_worker = new JobWorker;
@@ -88,7 +99,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->cancelButton, &QPushButton::clicked, this, [this] {
         m_worker->requestCancel();
         ui->cancelButton->setEnabled(false);
-        ui->statusLabel->setText(tr("Canceling..."));
+        m_status->setText(tr("Canceling..."));
     });
     connect(ui->fileList, &QTreeWidget::currentItemChanged, this, &MainWindow::updatePreview);
     connect(ui->fileList, &QTreeWidget::itemSelectionChanged, this, &MainWindow::updateButtons);
@@ -107,6 +118,11 @@ MainWindow::MainWindow(QWidget *parent)
     restoreFolders();
     updateQualityControls();
     updateButtons();
+
+    // Window size: the .ui size is only the preferred size; it is fitted to
+    // the screen (or restored from the last session) so the action row stays visible.
+    ui->mainSplitter->restoreState(m_settings->splitterState());
+    arx::placeWindow(this, m_settings->windowGeometry());
 }
 
 MainWindow::~MainWindow()
@@ -133,7 +149,7 @@ void MainWindow::restoreFolders()
     const QString out = arx::resolveFolder(storedOut, &outFellBack);
     ui->outputDirEdit->setText(QDir::toNativeSeparators(out));
     if (outFellBack && !storedOut.isEmpty()) {
-        ui->statusLabel->setText(tr("The previous output folder is not available (%1). Using %2 instead.")
+        m_status->setText(tr("The previous output folder is not available (%1). Using %2 instead.")
                                      .arg(QDir::toNativeSeparators(storedOut),
                                           QDir::toNativeSeparators(out)));
     }
@@ -142,7 +158,7 @@ void MainWindow::restoreFolders()
 void MainWindow::saveSettings()
 {
     if (!m_settings->sync())
-        ui->statusLabel->setText(tr("Settings could not be saved. They will apply until the program is closed."));
+        m_status->setText(tr("Settings could not be saved. They will apply until the program is closed."));
 }
 
 void MainWindow::openSettings()
@@ -227,23 +243,27 @@ void MainWindow::updateQualityControls()
     const bool lossless = webp && ui->webpModeCombo->currentData().toBool();
 
     ui->webpModeCombo->setVisible(webp);
+    QString hint;
     switch (fmt) {
     case arx::OutputFormat::Png:
         ui->qualitySpin->setEnabled(false);
-        ui->qualityHint->setText(tr("PNG is always lossless."));
+        hint = tr("PNG is always lossless.");
         break;
     case arx::OutputFormat::Jpeg:
         ui->qualitySpin->setEnabled(!m_running);
         ui->qualitySpin->setMaximum(100);
-        ui->qualityHint->setText(tr("0-100, lossy"));
+        hint = tr("0-100, lossy");
         break;
     case arx::OutputFormat::WebP:
         ui->qualitySpin->setEnabled(!lossless && !m_running);
         ui->qualitySpin->setMaximum(99);
-        ui->qualityHint->setText(lossless ? tr("Lossless: quality setting not used.")
-                                          : tr("0-99, lossy"));
+        hint = lossless ? tr("Lossless: quality setting not used.") : tr("0-99, lossy");
         break;
     }
+    // A tooltip instead of an inline label: the hint length differs per
+    // format and language and used to widen the window and shift the row.
+    ui->qualitySpin->setToolTip(hint);
+    ui->qualityLabel->setToolTip(hint);
 }
 
 void MainWindow::updateButtons()
@@ -300,7 +320,7 @@ void MainWindow::onOutputSpecChanged()
         }
     }
     if (reset > 0) {
-        ui->statusLabel->setText(tr("Output settings changed: %1 finished item(s) will be processed again.")
+        m_status->setText(tr("Output settings changed: %1 finished item(s) will be processed again.")
                                      .arg(reset));
         updatePreview();
     }
@@ -344,7 +364,7 @@ int MainWindow::addFiles(const QStringList &files)
         msg << tr("Duplicates skipped: %1.").arg(duplicates);
     if (unsupported > 0)
         msg << tr("Unsupported files skipped: %1.").arg(unsupported);
-    ui->statusLabel->setText(msg.join(QLatin1Char(' ')));
+    m_status->setText(msg.join(QLatin1Char(' ')));
 
     if (!ui->fileList->currentItem() && ui->fileList->topLevelItemCount() > 0)
         ui->fileList->setCurrentItem(ui->fileList->topLevelItem(0));
@@ -376,13 +396,13 @@ void MainWindow::browseFolder()
     // Scan off the GUI thread (folders may be on slow drives).
     m_scanning = true;
     updateButtons();
-    ui->statusLabel->setText(tr("Scanning folder..."));
+    m_status->setText(tr("Scanning folder..."));
     m_scanPool.start([this, dir] {
         const QStringList files = arx::scanFolder(dir);
         QMetaObject::invokeMethod(this, [this, dir, files] {
             m_scanning = false;
             if (files.isEmpty()) {
-                ui->statusLabel->setText(tr("No supported images (PNG, JPEG, WebP) in %1.")
+                m_status->setText(tr("No supported images (PNG, JPEG, WebP) in %1.")
                                              .arg(QDir::toNativeSeparators(dir)));
                 updateButtons();
                 return;
@@ -423,7 +443,7 @@ void MainWindow::clearList()
     m_keys.clear();
     ui->previewPane->clear();
     resetProgress();
-    ui->statusLabel->clear();
+    m_status->clear();
     updateButtons();
 }
 
@@ -502,7 +522,7 @@ void MainWindow::start()
         setItemState(item, ItemState::Pending);
     }
     if (files.isEmpty()) {
-        ui->statusLabel->setText(tr("All items are already done. Change the output settings or add images to process again."));
+        m_status->setText(tr("All items are already done. Change the output settings or add images to process again."));
         return;
     }
     updatePreview();
@@ -513,7 +533,7 @@ void MainWindow::start()
     ui->progressBar->setRange(0, int(files.size()));
     ui->progressBar->setValue(0);
     ui->progressBar->setFormat(QStringLiteral("%v / %m"));
-    ui->statusLabel->setText(tr("Starting..."));
+    m_status->setText(tr("Starting..."));
     setRunning(true);
 
     JobWorker *worker = m_worker;
@@ -528,7 +548,7 @@ void MainWindow::onItemStarted(int index)
         return;
     setItemState(item, ItemState::Processing);
     ui->fileList->scrollToItem(item);
-    ui->statusLabel->setText(tr("Processing %1 / %2: %3 (AI upscaling may take a while)")
+    m_status->setText(tr("Processing %1 / %2: %3 (AI upscaling may take a while)")
                                  .arg(index + 1)
                                  .arg(m_jobItems.size())
                                  .arg(item->text(ColFile)));
@@ -586,11 +606,11 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
     m_jobItems.clear();
 
     if (!summary.fatalError.isEmpty())
-        ui->statusLabel->setText(tr("Stopped: %1").arg(summary.fatalError));
+        m_status->setText(tr("Stopped: %1").arg(summary.fatalError));
     else if (summary.canceled)
-        ui->statusLabel->setText(tr("Canceled."));
+        m_status->setText(tr("Canceled."));
     else
-        ui->statusLabel->setText(tr("Finished: %1 succeeded, %2 failed.")
+        m_status->setText(tr("Finished: %1 succeeded, %2 failed.")
                                      .arg(shown.succeeded).arg(shown.failed));
 
     if (m_closing)
@@ -617,7 +637,30 @@ void MainWindow::closeEvent(QCloseEvent *event)
         m_thread.quit();
         m_thread.wait();
     }
+    m_settings->setWindowGeometry(saveGeometry());
+    m_settings->setSplitterState(ui->mainSplitter->saveState());
+    saveSettings();
     event->accept();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->fileList->viewport() && event->type() == QEvent::Resize)
+        updateDetailColumnWidth();
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::updateDetailColumnWidth()
+{
+    // In a narrow list the Details column is hidden; the reason stays
+    // available in the File / Status tooltips.
+    const int ch = ui->fileList->fontMetrics().averageCharWidth();
+    const int view = ui->fileList->viewport()->width();
+    const bool show = view >= ch * 40;
+    if (ui->fileList->isColumnHidden(ColDetail) == show)
+        ui->fileList->setColumnHidden(ColDetail, !show);
+    if (show)
+        ui->fileList->header()->resizeSection(ColDetail, std::clamp(view * 3 / 10, ch * 6, ch * 24));
 }
 
 void MainWindow::changeEvent(QEvent *event)

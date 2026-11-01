@@ -18,3 +18,12 @@ set_tests_properties(tst_pipeline PROPERTIES TIMEOUT 600)
 arx_add_test(tst_ui arxui)
 set_tests_properties(tst_ui PROPERTIES TIMEOUT 600
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Window size / layout checks need real Windows font metrics, so they run on
+# the windows platform (windows flash briefly on the desktop).
+add_test(NAME tst_ui_layout COMMAND tst_ui
+    windowFitsCommonScreens minimumSizeWithinBudgetAllLanguages
+    windowGeometryRestoresAndFallsBack detailColumnFollowsListWidth)
+set_tests_properties(tst_ui_layout PROPERTIES TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=windows"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")

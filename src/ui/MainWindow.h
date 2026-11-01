@@ -13,6 +13,7 @@
 
 namespace Ui { class MainWindow; }
 namespace arx { class AppSettings; }
+class ElidedLabel;
 class JobWorker;
 class QAction;
 class QMenu;
@@ -38,8 +39,10 @@ public:
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    void updateDetailColumnWidth();
     void retranslate();
     void populateCombos();
     void updateQualityControls();
@@ -70,6 +73,7 @@ private:
 
     std::unique_ptr<Ui::MainWindow> ui;
     std::unique_ptr<arx::AppSettings> m_settings;
+    ElidedLabel *m_status = nullptr;
     QAction *m_settingsAction = nullptr;
     QMenu *m_helpMenu = nullptr;
     QAction *m_aboutAction = nullptr;

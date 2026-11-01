@@ -4,7 +4,9 @@
 
 #include "ui/AboutDialog.h"
 #include "ui/CompletionDialog.h"
+#include "ui/ElidedLabel.h"
 #include "ui/LanguageManager.h"
+#include "ui/WindowPlacement.h"
 #include "ui/SettingsDialog.h"
 #include "ui/MainWindow.h"
 #include "ui/PreviewPane.h"
@@ -15,6 +17,7 @@
 #include <QHeaderView>
 #include <QMenu>
 #include <QMenuBar>
+#include <QScreen>
 #include <QSettings>
 #include <QSpinBox>
 
@@ -49,6 +52,12 @@ private slots:
     void aboutDialogContents();
     void aboutDialogLicenseFolder();
     void progressResetsWhenListEmpties();
+    void windowFitsCommonScreens_data();
+    void windowFitsCommonScreens();
+    void minimumSizeWithinBudgetAllLanguages();
+    void windowGeometryRestoresAndFallsBack();
+    void statusMessagesStaySingleLine();
+    void detailColumnFollowsListWidth();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -301,7 +310,7 @@ void TestUi::folderMemoryRestoresIndependently()
         const QString shown = QDir::fromNativeSeparators(
             w.findChild<QLineEdit *>(QStringLiteral("outputDirEdit"))->text());
         QCOMPARE(shown, arx::defaultImageFolder());
-        QVERIFY(w.findChild<QLabel *>(QStringLiteral("statusLabel"))->text().contains(QStringLiteral("not available")));
+        QVERIFY(w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text().contains(QStringLiteral("not available")));
     }
     // The stale value is not overwritten by the fallback.
     QCOMPARE(arx::AppSettings().outputDir(), out);
@@ -472,6 +481,120 @@ void TestUi::progressResetsWhenListEmpties()
     w.findChild<QPushButton *>(QStringLiteral("removeButton"))->click();
     QCOMPARE(list->topLevelItemCount(), 0);
     QCOMPARE(bar->text(), QStringLiteral("0 / 0"));
+}
+
+// Available screen areas in logical pixels (taskbar 48 physical px removed):
+// 1920x1080 and 1366x768 at the display scales the v1.1 plan requires.
+void TestUi::windowFitsCommonScreens_data()
+{
+    QTest::addColumn<QRect>("available");
+    QTest::newRow("1920x1080@100") << QRect(0, 0, 1920, 1032);
+    QTest::newRow("1920x1080@125") << QRect(0, 0, 1536, 826);
+    QTest::newRow("1920x1080@150") << QRect(0, 0, 1280, 688);
+    QTest::newRow("1366x768@100") << QRect(0, 0, 1366, 720);
+    QTest::newRow("1366x768@125") << QRect(0, 0, 1093, 576);
+}
+
+// Layout sizes depend on the real Windows font metrics; the offscreen
+// platform measures text differently. These tests run in the separate
+// "tst_ui_layout" CTest entry on the windows platform.
+#define REQUIRE_REAL_PLATFORM()                                                        \
+    if (QGuiApplication::platformName() == QLatin1String("offscreen"))                 \
+        QSKIP("layout metrics need the windows platform (see tst_ui_layout)")
+
+void TestUi::windowFitsCommonScreens()
+{
+    REQUIRE_REAL_PLATFORM();
+    QFETCH(QRect, available);
+    MainWindow w;
+    const QSize minimum = w.minimumSizeHint();
+    const QRect r = arx::fitWindowRect(QSize(1100, 720), minimum, available);
+    QVERIFY2(arx::fitsInside(r, available), qPrintable(QStringLiteral("%1x%2 at %3,%4")
+                                                          .arg(r.width()).arg(r.height()).arg(r.x()).arg(r.y())));
+    QVERIFY(r.width() >= minimum.width() && r.height() >= minimum.height());
+    QVERIFY(r.width() <= 1100 && r.height() <= 720);
+}
+
+void TestUi::minimumSizeWithinBudgetAllLanguages()
+{
+    REQUIRE_REAL_PLATFORM();
+    // v1.1 budget: framed minimum window <= 620 x 500 logical px in every language.
+    const QSize budget(620, 500);
+    const QMargins f = arx::kEstimatedFrame;
+    for (auto lang : {arx::Language::English, arx::Language::TraditionalChinese, arx::Language::Japanese}) {
+        LanguageManager::instance().apply(lang);
+        MainWindow w;
+        w.show();
+        QTest::qWait(50);
+        const QSize framed = w.minimumSizeHint().grownBy(f);
+        QVERIFY2(framed.width() <= budget.width() && framed.height() <= budget.height(),
+                 qPrintable(QStringLiteral("%1: %2x%3").arg(arx::languageCode(lang))
+                                .arg(framed.width()).arg(framed.height())));
+    }
+    LanguageManager::instance().apply(arx::Language::English);
+}
+
+void TestUi::windowGeometryRestoresAndFallsBack()
+{
+    REQUIRE_REAL_PLATFORM();
+    {
+        MainWindow w;
+        w.show();
+        w.resize(640, 480);
+        QTest::qWait(50);
+        QVERIFY(w.close());  // closeEvent stores the geometry
+    }
+    QVERIFY(!arx::AppSettings().windowGeometry().isEmpty());
+    {
+        MainWindow w;
+        QCOMPARE(w.size(), QSize(640, 480));
+    }
+
+    // Damaged data: the window is fitted to the screen instead.
+    {
+        arx::AppSettings s;
+        s.setWindowGeometry(QByteArray("not a geometry"));
+        QVERIFY(s.sync());
+    }
+    {
+        MainWindow w;
+        QVERIFY(arx::fitsInside(w.geometry(), QGuiApplication::primaryScreen()->availableGeometry()));
+    }
+    arx::AppSettings s;
+    s.setWindowGeometry({});
+    s.setSplitterState({});
+    QVERIFY(s.sync());
+}
+
+void TestUi::statusMessagesStaySingleLine()
+{
+    MainWindow w;
+    w.show();
+    auto *status = w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"));
+    QVERIFY(status);
+    const int before = w.minimumSizeHint().height();
+    const QString longText = QStringLiteral("very long status message ").repeated(40) + QStringLiteral("\nsecond line");
+    status->setText(longText);
+    QTest::qWait(20);
+    QCOMPARE(w.minimumSizeHint().height(), before);
+    QCOMPARE(status->text(), longText);               // full text kept
+    QVERIFY(status->toolTip().contains(QStringLiteral("second line")));
+}
+
+void TestUi::detailColumnFollowsListWidth()
+{
+    REQUIRE_REAL_PLATFORM();
+    MainWindow w;
+    w.show();
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    for (int width : {700, 1100}) {
+        w.resize(width, 600);
+        QTest::qWait(50);
+        const int view = list->viewport()->width();
+        // The name column keeps at least half of the list.
+        QVERIFY2(list->header()->sectionSize(0) >= view / 2,
+                 qPrintable(QStringLiteral("name %1 of %2").arg(list->header()->sectionSize(0)).arg(view)));
+    }
 }
 
 QTEST_MAIN(TestUi)

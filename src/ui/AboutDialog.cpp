@@ -19,7 +19,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     auto *root = new QVBoxLayout(this);
     auto *head = new QHBoxLayout;
     auto *icon = new QLabel(this);
-    icon->setPixmap(appIcon().pixmap(64, 64));
+    icon->setPixmap(appIcon().pixmap(QSize(64, 64), devicePixelRatioF()));  // sharp at 125%/150%
     head->addWidget(icon, 0, Qt::AlignTop);
     m_title = new QLabel(this);
     m_title->setTextFormat(Qt::RichText);
@@ -31,7 +31,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     m_body->setWordWrap(true);
     m_body->setTextInteractionFlags(Qt::TextBrowserInteraction);
     m_body->setOpenExternalLinks(true);
-    m_body->setMinimumWidth(460);
+    m_body->setMinimumWidth(fontMetrics().averageCharWidth() * 64);  // follows font and scale
     root->addWidget(m_body);
 
     auto *buttons = new QDialogButtonBox(this);

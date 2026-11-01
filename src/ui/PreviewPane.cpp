@@ -152,7 +152,7 @@ PreviewPane::PreviewPane(QWidget *parent) : QWidget(parent)
         canvas = new ImageCanvas;
         area->setWidget(canvas);
         area->setAlignment(Qt::AlignCenter);
-        area->setMinimumSize(160, 120);
+        area->setMinimumSize(fontMetrics().averageCharWidth() * 22, fontMetrics().lineSpacing() * 7);
         col->addWidget(title);
         col->addWidget(area, 1);
         views->addLayout(col, 1);

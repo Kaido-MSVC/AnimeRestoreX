@@ -45,7 +45,7 @@ CompletionDialog::CompletionDialog(const arx::BatchSummary &s, const QString &ou
         auto *list = new QPlainTextEdit(failures.join(QLatin1Char('\n')), this);
         list->setReadOnly(true);
         list->setLineWrapMode(QPlainTextEdit::NoWrap);
-        list->setMinimumSize(420, 120);
+        list->setMinimumSize(fontMetrics().averageCharWidth() * 60, fontMetrics().lineSpacing() * 6);
         layout->addWidget(list);
     }
 
