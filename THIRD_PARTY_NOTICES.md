@@ -1,4 +1,4 @@
-# AnimeRestoreX 1.0.0 — Third-Party Notices / 第三方元件通知
+# AnimeRestoreX 1.1.1 — Third-Party Notices / 第三方元件通知
 
 AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026 Kaido-MSVC）。
 **MIT 只涵蓋 AnimeRestoreX 自身**；本發行包內的第三方元件、模型與執行階段各自適用原授權。授權與版權原文放在 `licenses/`，本文件中的摘要不能取代原文。
@@ -9,7 +9,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 
 | 路徑 | 元件 | 版本 | 授權 | 來源 |
 |---|---|---|---|---|
-| `AnimeRestoreX.exe` | AnimeRestoreX | 1.0.0 | MIT | 以本專案原始碼建置（MSVC 14.51.36231、Qt 6.12.0） |
+| `AnimeRestoreX.exe` | AnimeRestoreX | 1.1.1 | MIT | 以本專案原始碼建置（MSVC 14.51.36231、Qt 6.12.0） |
 | `Qt6Core.dll`、`Qt6Gui.dll`、`Qt6Widgets.dll` | Qt | 6.12.0 | LGPL-3.0-only | Qt 官方 6.12.0 `msvc2022_64` 二進位檔，未修改（見 §2） |
 | `platforms/qwindows.dll` | Qt Windows 平台外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
 | `styles/qmodernwindowsstyle.dll` | Qt Windows 樣式外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
