@@ -31,6 +31,7 @@ struct JobSpec {
 struct ItemResult {
     bool ok = false;
     bool canceled = false;
+    bool fatal = false;  // shared error (engine/GPU); the batch must stop
     QString outputPath;  // set when ok
     QString error;       // set when !ok && !canceled
 };

@@ -1,3 +1,4 @@
+#include "core/BatchRunner.h"
 #include "core/ChildProcessGuard.h"
 #include "core/JobSpec.h"
 #include "ui/MainWindow.h"
@@ -18,6 +19,7 @@ int main(int argc, char *argv[])
 
     qRegisterMetaType<arx::JobSpec>();
     qRegisterMetaType<arx::ItemResult>();
+    qRegisterMetaType<arx::BatchSummary>();
 
     // Create the kill-on-close job object up front.
     arx::ChildProcessGuard::instance();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/BatchRunner.h"
 #include "core/JobSpec.h"
 
 #include <QObject>
@@ -23,8 +24,7 @@ public slots:
 signals:
     void itemStarted(int index);
     void itemFinished(int index, const arx::ItemResult &result);
-    // fatalError is non-empty when a shared precondition stopped the job.
-    void jobFinished(int succeeded, int failed, bool canceled, const QString &fatalError);
+    void jobFinished(const arx::BatchSummary &summary);
 
 private:
     std::atomic_bool m_cancel{false};

@@ -132,8 +132,11 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     const RunResult run = Waifu2xRunner::run(spec.waifu2x, inPng, outPng, cancel);
     if (run.canceled)
         return canceled();
-    if (!run.ok)
-        return fail(run.error);
+    if (!run.ok) {
+        ItemResult r = fail(run.error);
+        r.fatal = run.fatal;
+        return r;
+    }
 
     // 4. Read back and verify. waifu2x exits with 0 on decode errors, so the
     //    output file and its exact size are the real success criteria.

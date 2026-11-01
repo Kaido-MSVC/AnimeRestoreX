@@ -3,7 +3,7 @@
 // timing and memory measurements belong to the manual A9 checklist.
 #include "TestImages.h"
 
-#include "core/ImageLoader.h"
+#include "core/BatchRunner.h"
 #include "core/ProcessJob.h"
 #include "core/Waifu2xRunner.h"
 
@@ -29,6 +29,10 @@ private slots:
     void corruptInputFailsCleanly();
     void missingModelIsReported();
     void cancelKillsProcess();
+    void batchMixedContinuesAfterFailure();
+    void batchPreconditionStops();
+    void batchEngineFailureStops();
+    void batchCanceledBeforeStart();
 
 private:
     JobSpec spec(OutputFormat f, int scale) const;
@@ -211,6 +215,79 @@ void TestPipeline::cancelKillsProcess()
     QVERIFY(timer.elapsed() < 10000);
     QVERIFY(leftovers().isEmpty());
     QVERIFY(!QFileInfo::exists(QDir(m_outDir).filePath(QStringLiteral("big_4x.png"))));
+}
+
+void TestPipeline::batchMixedContinuesAfterFailure()
+{
+    const QString bad = QDir(m_srcDir).filePath(QStringLiteral("batch-bad.webp"));
+    {
+        QFile f(bad);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("RIFF....WEBPnope");
+    }
+    const QStringList files{m_opaque, bad, m_alpha};
+    QList<int> started;
+    QList<QPair<int, bool>> finished;
+    BatchCallbacks cb;
+    cb.itemStarted = [&](int i) { started << i; };
+    cb.itemFinished = [&](int i, const ItemResult &r) { finished << qMakePair(i, r.ok); };
+    std::atomic_bool cancel{false};
+    const BatchSummary s = runBatch(files, spec(OutputFormat::WebP, 2), cancel, cb);
+    QCOMPARE(s.succeeded, 2);
+    QCOMPARE(s.failed, 1);
+    QCOMPARE(s.notProcessed, 0);
+    QVERIFY(!s.canceled);
+    QVERIFY(s.fatalError.isEmpty());
+    QCOMPARE(started, (QList<int>{0, 1, 2}));
+    QCOMPARE(finished, (QList<QPair<int, bool>>{{0, true}, {1, false}, {2, true}}));
+    QVERIFY(leftovers().isEmpty());
+}
+
+void TestPipeline::batchPreconditionStops()
+{
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = m_root.filePath(QStringLiteral("does-not-exist"));
+    int calls = 0;
+    BatchCallbacks cb;
+    cb.itemStarted = [&](int) { ++calls; };
+    std::atomic_bool cancel{false};
+    const BatchSummary r = runBatch({m_opaque, m_alpha}, s, cancel, cb);
+    QCOMPARE(r.succeeded, 0);
+    QCOMPARE(r.failed, 0);
+    QCOMPARE(r.notProcessed, 2);
+    QVERIFY(!r.fatalError.isEmpty());
+    QCOMPARE(calls, 0);
+}
+
+void TestPipeline::batchEngineFailureStops()
+{
+    // A file that exists but is not a valid executable: the engine cannot start.
+    const QString fakeDir = m_root.filePath(QStringLiteral("fake-engine"));
+    QVERIFY(QDir().mkpath(fakeDir));
+    const QString fakeExe = fakeDir + QStringLiteral("/waifu2x-ncnn-vulkan.exe");
+    {
+        QFile f(fakeExe);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("not an executable");
+    }
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.waifu2x.exePath = fakeExe;
+    std::atomic_bool cancel{false};
+    const BatchSummary r = runBatch({m_opaque, m_alpha, m_opaque}, s, cancel, {});
+    QCOMPARE(r.succeeded, 0);
+    QCOMPARE(r.failed, 1);
+    QCOMPARE(r.notProcessed, 2);
+    QVERIFY(!r.fatalError.isEmpty());
+    qInfo() << "engine failure:" << r.fatalError;
+}
+
+void TestPipeline::batchCanceledBeforeStart()
+{
+    std::atomic_bool cancel{true};
+    const BatchSummary r = runBatch({m_opaque, m_alpha}, spec(OutputFormat::Png, 2), cancel, {});
+    QVERIFY(r.canceled);
+    QCOMPARE(r.notProcessed, 2);
+    QCOMPARE(r.succeeded + r.failed, 0);
 }
 
 QTEST_GUILESS_MAIN(TestPipeline)

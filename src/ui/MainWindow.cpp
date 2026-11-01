@@ -1,21 +1,32 @@
 #include "ui/MainWindow.h"
 #include "ui_MainWindow.h"
 
-#include "core/ImageEncoder.h"
+#include "core/FolderScanner.h"
+#include "ui/CompletionDialog.h"
 #include "ui/JobWorker.h"
 
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QHeaderView>
+#include <QMessageBox>
 #include <QStandardPaths>
 
 namespace {
 
-// Stage 1 provisional defaults; final values are decided by the A9 tests
+// Stage 1/2 provisional defaults; final values are decided by the A9 tests
 // and become configurable in the settings dialog (stage 3).
 constexpr int kDefaultNoise = 1;
 constexpr int kDefaultTile = 0;  // auto
+
+constexpr int kRolePath = Qt::UserRole;
+constexpr int kRoleState = Qt::UserRole + 1;
+constexpr int kRoleDetail = Qt::UserRole + 2;
+constexpr int kRoleOutput = Qt::UserRole + 3;
+
+enum Column { ColFile = 0, ColStatus = 1, ColDetail = 2 };
 
 QString waifu2xDir()
 {
@@ -30,56 +41,60 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     populateCombos();
 
+    ui->mainSplitter->setStretchFactor(0, 2);
+    ui->mainSplitter->setStretchFactor(1, 3);
+    ui->fileList->header()->setSectionResizeMode(ColFile, QHeaderView::Interactive);
+    ui->fileList->header()->resizeSection(ColFile, 200);
+    ui->fileList->header()->resizeSection(ColStatus, 90);
+    ui->progressBar->setRange(0, 1);
+    ui->progressBar->setValue(0);
+    ui->progressBar->setFormat(QStringLiteral("%v / %m"));
+
+    m_lastSourceDir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
     ui->outputDirEdit->setText(QDir::toNativeSeparators(
         QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)));
 
     m_worker = new JobWorker;
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
-
-    connect(m_worker, &JobWorker::itemStarted, this, [this](int) {
-        ui->statusLabel->setText(tr("Processing... (AI upscaling may take a while)"));
-    });
-    connect(m_worker, &JobWorker::itemFinished, this, [this](int, const arx::ItemResult &r) {
-        if (r.ok)
-            ui->statusLabel->setText(tr("Done: %1").arg(QDir::toNativeSeparators(r.outputPath)));
-        else if (r.canceled)
-            ui->statusLabel->setText(tr("Canceled."));
-        else
-            ui->statusLabel->setText(tr("Failed: %1").arg(r.error));
-    });
-    connect(m_worker, &JobWorker::jobFinished, this,
-            [this](int, int, bool canceled, const QString &fatal) {
-                if (!fatal.isEmpty())
-                    ui->statusLabel->setText(tr("Cannot start: %1").arg(fatal));
-                else if (canceled)
-                    ui->statusLabel->setText(tr("Canceled."));
-                setRunning(false);
-            });
+    connect(m_worker, &JobWorker::itemStarted, this, &MainWindow::onItemStarted);
+    connect(m_worker, &JobWorker::itemFinished, this, &MainWindow::onItemFinished);
+    connect(m_worker, &JobWorker::jobFinished, this, &MainWindow::onJobFinished);
     m_thread.start();
 
-    connect(ui->browseInputButton, &QPushButton::clicked, this, &MainWindow::browseInput);
+    connect(ui->addImagesButton, &QPushButton::clicked, this, &MainWindow::browseImages);
+    connect(ui->addFolderButton, &QPushButton::clicked, this, &MainWindow::browseFolder);
+    connect(ui->removeButton, &QPushButton::clicked, this, &MainWindow::removeSelected);
+    connect(ui->clearButton, &QPushButton::clicked, this, &MainWindow::clearList);
     connect(ui->browseOutputButton, &QPushButton::clicked, this, &MainWindow::browseOutput);
     connect(ui->startButton, &QPushButton::clicked, this, &MainWindow::start);
     connect(ui->cancelButton, &QPushButton::clicked, this, [this] {
         m_worker->requestCancel();
+        ui->cancelButton->setEnabled(false);
         ui->statusLabel->setText(tr("Canceling..."));
     });
+    connect(ui->fileList, &QTreeWidget::currentItemChanged, this, &MainWindow::updatePreview);
+    connect(ui->fileList, &QTreeWidget::itemSelectionChanged, this, &MainWindow::updateButtons);
     connect(ui->formatCombo, &QComboBox::currentIndexChanged, this,
             &MainWindow::updateQualityControls);
     connect(ui->webpModeCombo, &QComboBox::currentIndexChanged, this,
             &MainWindow::updateQualityControls);
     updateQualityControls();
+    updateButtons();
 }
 
 MainWindow::~MainWindow()
 {
+    m_scanPool.clear();
+    m_scanPool.waitForDone();
     if (m_thread.isRunning()) {
         m_worker->requestCancel();
         m_thread.quit();
         m_thread.wait();
     }
 }
+
+// ------------------------------------------------------------------ controls
 
 void MainWindow::populateCombos()
 {
@@ -130,16 +145,26 @@ void MainWindow::updateQualityControls()
     }
 }
 
+void MainWindow::updateButtons()
+{
+    const bool idle = !m_running && !m_scanning;
+    const bool hasItems = ui->fileList->topLevelItemCount() > 0;
+    ui->addImagesButton->setEnabled(idle);
+    ui->addFolderButton->setEnabled(idle);
+    ui->removeButton->setEnabled(idle && !ui->fileList->selectedItems().isEmpty());
+    ui->clearButton->setEnabled(idle && hasItems);
+    ui->startButton->setEnabled(idle && hasItems);
+    ui->cancelButton->setEnabled(m_running);
+    ui->browseOutputButton->setEnabled(!m_running);
+    ui->formatCombo->setEnabled(!m_running);
+    ui->webpModeCombo->setEnabled(!m_running);
+    ui->scaleCombo->setEnabled(!m_running);
+}
+
 void MainWindow::setRunning(bool running)
 {
     m_running = running;
-    ui->startButton->setEnabled(!running);
-    ui->cancelButton->setEnabled(running);
-    ui->browseInputButton->setEnabled(!running);
-    ui->browseOutputButton->setEnabled(!running);
-    ui->formatCombo->setEnabled(!running);
-    ui->webpModeCombo->setEnabled(!running);
-    ui->scaleCombo->setEnabled(!running);
+    updateButtons();
     updateQualityControls();
 }
 
@@ -158,15 +183,87 @@ arx::JobSpec MainWindow::currentSpec() const
     return spec;
 }
 
-void MainWindow::browseInput()
+// --------------------------------------------------------------------- list
+
+QString MainWindow::pathKey(const QString &path)
 {
-    const QString file = QFileDialog::getOpenFileName(
-        this, tr("Select Image"), QString(),
-        tr("Images (*.png *.jpg *.jpeg *.webp)"));
-    if (file.isEmpty())
+    // Windows paths are case-insensitive.
+    return QDir::cleanPath(QFileInfo(path).absoluteFilePath()).toLower();
+}
+
+int MainWindow::addFiles(const QStringList &files)
+{
+    int added = 0;
+    int duplicates = 0;
+    int unsupported = 0;
+    for (const QString &f : files) {
+        if (!arx::isSupportedImageFile(f)) {
+            ++unsupported;
+            continue;
+        }
+        const QString key = pathKey(f);
+        if (m_keys.contains(key)) {
+            ++duplicates;
+            continue;
+        }
+        m_keys.insert(key);
+        const QString abs = QFileInfo(f).absoluteFilePath();
+        auto *item = new QTreeWidgetItem(ui->fileList);
+        item->setText(ColFile, QFileInfo(abs).fileName());
+        item->setToolTip(ColFile, QDir::toNativeSeparators(abs));
+        item->setData(ColFile, kRolePath, abs);
+        setItemState(item, ItemState::Pending);
+        ++added;
+    }
+
+    QStringList msg;
+    msg << tr("Added %n image(s).", nullptr, added);
+    if (duplicates > 0)
+        msg << tr("Skipped %n duplicate(s).", nullptr, duplicates);
+    if (unsupported > 0)
+        msg << tr("Skipped %n unsupported file(s).", nullptr, unsupported);
+    ui->statusLabel->setText(msg.join(QLatin1Char(' ')));
+
+    if (!ui->fileList->currentItem() && ui->fileList->topLevelItemCount() > 0)
+        ui->fileList->setCurrentItem(ui->fileList->topLevelItem(0));
+    updateButtons();
+    return added;
+}
+
+void MainWindow::browseImages()
+{
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, tr("Add Images"), m_lastSourceDir, tr("Images (*.png *.jpg *.jpeg *.webp)"));
+    if (files.isEmpty())
+        return;  // canceled: keep the previous source folder
+    m_lastSourceDir = QFileInfo(files.first()).absolutePath();
+    addFiles(files);
+}
+
+void MainWindow::browseFolder()
+{
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Add Folder"), m_lastSourceDir);
+    if (dir.isEmpty())
         return;
-    m_files = {file};
-    ui->inputEdit->setText(QDir::toNativeSeparators(file));
+    m_lastSourceDir = dir;
+
+    // Scan off the GUI thread (folders may be on slow drives).
+    m_scanning = true;
+    updateButtons();
+    ui->statusLabel->setText(tr("Scanning folder..."));
+    m_scanPool.start([this, dir] {
+        const QStringList files = arx::scanFolder(dir);
+        QMetaObject::invokeMethod(this, [this, dir, files] {
+            m_scanning = false;
+            if (files.isEmpty()) {
+                ui->statusLabel->setText(tr("No supported images (PNG, JPEG, WebP) in %1.")
+                                             .arg(QDir::toNativeSeparators(dir)));
+                updateButtons();
+                return;
+            }
+            addFiles(files);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::browseOutput()
@@ -178,27 +275,208 @@ void MainWindow::browseOutput()
     ui->outputDirEdit->setText(QDir::toNativeSeparators(dir));
 }
 
-void MainWindow::start()
+void MainWindow::removeSelected()
 {
-    if (m_running)
-        return;
-    if (m_files.isEmpty()) {
-        ui->statusLabel->setText(tr("Please select an image first."));
+    const QList<QTreeWidgetItem *> items = ui->fileList->selectedItems();
+    for (QTreeWidgetItem *item : items) {
+        m_keys.remove(pathKey(item->data(ColFile, kRolePath).toString()));
+        delete item;
+    }
+    if (ui->fileList->topLevelItemCount() == 0)
+        ui->previewPane->clear();
+    updateButtons();
+}
+
+void MainWindow::clearList()
+{
+    ui->fileList->clear();
+    m_keys.clear();
+    ui->previewPane->clear();
+    ui->progressBar->setRange(0, 1);
+    ui->progressBar->setValue(0);
+    ui->statusLabel->clear();
+    updateButtons();
+}
+
+static QString stateText(MainWindow::ItemState s)
+{
+    switch (s) {
+    case MainWindow::ItemState::Pending:      return MainWindow::tr("Pending");
+    case MainWindow::ItemState::Processing:   return MainWindow::tr("Processing...");
+    case MainWindow::ItemState::Done:         return MainWindow::tr("Done");
+    case MainWindow::ItemState::Failed:       return MainWindow::tr("Failed");
+    case MainWindow::ItemState::NotProcessed: return MainWindow::tr("Not processed");
+    }
+    return {};
+}
+
+void MainWindow::setItemState(QTreeWidgetItem *item, ItemState state, const QString &detail)
+{
+    item->setData(ColFile, kRoleState, int(state));
+    item->setData(ColFile, kRoleDetail, detail);
+    refreshItemTexts(item);
+}
+
+void MainWindow::refreshItemTexts(QTreeWidgetItem *item)
+{
+    const auto state = ItemState(item->data(ColFile, kRoleState).toInt());
+    const QString detail = item->data(ColFile, kRoleDetail).toString();
+    item->setText(ColStatus, stateText(state));
+    item->setText(ColDetail, detail);
+    item->setToolTip(ColDetail, detail);
+    item->setForeground(ColStatus, state == ItemState::Failed ? QBrush(Qt::red) : QBrush());
+}
+
+void MainWindow::updatePreview()
+{
+    QTreeWidgetItem *item = ui->fileList->currentItem();
+    if (!item) {
+        ui->previewPane->clear();
         return;
     }
-    setRunning(true);
-    ui->statusLabel->setText(tr("Starting..."));
-    const QStringList files = m_files;
+    const auto state = ItemState(item->data(ColFile, kRoleState).toInt());
+    QString output;
+    QString placeholder;
+    switch (state) {
+    case ItemState::Done:
+        output = item->data(ColFile, kRoleOutput).toString();
+        break;
+    case ItemState::Failed:
+        placeholder = tr("Processing failed. See the Details column.");
+        break;
+    case ItemState::Processing:
+        placeholder = tr("Processing...");
+        break;
+    case ItemState::NotProcessed:
+        placeholder = tr("Not processed.");
+        break;
+    case ItemState::Pending:
+        break;
+    }
+    ui->previewPane->showItem(item->data(ColFile, kRolePath).toString(), output, placeholder);
+}
+
+// -------------------------------------------------------------------- batch
+
+void MainWindow::start()
+{
+    if (m_running || ui->fileList->topLevelItemCount() == 0)
+        return;
+
+    // Every start processes the whole list; existing outputs are never
+    // overwritten (new files get " (n)" suffixes).
+    QStringList files;
+    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+        files << item->data(ColFile, kRolePath).toString();
+        item->setData(ColFile, kRoleOutput, QString());
+        setItemState(item, ItemState::Pending);
+    }
+    updatePreview();
+
     const arx::JobSpec spec = currentSpec();
+    m_jobOutputDir = spec.outputDir;
+    m_finishedCount = 0;
+    ui->progressBar->setRange(0, int(files.size()));
+    ui->progressBar->setValue(0);
+    ui->statusLabel->setText(tr("Starting..."));
+    setRunning(true);
+
     JobWorker *worker = m_worker;
     QMetaObject::invokeMethod(worker, [worker, files, spec] { worker->process(files, spec); },
                               Qt::QueuedConnection);
 }
 
+void MainWindow::onItemStarted(int index)
+{
+    QTreeWidgetItem *item = ui->fileList->topLevelItem(index);
+    if (!item)
+        return;
+    setItemState(item, ItemState::Processing);
+    ui->fileList->scrollToItem(item);
+    ui->statusLabel->setText(tr("Processing %1 / %2: %3 (AI upscaling may take a while)")
+                                 .arg(index + 1)
+                                 .arg(ui->fileList->topLevelItemCount())
+                                 .arg(item->text(ColFile)));
+}
+
+void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
+{
+    QTreeWidgetItem *item = ui->fileList->topLevelItem(index);
+    if (!item)
+        return;
+    if (r.ok) {
+        item->setData(ColFile, kRoleOutput, r.outputPath);
+        setItemState(item, ItemState::Done, QFileInfo(r.outputPath).fileName());
+    } else if (r.canceled) {
+        setItemState(item, ItemState::NotProcessed, tr("Canceled"));
+    } else {
+        setItemState(item, ItemState::Failed, r.error);
+    }
+    if (!r.canceled)
+        ui->progressBar->setValue(++m_finishedCount);
+    if (item == ui->fileList->currentItem())
+        updatePreview();
+}
+
+void MainWindow::onJobFinished(const arx::BatchSummary &summary)
+{
+    setRunning(false);
+
+    // Counts come from the list itself so the dialog always matches it.
+    arx::BatchSummary shown = summary;
+    shown.succeeded = shown.failed = shown.notProcessed = 0;
+    QStringList failures;
+    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+        switch (ItemState(item->data(ColFile, kRoleState).toInt())) {
+        case ItemState::Done:
+            ++shown.succeeded;
+            break;
+        case ItemState::Failed:
+            ++shown.failed;
+            failures << QStringLiteral("%1: %2").arg(item->text(ColFile),
+                                                     item->data(ColFile, kRoleDetail).toString());
+            break;
+        case ItemState::Pending:
+        case ItemState::Processing:
+            setItemState(item, ItemState::NotProcessed);
+            ++shown.notProcessed;
+            break;
+        case ItemState::NotProcessed:
+            ++shown.notProcessed;
+            break;
+        }
+    }
+
+    if (!summary.fatalError.isEmpty())
+        ui->statusLabel->setText(tr("Stopped: %1").arg(summary.fatalError));
+    else if (summary.canceled)
+        ui->statusLabel->setText(tr("Canceled."));
+    else
+        ui->statusLabel->setText(tr("Finished: %1 succeeded, %2 failed.")
+                                     .arg(shown.succeeded).arg(shown.failed));
+
+    if (m_closing)
+        return;
+    CompletionDialog dlg(shown, m_jobOutputDir, failures, this);
+    dlg.exec();
+}
+
+// ------------------------------------------------------------------- events
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_running) {
+        const auto answer = QMessageBox::question(
+            this, tr("Processing in Progress"),
+            tr("Images are still being processed. Cancel processing and quit?"));
+        if (answer != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
         // Kill the inference child and let the worker remove its temp files.
+        m_closing = true;
         m_worker->requestCancel();
         m_thread.quit();
         m_thread.wait();
@@ -212,6 +490,8 @@ void MainWindow::changeEvent(QEvent *event)
         ui->retranslateUi(this);
         populateCombos();
         updateQualityControls();
+        for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
+            refreshItemTexts(ui->fileList->topLevelItem(i));
     }
     QMainWindow::changeEvent(event);
 }

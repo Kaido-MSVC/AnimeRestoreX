@@ -1,5 +1,6 @@
 #include "TestImages.h"
 
+#include "core/FolderScanner.h"
 #include "core/ImageEncoder.h"
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
@@ -31,6 +32,7 @@ private slots:
     void webpLossyUsesVp8AndQuality();
     void jpegQualityAndWhiteBackground();
     void pngKeepsAlpha();
+    void folderScanTopLevelNaturalOrder();
 
 private:
     QByteArray encodeToBytes(const QImage &img, const EncodeOptions &opt);
@@ -284,6 +286,26 @@ void TestCore::pngKeepsAlpha()
     const QImage dec = QImage::fromData(encodeToBytes(src, opt), "png")
                            .convertToFormat(QImage::Format_ARGB32);
     QCOMPARE(dec, src);
+}
+
+void TestCore::folderScanTopLevelNaturalOrder()
+{
+    const QString dir = m_dir.filePath(QStringLiteral("掃描 フォルダ"));
+    QVERIFY(QDir().mkpath(dir + QStringLiteral("/sub")));
+    for (const char *name : {"b10.png", "b2.PNG", "a.jpg", "c.webp", "d.jpeg", "x.bmp", "notes.txt",
+                             "sub/inner.png"}) {
+        QFile f(QDir(dir).filePath(QString::fromLatin1(name)));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("x");
+    }
+    QStringList names;
+    for (const QString &p : scanFolder(dir))
+        names << QFileInfo(p).fileName();
+    QCOMPARE(names, (QStringList{QStringLiteral("a.jpg"), QStringLiteral("b2.PNG"),
+                                 QStringLiteral("b10.png"), QStringLiteral("c.webp"),
+                                 QStringLiteral("d.jpeg")}));
+    QVERIFY(isSupportedImageFile(QStringLiteral("X.WEBP")));
+    QVERIFY(!isSupportedImageFile(QStringLiteral("x.gif")));
 }
 
 QTEST_GUILESS_MAIN(TestCore)

@@ -13,6 +13,7 @@ namespace arx {
 struct RunResult {
     bool ok = false;
     bool canceled = false;
+    bool fatal = false;  // engine cannot start or no usable GPU: affects every item
     QString error;
 };
 

@@ -4,7 +4,7 @@ cmake_path(NORMAL_PATH ARX_QT_BIN)
 
 function(arx_add_test name)
     qt_add_executable(${name} ${name}.cpp TestImages.h)
-    target_link_libraries(${name} PRIVATE arxcore Qt6::Test)
+    target_link_libraries(${name} PRIVATE ${ARGN} Qt6::Test)
     target_compile_definitions(${name} PRIVATE
         ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}")
     add_test(NAME ${name} COMMAND ${name})
@@ -12,6 +12,9 @@ function(arx_add_test name)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")
 endfunction()
 
-arx_add_test(tst_core)
-arx_add_test(tst_pipeline)
+arx_add_test(tst_core arxcore)
+arx_add_test(tst_pipeline arxcore)
 set_tests_properties(tst_pipeline PROPERTIES TIMEOUT 600)
+arx_add_test(tst_ui arxui)
+set_tests_properties(tst_ui PROPERTIES TIMEOUT 600
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

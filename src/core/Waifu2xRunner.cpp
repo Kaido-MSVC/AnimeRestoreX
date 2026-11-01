@@ -70,6 +70,7 @@ RunResult Waifu2xRunner::run(const Waifu2xParams &p, const QString &inPng, const
 
     if (!proc.waitForStarted(15000)) {
         r.error = tr("Cannot start the AI engine: %1").arg(proc.errorString());
+        r.fatal = true;
         return r;
     }
     ChildProcessGuard::instance().assign(proc.processId());
@@ -101,6 +102,7 @@ RunResult Waifu2xRunner::run(const Waifu2xParams &p, const QString &inPng, const
             || detail.contains(QLatin1String("vulkan"), Qt::CaseInsensitive)) {
             r.error = tr("No usable Vulkan GPU was found. Please check the graphics driver. (%1)")
                           .arg(detail);
+            r.fatal = true;
         } else {
             r.error = tr("The AI engine failed (exit code %1). %2").arg(proc.exitCode()).arg(detail);
         }
