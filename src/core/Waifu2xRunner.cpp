@@ -9,6 +9,10 @@ namespace arx {
 
 QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
 {
+    // 1x is denoise only; without a denoise level waifu2x would do nothing.
+    if (p.scale == 1 && p.noise < 0)
+        return tr("\"No upscaling (1x)\" needs a denoise level. Choose a denoise level or an upscale factor.");
+
     if (!QFileInfo(p.exePath).isFile())
         return tr("The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1")
             .arg(QDir::toNativeSeparators(p.exePath));
@@ -25,11 +29,9 @@ QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
     if (!QFileInfo(p.modelDir).isDir())
         return tr("The AI model folder is missing: %1").arg(QDir::toNativeSeparators(p.modelDir));
 
-    // cunet uses "noiseN_scale2.0x_model" with denoise, "scale2.0x_model" without.
     const QDir dir(p.modelDir);
     for (const Waifu2xParams &pass : passes(p)) {
-        const QString base = pass.noise < 0 ? QStringLiteral("scale2.0x_model")
-                                            : QStringLiteral("noise%1_scale2.0x_model").arg(pass.noise);
+        const QString base = modelBaseName(pass);
         for (const QString &ext : {QStringLiteral(".param"), QStringLiteral(".bin")}) {
             if (!QFileInfo(dir.filePath(base + ext)).isFile())
                 return tr("The AI model file is missing: %1")
@@ -39,8 +41,20 @@ QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
     return {};
 }
 
+QString Waifu2xRunner::modelBaseName(const Waifu2xParams &pass)
+{
+    // cunet: "noiseN_model" (1x, denoise only), "noiseN_scale2.0x_model"
+    // (denoise + 2x) and "scale2.0x_model" (2x without denoise).
+    if (pass.scale == 1)
+        return QStringLiteral("noise%1_model").arg(pass.noise);
+    return pass.noise < 0 ? QStringLiteral("scale2.0x_model")
+                          : QStringLiteral("noise%1_scale2.0x_model").arg(pass.noise);
+}
+
 QList<Waifu2xParams> Waifu2xRunner::passes(const Waifu2xParams &p)
 {
+    if (p.scale == 1)
+        return {p};  // one denoise-only pass
     Waifu2xParams first = p;
     first.scale = 2;
     if (p.scale != 4)

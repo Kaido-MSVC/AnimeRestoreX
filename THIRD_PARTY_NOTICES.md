@@ -23,7 +23,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `waifu2x/models-cunet/*` | waifu2x CUnet 模型（ncnn 格式） | 見 §4 | MIT（依儲存庫授權推論，見 §4） | 原樣取自上述上游 zip |
 | `LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案 |
 
-不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組、其他 waifu2x 模型（upconv_7 系列）、cunet 的 1× 純降噪模型（`noise*_model.*`，本程式只做 2×／4×，不會使用）。
+不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組、其他 waifu2x 模型（upconv_7 系列）。
 
 不散布、由系統提供：Vulkan loader（`vulkan-1.dll`，隨 GPU 驅動安裝）、Universal CRT（`api-ms-win-crt-*`）、ICU（`icuuc.dll`）、Direct3D、DirectWrite 等 Windows 元件。
 
@@ -120,8 +120,13 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `noise3_scale2.0x_model.bin` | 降噪 3＋2× | `f42c18610fecb14a40f75cca9b9276a6889689d5937a4f75f0c2b21bde7e49ed` |
 | `scale2.0x_model.bin` | 只放大 2×（不降噪時；以及 4× 的第二階段） | `d82ed30207fd07e1c16726a9ca838ce44e6e25a105b0278c7ca681516ee0e18e` |
 | `noise0_scale2.0x_model.param` … `noise3_scale2.0x_model.param`、`scale2.0x_model.param` | 網路結構（5 檔內容相同） | `9b06073e039ca93d5bd79f6bb42016cd98d5bdefa0e9761df6b22b844c39965f` |
+| `noise0_model.bin` | 降噪 0，不放大（1×） | `b15c356a36bcbf6fb8c2f1404ca016fd917d4e45426bcf41f7a3867022fdd7b0` |
+| `noise1_model.bin` | 降噪 1，不放大（1×） | `3407cb87c2503cbd69f8a6703b31bc4949a72080a3e1b1e536dba8bdbfad934f` |
+| `noise2_model.bin` | 降噪 2，不放大（1×） | `b45d5febeb56166b7aff055cb0fbb87647dae528968f97d838dfd7ce0b7117f4` |
+| `noise3_model.bin` | 降噪 3，不放大（1×） | `cd3d2440673d28d7a20aa6428a2a79e1c5e733f21de0a66785958f98d6994926` |
+| `noise0_model.param` … `noise3_model.param` | 1× 網路結構（4 檔內容相同） | `8fda717f004e75f02e4eaf9901bd37301fa51b1f5cd80d53a466a274406595d3` |
 
-AnimeRestoreX 的 4× 分兩次呼叫 waifu2x-ncnn-vulkan：先用 `noiseN_scale2.0x_model` 降噪並放大 2×，再用 `scale2.0x_model` 只放大 2×（降噪只執行一次），所以 4× 也需要 `scale2.0x_model`。
+AnimeRestoreX 的 4× 分兩次呼叫 waifu2x-ncnn-vulkan：先用 `noiseN_scale2.0x_model` 降噪並放大 2×，再用 `scale2.0x_model` 只放大 2×（降噪只執行一次），所以 4× 也需要 `scale2.0x_model`。v1.1 起的「不放大（1×）」只做降噪，呼叫一次 `-s 1` 並使用 `noiseN_model`；1× 必須搭配降噪強度 0～3。
 
 ## 5. Microsoft Visual C++ 執行階段
 

@@ -16,7 +16,7 @@ struct Waifu2xParams {
     QString exePath;   // absolute path to waifu2x-ncnn-vulkan.exe
     QString modelDir;  // absolute path to models-cunet
     int noise = 1;     // -1..3
-    int scale = 2;     // 2 or 4
+    int scale = 2;     // 1 (denoise only, needs noise >= 0), 2 or 4
     int tile = 0;      // 0 = auto
 };
 

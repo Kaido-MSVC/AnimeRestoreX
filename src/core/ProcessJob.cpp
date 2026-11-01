@@ -113,9 +113,10 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     const bool hasAlpha = loaded.hasAlpha;
     loaded.image = QImage();  // free memory before inference
 
-    // 3. Inference: one 2x pass, or for 4x a denoise+2x pass followed by an
-    //    upscale-only 2x pass. waifu2x exits with 0 on decode errors, so each
-    //    pass is verified by its output file and exact size.
+    // 3. Inference: one pass for 1x (denoise only) and 2x, or for 4x a
+    //    denoise+2x pass followed by an upscale-only 2x pass. waifu2x exits
+    //    with 0 on decode errors, so each pass is verified by its output file
+    //    and exact size.
     const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
     QString passInput = inPng;
     QSize passSize = inSize;
@@ -137,7 +138,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
                 msg += QLatin1Char(' ') + run.error;
             return fail(msg);
         }
-        const QSize expected(passSize.width() * 2, passSize.height() * 2);
+        const int passScale = passes.at(i).scale;
+        const QSize expected(passSize.width() * passScale, passSize.height() * passScale);
         const QSize got = QImageReader(passOutput, "png").size();
         if (got != expected)
             return fail(tr("The AI output has an unexpected size (%1 x %2, expected %3 x %4).")

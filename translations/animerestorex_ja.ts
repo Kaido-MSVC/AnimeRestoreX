@@ -593,6 +593,10 @@
 <context>
     <name>Waifu2xRunner</name>
     <message>
+        <source>&quot;No upscaling (1x)&quot; needs a denoise level. Choose a denoise level or an upscale factor.</source>
+        <translation>「拡大しない（1×）」にはノイズ除去レベルが必要です。ノイズ除去レベルを選ぶか、拡大倍率を選んでください。</translation>
+    </message>
+    <message>
         <source>The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1</source>
         <translation>AI エンジン（waifu2x-ncnn-vulkan.exe）が見つかりません：%1</translation>
     </message>

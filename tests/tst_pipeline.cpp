@@ -36,6 +36,7 @@ private slots:
     void batchCanceledBeforeStart();
     void fourXIsTwoStage();
     void fourXNeedsUpscaleOnlyModel();
+    void oneXDenoiseOnly();
 
 private:
     JobSpec spec(OutputFormat f, int scale) const;
@@ -356,6 +357,37 @@ void TestPipeline::fourXNeedsUpscaleOnlyModel()
     s.waifu2x.scale = 4;
     const QString err = Waifu2xRunner::checkInstall(s.waifu2x);
     QVERIFY2(err.contains(QDir::toNativeSeparators(QStringLiteral("/scale2.0x_model."))), qPrintable(err));
+}
+
+void TestPipeline::oneXDenoiseOnly()
+{
+    // 1x keeps the size and runs the noiseN_model once.
+    const ItemResult r = runOne(m_opaque, spec(OutputFormat::Png, 1));
+    QVERIFY2(r.ok, qPrintable(r.error));
+    QCOMPARE(QFileInfo(r.outputPath).fileName(), QStringLiteral("線畫 テスト_1x.png"));
+    const QImage out = QImage(r.outputPath).convertToFormat(QImage::Format_RGB888);
+    QCOMPARE(out.size(), QSize(96, 64));
+    const LoadResult in = ImageLoader::load(m_opaque);
+    QVERIFY(in.ok);
+    QVERIFY2(out != in.image.convertToFormat(QImage::Format_RGB888), "1x must actually denoise");
+    QVERIFY(leftovers().isEmpty());
+
+    // 1x needs the 1x model files: a folder with only 2x models is reported.
+    const QString dir = m_root.filePath(QStringLiteral("only-2x/models-cunet"));
+    QVERIFY(QDir().mkpath(dir));
+    for (const char *ext : {".param", ".bin"}) {
+        const QString name = QStringLiteral("noise1_scale2.0x_model") + QLatin1String(ext);
+        QVERIFY(QFile::copy(m_engineDir + QStringLiteral("/models-cunet/") + name, dir + QLatin1Char('/') + name));
+    }
+    JobSpec s = spec(OutputFormat::Png, 1);
+    s.waifu2x.modelDir = dir;
+    const QString err = Waifu2xRunner::checkInstall(s.waifu2x);
+    QVERIFY2(err.contains(QStringLiteral("noise1_model.")), qPrintable(err));
+
+    // 1x without denoise is refused up front (nothing would be done).
+    s = spec(OutputFormat::Png, 1);
+    s.waifu2x.noise = -1;
+    QVERIFY(!ProcessJob::checkPreconditions(s).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestPipeline)

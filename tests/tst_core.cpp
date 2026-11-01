@@ -492,6 +492,21 @@ void TestCore::waifu2xPasses()
     QCOMPARE(ps[0].noise, -1);
     QCOMPARE(ps[1].noise, -1);
 
+    // 1x (v1.1): one denoise-only pass with the noiseN_model.
+    p.noise = 2;
+    p.scale = 1;
+    ps = Waifu2xRunner::passes(p);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps[0].scale, 1);
+    QCOMPARE(ps[0].noise, 2);
+    QCOMPARE(Waifu2xRunner::modelBaseName(ps[0]), QStringLiteral("noise2_model"));
+    const QStringList args1 = Waifu2xRunner::arguments(ps[0], QStringLiteral("a.png"), QStringLiteral("b.png"));
+    QCOMPARE(args1.at(args1.indexOf(QStringLiteral("-s")) + 1), QStringLiteral("1"));
+    // 1x without denoise does nothing and is rejected before any file check.
+    p.noise = -1;
+    QVERIFY(Waifu2xRunner::checkInstall(p).contains(QStringLiteral("1x")));
+    QCOMPARE(limits::check({10, 10}, 1, OutputFormat::Png), limits::SizeCheck::Ok);
+
     // Defaults decided after A9.
     QCOMPARE(AppSettings::kDefaultNoise, 1);
     QCOMPARE(AppSettings::kDefaultTile, 0);

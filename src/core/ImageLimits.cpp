@@ -23,7 +23,7 @@ qint64 pixelCount(QSize s)
 
 SizeCheck check(QSize in, int scale, OutputFormat format)
 {
-    if (in.width() <= 0 || in.height() <= 0 || (scale != 2 && scale != 4))
+    if (in.width() <= 0 || in.height() <= 0 || (scale != 1 && scale != 2 && scale != 4))
         return SizeCheck::Invalid;
 
     const qint64 inPixels = pixelCount(in);

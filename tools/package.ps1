@@ -73,12 +73,13 @@ foreach ($dll in $CrtDlls) {
     Add-File (Join-Path $CrtDir $dll) $dll 'VS 2026 VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
 }
 
-# 4. waifu2x-ncnn-vulkan 20250915 (unmodified) + the CUnet models used for 2x/4x
+# 4. waifu2x-ncnn-vulkan 20250915 (unmodified) + the CUnet models used for 1x/2x/4x
 foreach ($f in 'waifu2x-ncnn-vulkan.exe', 'vcomp140.dll', 'LICENSE') {
     Add-File (Join-Path $W2x $f) "waifu2x\$f" "$W2xZip (unmodified)"
 }
 foreach ($m in 'noise0_scale2.0x_model', 'noise1_scale2.0x_model', 'noise2_scale2.0x_model',
-               'noise3_scale2.0x_model', 'scale2.0x_model') {
+               'noise3_scale2.0x_model', 'scale2.0x_model',
+               'noise0_model', 'noise1_model', 'noise2_model', 'noise3_model') {
     foreach ($ext in '.param', '.bin') {
         Add-File (Join-Path $W2x "models-cunet\$m$ext") "waifu2x\models-cunet\$m$ext" "$W2xZip (unmodified)"
     }
