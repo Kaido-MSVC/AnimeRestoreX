@@ -41,8 +41,15 @@ protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
+    // Files / folders dropped from Explorer are added like "Add Images / Add Folder".
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private:
+    void scanAndAdd(const QStringList &dirs, const QStringList &files);
+    void setDropHighlight(bool on);
     void updateDetailColumnWidth();
     QString processingProblem() const;  // empty if upscale / denoise can be run
     void onProcessingChanged();
@@ -79,6 +86,9 @@ private:
     std::unique_ptr<arx::AppSettings> m_settings;
     ElidedLabel *m_status = nullptr;
     QLabel *m_emptyHint = nullptr;
+    QWidget *m_dropOverlay = nullptr;
+    QAction *m_startAction = nullptr;
+    QAction *m_removeAction = nullptr;
     QMenu *m_fileMenu = nullptr;
     QAction *m_addImagesAction = nullptr;
     QAction *m_addFolderAction = nullptr;

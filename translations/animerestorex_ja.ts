@@ -175,22 +175,6 @@
         <translation>AnimeRestoreX</translation>
     </message>
     <message>
-        <source>Add Images...</source>
-        <translation>画像を追加…</translation>
-    </message>
-    <message>
-        <source>Add Folder...</source>
-        <translation>フォルダーを追加…</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>選択を削除</translation>
-    </message>
-    <message>
-        <source>Clear List</source>
-        <translation>リストをクリア</translation>
-    </message>
-    <message>
         <source>File</source>
         <translation>ファイル</translation>
     </message>
@@ -219,10 +203,6 @@
         <translation>フォルダー：</translation>
     </message>
     <message>
-        <source>Select Folder...</source>
-        <translation>フォルダーを選択…</translation>
-    </message>
-    <message>
         <source>Format:</source>
         <translation>形式：</translation>
     </message>
@@ -233,6 +213,22 @@
     <message>
         <source>Upscale:</source>
         <translation>拡大倍率：</translation>
+    </message>
+    <message>
+        <source>Add F&amp;older...</source>
+        <translation>フォルダーを追加(&amp;O)…</translation>
+    </message>
+    <message>
+        <source>&amp;Remove</source>
+        <translation>選択を削除(&amp;R)</translation>
+    </message>
+    <message>
+        <source>C&amp;lear List</source>
+        <translation>リストをクリア(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Select Fol&amp;der...</source>
+        <translation>フォルダーを選択(&amp;D)…</translation>
     </message>
     <message>
         <source>Start</source>
@@ -267,6 +263,10 @@
         <translation>フォルダーを追加(&amp;F)…</translation>
     </message>
     <message>
+        <source>&amp;Start Processing</source>
+        <translation>処理開始(&amp;S)</translation>
+    </message>
+    <message>
         <source>E&amp;xit</source>
         <translation>終了(&amp;X)</translation>
     </message>
@@ -288,9 +288,9 @@
     </message>
     <message>
         <source>No images yet.
-Use &quot;Add Images...&quot; or &quot;Add Folder...&quot; to start.</source>
+Drag images or folders here, or use &quot;Add Images...&quot; / &quot;Add Folder...&quot;.</source>
         <translation>画像がまだありません。
-「画像を追加…」または「フォルダーを追加…」から始めてください。</translation>
+画像やフォルダーをここにドラッグするか、「画像を追加…」／「フォルダーを追加…」を使ってください。</translation>
     </message>
     <message>
         <source>Lossy</source>

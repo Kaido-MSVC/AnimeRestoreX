@@ -17,7 +17,9 @@
 #include <QHeaderView>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QScreen>
+#include <QUrl>
 #include <QSettings>
 #include <QSpinBox>
 
@@ -52,6 +54,9 @@ private slots:
     void qualityShownOnlyWhenUsed();
     void startShowsPendingCountAndEmptyHint();
     void menusFollowWindowsLayout();
+    void dropAddsFilesAndFolders();
+    void dragOfNonLocalUrlsIsIgnored();
+    void keyboardShortcuts();
     void languageSwitchRetranslates();
     void windowIconFromResources();
     void aboutDialogContents();
@@ -456,6 +461,109 @@ void TestUi::menusFollowWindowsLayout()
     for (QAction *a : w.menuBar()->actions())
         titles << a->text();
     QCOMPARE(titles, (QStringList{QStringLiteral("&File"), QStringLiteral("&Tools"), QStringLiteral("&Help")}));
+}
+
+void TestUi::dropAddsFilesAndFolders()
+{
+    const QString dropDir = m_dir.filePath(QStringLiteral("拖放 フォルダ"));
+    QVERIFY(QDir().mkpath(dropDir));
+    const QString loose = m_dir.filePath(QStringLiteral("drop-loose.png"));
+    const QString text = m_dir.filePath(QStringLiteral("drop-note.txt"));
+    QVERIFY(testimg::make(8, 8, false).save(loose, "png"));
+    QVERIFY(testimg::make(8, 8, false).save(QDir(dropDir).filePath(QStringLiteral("in-1.png")), "png"));
+    QVERIFY(testimg::make(8, 8, false).convertToFormat(QImage::Format_RGB32)
+                .save(QDir(dropDir).filePath(QStringLiteral("in-2.jpg")), "jpeg"));
+    {
+        QFile f(text);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("x");
+    }
+
+    MainWindow w;
+    w.show();
+    const QString sourceBefore = w.sourceFolder();
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(loose), QUrl::fromLocalFile(text), QUrl::fromLocalFile(dropDir)});
+    const QPoint pos = w.rect().center();
+
+    QDragEnterEvent enter(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &enter);
+    QVERIFY(enter.isAccepted());
+    QDropEvent drop(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &drop);
+    QVERIFY(drop.isAccepted());
+
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QTRY_COMPARE(list->topLevelItemCount(), 3);  // loose png + 2 from the folder (scanned off-thread)
+    const QString status = w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text();
+    QVERIFY2(status.contains(QStringLiteral("Unsupported files skipped: 1")), qPrintable(status));
+    QCOMPARE(w.sourceFolder(), sourceBefore);  // a drop does not change the dialog folder
+
+    // Dropping the same things again adds nothing (a real drag enters first).
+    QDragEnterEvent enterAgain(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &enterAgain);
+    QVERIFY(enterAgain.isAccepted());
+    QDropEvent again(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &again);
+    QVERIFY(again.isAccepted());
+    QTRY_VERIFY2(w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text().contains(QStringLiteral("Duplicates skipped: 3")),
+                 qPrintable(w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text()));
+    QCOMPARE(list->topLevelItemCount(), 3);
+}
+
+void TestUi::dragOfNonLocalUrlsIsIgnored()
+{
+    MainWindow w;
+    w.show();
+    QMimeData mime;
+    mime.setUrls({QUrl(QStringLiteral("https://example.com/a.png"))});
+    QDragEnterEvent enter(QPointF(w.rect().center()), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &enter);
+    QVERIFY(!enter.isAccepted());
+
+    QMimeData textOnly;
+    textOnly.setText(QStringLiteral("hello"));
+    QDragEnterEvent enter2(QPointF(w.rect().center()), Qt::CopyAction, &textOnly, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&w, &enter2);
+    QVERIFY(!enter2.isAccepted());
+}
+
+void TestUi::keyboardShortcuts()
+{
+    MainWindow w;
+    auto findAction = [&](const QKeySequence &key) -> QAction * {
+        for (QAction *a : w.findChildren<QAction *>())
+            if (a->shortcuts().contains(key))
+                return a;
+        return nullptr;
+    };
+    QVERIFY(findAction(QKeySequence(Qt::CTRL | Qt::Key_O)));
+    QVERIFY(findAction(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O)));
+    QVERIFY(findAction(QKeySequence(Qt::CTRL | Qt::Key_Comma)));
+    QAction *start = findAction(QKeySequence(Qt::CTRL | Qt::Key_Return));
+    QVERIFY(start);
+    QVERIFY(start->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_Enter)));  // keypad Enter
+    QVERIFY(!start->isEnabled());  // empty list, like the Start button
+
+    // Delete removes the selected items while the list has the focus.
+    const QString a = m_dir.filePath(QStringLiteral("k1.png"));
+    const QString b = m_dir.filePath(QStringLiteral("k2.png"));
+    QVERIFY(testimg::make(8, 8, false).save(a, "png"));
+    QVERIFY(testimg::make(8, 8, false).save(b, "png"));
+    w.addFiles({a, b});
+    QVERIFY(start->isEnabled());
+    w.show();
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    list->setFocus();
+    list->clearSelection();
+    list->topLevelItem(0)->setSelected(true);
+    QTest::keyClick(list, Qt::Key_Delete);
+    QCOMPARE(list->topLevelItemCount(), 1);
+
+    // No shortcut for Cancel (a stray key must not stop a long batch).
+    auto *cancel = w.findChild<QPushButton *>(QStringLiteral("cancelButton"));
+    QVERIFY(cancel->shortcut().isEmpty());
 }
 
 void TestUi::languageSwitchRetranslates()

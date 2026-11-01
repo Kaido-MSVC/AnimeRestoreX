@@ -20,28 +20,28 @@
       <item>
        <widget class="QPushButton" name="addImagesButton">
         <property name="text">
-         <string>Add Images...</string>
+         <string>Add &amp;Images...</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="addFolderButton">
         <property name="text">
-         <string>Add Folder...</string>
+         <string>Add F&amp;older...</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="removeButton">
         <property name="text">
-         <string>Remove</string>
+         <string>&amp;Remove</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="clearButton">
         <property name="text">
-         <string>Clear List</string>
+         <string>C&amp;lear List</string>
         </property>
        </widget>
       </item>
@@ -174,7 +174,7 @@
          <item>
           <widget class="QPushButton" name="browseOutputButton">
            <property name="text">
-            <string>Select Folder...</string>
+            <string>Select Fol&amp;der...</string>
            </property>
           </widget>
          </item>

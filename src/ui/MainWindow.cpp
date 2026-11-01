@@ -25,7 +25,10 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QPainter>
 #include <QStatusBar>
+#include <QUrl>
 
 #include <algorithm>
 
@@ -42,6 +45,28 @@ QString waifu2xDir()
 {
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("waifu2x"));
 }
+
+// Accent frame drawn over the file list while files are dragged over the window.
+class DropOverlay : public QWidget {
+public:
+    explicit DropOverlay(QWidget *parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        QColor fill = palette().color(QPalette::Highlight);
+        fill.setAlpha(28);
+        p.fillRect(rect(), fill);
+        const int w = std::max(2, fontMetrics().averageCharWidth() / 3);
+        p.setPen(QPen(palette().color(QPalette::Highlight), w));
+        p.drawRect(rect().adjusted(w / 2, w / 2, -(w + 1) / 2, -(w + 1) / 2));
+    }
+};
 
 // Rich-text tooltips wrap long lines instead of being cut off.
 QString wrapTooltip(const QString &text)
@@ -66,14 +91,29 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->addWidget(m_status, 1);
     // Windows menu layout: File / Tools / Help.
     m_fileMenu = menuBar()->addMenu(QString());
+    // Shortcuts live on menu actions so the menus show them.
     m_addImagesAction = m_fileMenu->addAction(QString(), this, &MainWindow::browseImages);
+    m_addImagesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
     m_addFolderAction = m_fileMenu->addAction(QString(), this, &MainWindow::browseFolder);
+    m_addFolderAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    m_fileMenu->addSeparator();
+    m_startAction = m_fileMenu->addAction(QString(), this, &MainWindow::start);
+    m_startAction->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Return), QKeySequence(Qt::CTRL | Qt::Key_Enter)});
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(QString(), this, &QWidget::close);
     m_toolsMenu = menuBar()->addMenu(QString());
     m_settingsAction = m_toolsMenu->addAction(QString(), this, &MainWindow::openSettings);
+    m_settingsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
     m_helpMenu = menuBar()->addMenu(QString());
     m_aboutAction = m_helpMenu->addAction(QString(), this, &MainWindow::openAbout);
+    // Delete removes the selected items, only while the list has the focus.
+    m_removeAction = new QAction(this);
+    m_removeAction->setShortcut(QKeySequence::Delete);
+    m_removeAction->setShortcutContext(Qt::WidgetShortcut);
+    connect(m_removeAction, &QAction::triggered, this, &MainWindow::removeSelected);
+    ui->fileList->addAction(m_removeAction);
+    // No shortcut for Cancel on purpose: a stray key must not stop a long batch.
+    setAcceptDrops(true);
     populateCombos();
 
     // Empty list: a centered hint instead of a blank white area.
@@ -82,6 +122,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_emptyHint->setWordWrap(true);
     m_emptyHint->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_emptyHint->setForegroundRole(QPalette::PlaceholderText);
+    m_dropOverlay = new DropOverlay(ui->fileList->viewport());
 
     ui->mainSplitter->setStretchFactor(0, 2);
     ui->mainSplitter->setStretchFactor(1, 3);
@@ -244,12 +285,13 @@ void MainWindow::retranslate()
     m_fileMenu->setTitle(tr("&File"));
     m_addImagesAction->setText(tr("Add &Images..."));
     m_addFolderAction->setText(tr("Add &Folder..."));
+    m_startAction->setText(tr("&Start Processing"));
     m_exitAction->setText(tr("E&xit"));
     m_toolsMenu->setTitle(tr("&Tools"));
     m_settingsAction->setText(tr("&Settings..."));
     m_helpMenu->setTitle(tr("&Help"));
     m_aboutAction->setText(tr("&About AnimeRestoreX"));
-    m_emptyHint->setText(tr("No images yet.\nUse \"Add Images...\" or \"Add Folder...\" to start."));
+    m_emptyHint->setText(tr("No images yet.\nDrag images or folders here, or use \"Add Images...\" / \"Add Folder...\"."));
     populateCombos();
     updateQualityControls();
     for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
@@ -349,10 +391,16 @@ void MainWindow::updateButtons()
     ui->addFolderButton->setEnabled(idle);
     m_addImagesAction->setEnabled(idle);
     m_addFolderAction->setEnabled(idle);
-    ui->removeButton->setEnabled(idle && !ui->fileList->selectedItems().isEmpty());
+    const bool canRemove = idle && !ui->fileList->selectedItems().isEmpty();
+    ui->removeButton->setEnabled(canRemove);
+    m_removeAction->setEnabled(canRemove);
     ui->clearButton->setEnabled(idle && hasItems);
-    ui->startButton->setEnabled(idle && hasItems && problem.isEmpty());
-    ui->startButton->setToolTip(problem);
+    const bool canStart = idle && hasItems && problem.isEmpty();
+    ui->startButton->setEnabled(canStart);
+    m_startAction->setEnabled(canStart);
+    ui->startButton->setToolTip(problem.isEmpty()
+                                    ? m_startAction->shortcut().toString(QKeySequence::NativeText)
+                                    : problem);
     const int pending = pendingCount();
     ui->startButton->setText(pending > 0 && !m_running ? tr("Start (%n)", nullptr, pending) : tr("Start"));
     ui->cancelButton->setEnabled(m_running);
@@ -476,24 +524,109 @@ void MainWindow::browseFolder()
     m_sourceDir = dir;
     m_settings->setSourceDir(dir);
     saveSettings();
+    scanAndAdd({dir}, {});
+}
 
-    // Scan off the GUI thread (folders may be on slow drives).
+void MainWindow::scanAndAdd(const QStringList &dirs, const QStringList &files)
+{
+    // Scan off the GUI thread (folders may be on slow drives). Folders are
+    // scanned one after another; everything is added in one go at the end.
     m_scanning = true;
     updateButtons();
     m_status->setText(tr("Scanning folder..."));
-    m_scanPool.start([this, dir] {
-        const QStringList files = arx::scanFolder(dir);
-        QMetaObject::invokeMethod(this, [this, dir, files] {
+    m_scanPool.start([this, dirs, files] {
+        QStringList all = files;
+        for (const QString &dir : dirs)
+            all += arx::scanFolder(dir);
+        QMetaObject::invokeMethod(this, [this, dirs, files, all] {
             m_scanning = false;
-            if (files.isEmpty()) {
+            if (all.isEmpty()) {
+                QStringList shown;
+                for (const QString &d : dirs)
+                    shown << QDir::toNativeSeparators(d);
                 m_status->setText(tr("No supported images (PNG, JPEG, WebP) in %1.")
-                                             .arg(QDir::toNativeSeparators(dir)));
+                                      .arg(shown.join(QStringLiteral(", "))));
                 updateButtons();
                 return;
             }
-            addFiles(files);
+            addFiles(all);
         }, Qt::QueuedConnection);
     });
+}
+
+// ---------------------------------------------------------------- drag & drop
+
+namespace {
+
+// Local files / folders in a drag, or nothing if it carries none.
+QStringList localPaths(const QMimeData *mime)
+{
+    QStringList paths;
+    if (!mime || !mime->hasUrls())
+        return paths;
+    for (const QUrl &url : mime->urls())
+        if (url.isLocalFile())
+            paths << url.toLocalFile();
+    return paths;
+}
+
+} // namespace
+
+void MainWindow::setDropHighlight(bool on)
+{
+    m_dropOverlay->setGeometry(ui->fileList->viewport()->rect());
+    m_dropOverlay->setVisible(on);
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    // Not while processing or scanning: the list must not change then.
+    if (m_running || m_scanning || localPaths(event->mimeData()).isEmpty()) {
+        event->ignore();
+        return;
+    }
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+    setDropHighlight(true);
+}
+
+void MainWindow::dragMoveEvent(QDragMoveEvent *event)
+{
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+}
+
+void MainWindow::dragLeaveEvent(QDragLeaveEvent *event)
+{
+    setDropHighlight(false);
+    QMainWindow::dragLeaveEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    setDropHighlight(false);
+    if (m_running || m_scanning) {
+        event->ignore();
+        return;
+    }
+    QStringList files, dirs;
+    for (const QString &path : localPaths(event->mimeData())) {
+        if (QFileInfo(path).isDir())
+            dirs << path;
+        else
+            files << path;
+    }
+    if (files.isEmpty() && dirs.isEmpty()) {
+        event->ignore();
+        return;
+    }
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+    // A drop does not change the remembered "Add" dialog folder.
+    if (dirs.isEmpty())
+        addFiles(files);
+    else
+        scanAndAdd(dirs, files);
 }
 
 void MainWindow::browseOutput()
@@ -593,7 +726,7 @@ void MainWindow::updatePreview()
 
 void MainWindow::start()
 {
-    if (m_running || ui->fileList->topLevelItemCount() == 0)
+    if (m_running || m_scanning || ui->fileList->topLevelItemCount() == 0)
         return;
     if (const QString problem = processingProblem(); !problem.isEmpty()) {
         m_status->setText(problem);
