@@ -7,6 +7,8 @@ qt_add_library(arxcore STATIC
     core/ProcessJob.h core/ProcessJob.cpp
     core/BatchRunner.h core/BatchRunner.cpp
     core/FolderScanner.h core/FolderScanner.cpp
+    core/Language.h core/Language.cpp
+    core/AppSettings.h core/AppSettings.cpp
     core/ChildProcessGuard.h core/ChildProcessGuard.cpp
     core/JobSpec.h
 )
@@ -19,8 +21,22 @@ qt_add_library(arxui STATIC
     ui/JobWorker.h ui/JobWorker.cpp
     ui/PreviewPane.h ui/PreviewPane.cpp
     ui/CompletionDialog.h ui/CompletionDialog.cpp
+    ui/SettingsDialog.h ui/SettingsDialog.cpp
+    ui/LanguageManager.h ui/LanguageManager.cpp
 )
 target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets)
+
+# Traditional Chinese and Japanese; English is the source language.
+# .qm files are embedded under :/i18n. Update .ts with: cmake --build <dir> --target update_translations
+qt_add_translations(
+    TARGETS arxui
+    SOURCE_TARGETS arxcore arxui
+    TS_FILES
+        ${CMAKE_SOURCE_DIR}/translations/animerestorex_zh_TW.ts
+        ${CMAKE_SOURCE_DIR}/translations/animerestorex_ja.ts
+    NO_GENERATE_PLURALS_TS_FILE
+    LUPDATE_OPTIONS -no-obsolete -locations none
+)
 
 qt_add_executable(AnimeRestoreX WIN32
     main.cpp

@@ -1,6 +1,8 @@
 #include "TestImages.h"
 
+#include "core/AppSettings.h"
 #include "core/FolderScanner.h"
+#include "core/Language.h"
 #include "core/ImageEncoder.h"
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
@@ -10,6 +12,7 @@
 #include <QDir>
 #include <QImageReader>
 #include <QImageWriter>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QtEndian>
 #include <QtTest>
@@ -33,6 +36,12 @@ private slots:
     void jpegQualityAndWhiteBackground();
     void pngKeepsAlpha();
     void folderScanTopLevelNaturalOrder();
+    void sizeMessagesIncludeValues();
+    void languageFromUiTag_data();
+    void languageFromUiTag();
+    void languagePriority();
+    void settingsSeparateKeysAndValidation();
+    void folderFallbackPerItem();
 
 private:
     QByteArray encodeToBytes(const QImage &img, const EncodeOptions &opt);
@@ -43,6 +52,11 @@ void TestCore::initTestCase()
 {
     QImageReader::setAllocationLimit(1024);
     QVERIFY(m_dir.isValid());
+    // Keep test settings out of the real registry.
+    QCoreApplication::setOrganizationName(QStringLiteral("Kaido-MSVC-Test"));
+    QCoreApplication::setApplicationName(QStringLiteral("AnimeRestoreX-tst_core"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.filePath(QStringLiteral("settings")));
     QVERIFY(QImageWriter::supportedImageFormats().contains("webp"));
     QVERIFY(QImageWriter::supportedImageFormats().contains("jpeg"));
 }
@@ -306,6 +320,141 @@ void TestCore::folderScanTopLevelNaturalOrder()
                                  QStringLiteral("d.jpeg")}));
     QVERIFY(isSupportedImageFile(QStringLiteral("X.WEBP")));
     QVERIFY(!isSupportedImageFile(QStringLiteral("x.gif")));
+}
+
+void TestCore::sizeMessagesIncludeValues()
+{
+    // The real-world case reported in stage 2: 4800 x 6416 = 30.8 MP.
+    const QString in = limits::Messages::inputTooLarge({4800, 6416});
+    QVERIFY2(in.contains(QStringLiteral("4800 x 6416")), qPrintable(in));
+    QVERIFY2(in.contains(QStringLiteral("30.8 MP")), qPrintable(in));
+    QVERIFY2(in.contains(QStringLiteral("4.5 MP")), qPrintable(in));
+
+    const QString side = limits::Messages::forCheck(limits::SizeCheck::SideTooLong, {4500, 1000}, 4,
+                                                    OutputFormat::WebP);
+    QVERIFY2(side.contains(QStringLiteral("18000")) && side.contains(QStringLiteral("16383"))
+                 && side.contains(QStringLiteral("WebP")),
+             qPrintable(side));
+
+    const QString out = limits::Messages::outputTooLarge({5000, 5000}, 2);
+    QVERIFY2(out.contains(QStringLiteral("100.0 MP")) && out.contains(QStringLiteral("75.0 MP")),
+             qPrintable(out));
+
+    // Through the loader (rejected from the header, before decoding).
+    const QString path = m_dir.filePath(QStringLiteral("big.png"));
+    QImage big(3000, 1501, QImage::Format_RGB32);
+    big.fill(Qt::white);
+    QVERIFY(big.save(path, "png"));
+    const LoadResult r = ImageLoader::load(path);
+    QVERIFY(!r.ok);
+    QVERIFY2(r.error.contains(QStringLiteral("4.5 MP")) && r.error.contains(QStringLiteral("3000 x 1501")),
+             qPrintable(r.error));
+}
+
+void TestCore::languageFromUiTag_data()
+{
+    QTest::addColumn<QString>("tag");
+    QTest::addColumn<int>("expected");
+    const int en = int(Language::English), zh = int(Language::TraditionalChinese),
+              ja = int(Language::Japanese);
+    QTest::newRow("zh-TW") << "zh-TW" << zh;
+    QTest::newRow("zh-HK") << "zh-HK" << zh;
+    QTest::newRow("zh-MO") << "zh-MO" << zh;
+    QTest::newRow("zh-Hant") << "zh-Hant" << zh;
+    QTest::newRow("zh-Hant-TW") << "zh-Hant-TW" << zh;
+    QTest::newRow("zh_TW underscore") << "zh_TW" << zh;
+    QTest::newRow("ja") << "ja" << ja;
+    QTest::newRow("ja-JP") << "ja-JP" << ja;
+    QTest::newRow("en-US") << "en-US" << en;
+    QTest::newRow("en-GB") << "en-GB" << en;
+    QTest::newRow("zh-CN") << "zh-CN" << en;
+    QTest::newRow("zh-SG") << "zh-SG" << en;
+    QTest::newRow("zh-Hans") << "zh-Hans" << en;
+    QTest::newRow("zh-Hans-HK") << "zh-Hans-HK" << en;  // explicit script wins
+    QTest::newRow("bare zh") << "zh" << en;
+    QTest::newRow("ko-KR") << "ko-KR" << en;
+    QTest::newRow("fr-FR") << "fr-FR" << en;
+    QTest::newRow("empty") << "" << en;
+    QTest::newRow("garbage") << "???" << en;
+}
+
+void TestCore::languageFromUiTag()
+{
+    QFETCH(QString, tag);
+    QFETCH(int, expected);
+    QCOMPARE(int(arx::languageFromUiTag(tag)), expected);
+}
+
+void TestCore::languagePriority()
+{
+    // Manual setting wins over the system language.
+    QCOMPARE(effectiveLanguage(Language::Japanese, QStringLiteral("zh-TW")), Language::Japanese);
+    QCOMPARE(effectiveLanguage(Language::English, QStringLiteral("ja-JP")), Language::English);
+    // No manual setting: system rule; the primary language only.
+    QCOMPARE(effectiveLanguage(std::nullopt, QStringLiteral("zh-TW")), Language::TraditionalChinese);
+    QCOMPARE(effectiveLanguage(std::nullopt, QStringLiteral("de-DE")), Language::English);
+    QCOMPARE(effectiveLanguage(std::nullopt, QString()), Language::English);
+    // Invalid stored values are not a manual setting.
+    QVERIFY(!languageFromCode(QStringLiteral("zh_CN")).has_value());
+    QVERIFY(!languageFromCode(QString()).has_value());
+    QCOMPARE(languageFromCode(QStringLiteral("ja")), std::optional<Language>(Language::Japanese));
+    // The real Windows query returns something non-empty on this machine.
+    qInfo() << "Windows primary UI language:" << windowsPrimaryUiLanguage();
+    QVERIFY(!windowsPrimaryUiLanguage().isEmpty());
+}
+
+void TestCore::settingsSeparateKeysAndValidation()
+{
+    const QString a = m_dir.filePath(QStringLiteral("來源 A"));
+    const QString b = m_dir.filePath(QStringLiteral("出力 B"));
+    QVERIFY(QDir().mkpath(a));
+    QVERIFY(QDir().mkpath(b));
+    {
+        AppSettings s;
+        QVERIFY(!s.manualLanguage().has_value());  // nothing stored yet
+        s.setSourceDir(a);
+        s.setOutputDir(b);
+        s.setNoiseLevel(3);
+        s.setTileSize(200);
+        s.setManualLanguage(Language::Japanese);
+        QVERIFY(s.sync());
+    }
+    {
+        AppSettings s;  // "restart"
+        QCOMPARE(s.sourceDir(), a);
+        QCOMPARE(s.outputDir(), b);
+        QCOMPARE(s.noiseLevel(), 3);
+        QCOMPARE(s.tileSize(), 200);
+        QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
+    }
+    QSettings raw;
+    QVERIFY(raw.contains(QStringLiteral("paths/sourceDir")));
+    QVERIFY(raw.contains(QStringLiteral("paths/outputDir")));
+    QVERIFY(raw.value(QStringLiteral("paths/sourceDir")) != raw.value(QStringLiteral("paths/outputDir")));
+
+    // Corrupt values fall back to safe defaults.
+    raw.setValue(QStringLiteral("model/noiseLevel"), 9);
+    raw.setValue(QStringLiteral("model/tileSize"), QStringLiteral("abc"));
+    raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
+    raw.sync();
+    AppSettings s;
+    QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
+    QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
+    QVERIFY(!s.manualLanguage().has_value());
+    raw.clear();
+}
+
+void TestCore::folderFallbackPerItem()
+{
+    const QString ok = m_dir.filePath(QStringLiteral("有效"));
+    QVERIFY(QDir().mkpath(ok));
+    bool fellBack = true;
+    QCOMPARE(resolveFolder(ok, &fellBack), QDir::cleanPath(ok));
+    QVERIFY(!fellBack);
+    const QString gone = m_dir.filePath(QStringLiteral("消えた"));
+    QCOMPARE(resolveFolder(gone, &fellBack), defaultImageFolder());
+    QVERIFY(fellBack);
+    QVERIFY(QFileInfo(defaultImageFolder()).isDir());
 }
 
 QTEST_GUILESS_MAIN(TestCore)

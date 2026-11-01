@@ -2,6 +2,7 @@
 
 #include "core/JobSpec.h"
 
+#include <QCoreApplication>
 #include <QSize>
 #include <QString>
 #include <QtGlobal>
@@ -22,5 +23,18 @@ enum class SizeCheck { Ok, Invalid, InputTooLarge, OutputTooLarge, SideTooLong }
 SizeCheck check(QSize in, int scale, OutputFormat format);
 
 qint64 pixelCount(QSize s);
+
+// "30.8" for 30,800,000 pixels (decimal megapixels, one decimal place).
+QString megapixels(qint64 pixels);
+
+// User-facing rejection messages that include the actual values and limits.
+class Messages {
+    Q_DECLARE_TR_FUNCTIONS(SizeLimits)
+public:
+    static QString inputTooLarge(QSize in);
+    static QString outputTooLarge(QSize in, int scale);
+    static QString sideTooLong(QSize in, int scale, OutputFormat format);
+    static QString forCheck(SizeCheck result, QSize in, int scale, OutputFormat format);
+};
 
 } // namespace arx::limits

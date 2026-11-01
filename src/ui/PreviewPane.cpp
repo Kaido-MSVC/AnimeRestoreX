@@ -195,7 +195,39 @@ void PreviewPane::retranslate()
         m_mode->setCurrentIndex(mode < 0 ? 0 : mode);
     }
     m_modeLabel->setText(tr("Preview:"));
+    refreshMessages();
     applyMode();
+}
+
+void PreviewPane::refreshMessages()
+{
+    auto message = [this](ViewState state, const QString &error, bool isResult) -> QString {
+        switch (state) {
+        case ViewState::Loading:
+            return tr("Loading...");
+        case ViewState::Error:
+            return tr("Cannot load the preview: %1").arg(error);
+        case ViewState::Loaded:
+            return {};
+        case ViewState::Empty:
+            break;
+        }
+        if (!isResult)
+            return tr("Select an image in the list.");
+        if (m_sourcePath.isEmpty())
+            return {};
+        switch (m_hint) {
+        case ResultHint::NotYet:       return tr("Not processed yet.");
+        case ResultHint::Processing:   return tr("Processing...");
+        case ResultHint::Failed:       return tr("Processing failed. See the Details column.");
+        case ResultHint::NotProcessed: return tr("Not processed.");
+        }
+        return {};
+    };
+    if (m_srcState != ViewState::Loaded)
+        m_src->setMessage(message(m_srcState, m_srcError, false));
+    if (m_resState != ViewState::Loaded)
+        m_res->setMessage(message(m_resState, m_resError, true));
 }
 
 void PreviewPane::changeEvent(QEvent *event)
@@ -240,18 +272,22 @@ void PreviewPane::clear()
     ++m_generation;
     m_sourcePath.clear();
     m_resultPath.clear();
-    m_placeholder.clear();
-    m_src->setMessage(tr("Select an image in the list."));
-    m_res->setMessage(QString());
+    m_hint = ResultHint::NotYet;
+    m_srcState = m_resState = ViewState::Empty;
+    refreshMessages();
     applyMode();
 }
 
-void PreviewPane::showItem(const QString &sourcePath, const QString &resultPath,
-                           const QString &placeholder)
+void PreviewPane::showItem(const QString &sourcePath, const QString &resultPath, ResultHint hint)
 {
-    if (sourcePath == m_sourcePath && resultPath == m_resultPath && m_placeholder == placeholder)
+    if (sourcePath == m_sourcePath && resultPath == m_resultPath) {
+        if (hint != m_hint) {  // same images, only the message changes
+            m_hint = hint;
+            refreshMessages();
+        }
         return;
-    m_placeholder = placeholder;
+    }
+    m_hint = hint;
     const quint64 gen = ++m_generation;
     m_sourcePath = sourcePath;
     m_resultPath = resultPath;
@@ -263,23 +299,29 @@ void PreviewPane::showItem(const QString &sourcePath, const QString &resultPath,
                 if (gen != m_generation)
                     return;  // selection changed meanwhile
                 ImageCanvas *c = isResult ? m_res : m_src;
-                if (l.full.isNull())
-                    c->setMessage(tr("Cannot load the preview: %1").arg(l.error));
-                else
+                ViewState &state = isResult ? m_resState : m_srcState;
+                if (l.full.isNull()) {
+                    state = ViewState::Error;
+                    (isResult ? m_resError : m_srcError) = l.error;
+                } else {
+                    state = ViewState::Loaded;
                     c->setImage(l.full, l.thumb);
+                }
+                refreshMessages();
                 applyMode();
             }, Qt::QueuedConnection);
         });
     };
 
-    m_src->setMessage(tr("Loading..."));
+    m_srcState = ViewState::Loading;
     load(sourcePath, false);
     if (resultPath.isEmpty()) {
-        m_res->setMessage(placeholder.isEmpty() ? tr("Not processed yet.") : placeholder);
+        m_resState = ViewState::Empty;
     } else {
-        m_res->setMessage(tr("Loading..."));
+        m_resState = ViewState::Loading;
         load(resultPath, true);
     }
+    refreshMessages();
     applyMode();
 }
 

@@ -3,7 +3,10 @@
 Windows x64 desktop tool for AI denoising and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.0 in development (stage 2: batch, preview, completion dialog).
+Status: v1.0 in development (stage 3: languages, folder memory, settings).
+
+UI languages: 繁體中文, 日本語, English (source). Translations live in
+`translations/*.ts`; refresh them with `cmake --build build/debug --target update_translations`.
 
 ## Build
 

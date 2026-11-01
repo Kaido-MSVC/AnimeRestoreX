@@ -93,24 +93,9 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
 
     const int scale = spec.waifu2x.scale;
     const QSize inSize = loaded.image.size();
-    switch (limits::check(inSize, scale, spec.encode.format)) {
-    case limits::SizeCheck::Ok:
-        break;
-    case limits::SizeCheck::Invalid:
-        return fail(tr("Invalid image size or scale."));
-    case limits::SizeCheck::InputTooLarge:
-        return fail(tr("Input image is too large (%1 x %2). The maximum is 4.5 MP.")
-                        .arg(inSize.width()).arg(inSize.height()));
-    case limits::SizeCheck::OutputTooLarge:
-        return fail(tr("The output would be too large (%1 x %2). The maximum is 75 MP.")
-                        .arg(qint64(inSize.width()) * scale).arg(qint64(inSize.height()) * scale));
-    case limits::SizeCheck::SideTooLong:
-        return fail(tr("The output (%1 x %2) exceeds the %3 limit of %4 px per side.")
-                        .arg(qint64(inSize.width()) * scale)
-                        .arg(qint64(inSize.height()) * scale)
-                        .arg(QString::fromLatin1(ImageEncoder::formatName(spec.encode.format)).toUpper())
-                        .arg(limits::maxSide(spec.encode.format)));
-    }
+    const limits::SizeCheck sizeCheck = limits::check(inSize, scale, spec.encode.format);
+    if (sizeCheck != limits::SizeCheck::Ok)
+        return fail(limits::Messages::forCheck(sizeCheck, inSize, scale, spec.encode.format));
     if (cancel.load())
         return canceled();
 

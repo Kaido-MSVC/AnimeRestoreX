@@ -105,8 +105,7 @@ LoadResult ImageLoader::load(const QString &path)
 
     const QSize declared = reader.size();
     if (declared.isValid() && limits::pixelCount(declared) > limits::kMaxInputPixels) {
-        r.error = tr("Input image is too large (%1 x %2). The maximum is 4.5 MP.")
-                      .arg(declared.width()).arg(declared.height());
+        r.error = limits::Messages::inputTooLarge(declared);
         return r;
     }
 
@@ -120,8 +119,7 @@ LoadResult ImageLoader::load(const QString &path)
         return r;
     }
     if (limits::pixelCount(img.size()) > limits::kMaxInputPixels) {
-        r.error = tr("Input image is too large (%1 x %2). The maximum is 4.5 MP.")
-                      .arg(img.width()).arg(img.height());
+        r.error = limits::Messages::inputTooLarge(img.size());
         return r;
     }
 

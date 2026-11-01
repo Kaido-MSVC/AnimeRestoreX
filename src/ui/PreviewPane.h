@@ -45,9 +45,12 @@ public:
     explicit PreviewPane(QWidget *parent = nullptr);
     ~PreviewPane() override;
 
-    // resultPath may be empty; then `placeholder` is shown in the result view.
+    // What to say in the result view when there is no result file.
+    enum class ResultHint { NotYet, Processing, Failed, NotProcessed };
+
+    // resultPath may be empty; then `hint` decides the result-view message.
     void showItem(const QString &sourcePath, const QString &resultPath,
-                  const QString &placeholder = {});
+                  ResultHint hint = ResultHint::NotYet);
     void clear();
     void retranslate();
 
@@ -61,9 +64,11 @@ private:
         QImage thumb;
         QString error;
     };
+    enum class ViewState { Empty, Loading, Loaded, Error };
     static Loaded loadForPreview(const QString &path);
     void applyMode();
     void updateNote();
+    void refreshMessages();  // re-creates translated messages without reloading images
 
     QComboBox *m_mode = nullptr;
     QLabel *m_srcTitle = nullptr;
@@ -79,5 +84,9 @@ private:
     quint64 m_generation = 0;
     QString m_sourcePath;
     QString m_resultPath;
-    QString m_placeholder;
+    ResultHint m_hint = ResultHint::NotYet;
+    ViewState m_srcState = ViewState::Empty;
+    ViewState m_resState = ViewState::Empty;
+    QString m_srcError;
+    QString m_resError;
 };

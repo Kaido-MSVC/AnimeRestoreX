@@ -1,6 +1,9 @@
+#include "core/AppSettings.h"
 #include "core/BatchRunner.h"
 #include "core/ChildProcessGuard.h"
 #include "core/JobSpec.h"
+#include "core/Language.h"
+#include "ui/LanguageManager.h"
 #include "ui/MainWindow.h"
 
 #include <QApplication>
@@ -23,6 +26,14 @@ int main(int argc, char *argv[])
 
     // Create the kill-on-close job object up front.
     arx::ChildProcessGuard::instance();
+
+    // Language: manual setting first, otherwise the Windows UI language rule.
+    // The automatic result is never written back as a manual choice.
+    {
+        const arx::AppSettings settings;
+        LanguageManager::instance().apply(
+            arx::effectiveLanguage(settings.manualLanguage(), arx::windowsPrimaryUiLanguage()));
+    }
 
     MainWindow w;
     w.show();

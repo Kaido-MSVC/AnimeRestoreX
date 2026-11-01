@@ -10,7 +10,7 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "AnimeRestoreX requires an x64 toolchain.")
 endif()
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets LinguistTools)
 qt_standard_project_setup()
 
 if(MSVC)

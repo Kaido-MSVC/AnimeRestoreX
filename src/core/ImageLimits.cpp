@@ -1,5 +1,7 @@
 #include "core/ImageLimits.h"
 
+#include <algorithm>
+
 namespace arx::limits {
 
 int maxSide(OutputFormat format)
@@ -39,6 +41,56 @@ SizeCheck check(QSize in, int scale, OutputFormat format)
         return SizeCheck::SideTooLong;
 
     return SizeCheck::Ok;
+}
+
+QString megapixels(qint64 pixels)
+{
+    return QString::number(double(pixels) / 1'000'000.0, 'f', 1);
+}
+
+namespace {
+QString formatName(OutputFormat f)
+{
+    switch (f) {
+    case OutputFormat::Png:  return QStringLiteral("PNG");
+    case OutputFormat::Jpeg: return QStringLiteral("JPEG");
+    case OutputFormat::WebP: return QStringLiteral("WebP");
+    }
+    return {};
+}
+} // namespace
+
+QString Messages::inputTooLarge(QSize in)
+{
+    return tr("Input too large: %1 x %2 = %3 MP > %4 MP limit")
+        .arg(in.width()).arg(in.height())
+        .arg(megapixels(pixelCount(in)), megapixels(kMaxInputPixels));
+}
+
+QString Messages::outputTooLarge(QSize in, int scale)
+{
+    const qint64 w = qint64(in.width()) * scale, h = qint64(in.height()) * scale;
+    return tr("Output too large: %1 x %2 = %3 MP > %4 MP limit")
+        .arg(w).arg(h).arg(megapixels(w * h), megapixels(kMaxOutputPixels));
+}
+
+QString Messages::sideTooLong(QSize in, int scale, OutputFormat format)
+{
+    const qint64 w = qint64(in.width()) * scale, h = qint64(in.height()) * scale;
+    return tr("Output side too long for %1: %2 x %3, longest side %4 px > %5 px limit")
+        .arg(formatName(format)).arg(w).arg(h).arg(std::max(w, h)).arg(maxSide(format));
+}
+
+QString Messages::forCheck(SizeCheck result, QSize in, int scale, OutputFormat format)
+{
+    switch (result) {
+    case SizeCheck::Ok:             return {};
+    case SizeCheck::Invalid:        return tr("Invalid image size or scale.");
+    case SizeCheck::InputTooLarge:  return inputTooLarge(in);
+    case SizeCheck::OutputTooLarge: return outputTooLarge(in, scale);
+    case SizeCheck::SideTooLong:    return sideTooLong(in, scale, format);
+    }
+    return {};
 }
 
 } // namespace arx::limits

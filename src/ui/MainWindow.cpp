@@ -1,25 +1,24 @@
 #include "ui/MainWindow.h"
 #include "ui_MainWindow.h"
 
+#include "core/AppSettings.h"
 #include "core/FolderScanner.h"
 #include "ui/CompletionDialog.h"
 #include "ui/JobWorker.h"
+#include "ui/LanguageManager.h"
+#include "ui/SettingsDialog.h"
 
+#include <QAction>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QMenuBar>
 #include <QMessageBox>
-#include <QStandardPaths>
 
 namespace {
-
-// Stage 1/2 provisional defaults; final values are decided by the A9 tests
-// and become configurable in the settings dialog (stage 3).
-constexpr int kDefaultNoise = 1;
-constexpr int kDefaultTile = 0;  // auto
 
 constexpr int kRolePath = Qt::UserRole;
 constexpr int kRoleState = Qt::UserRole + 1;
@@ -33,26 +32,39 @@ QString waifu2xDir()
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("waifu2x"));
 }
 
+// Rich-text tooltips wrap long lines instead of being cut off.
+QString wrapTooltip(const QString &text)
+{
+    if (text.isEmpty())
+        return {};
+    return QStringLiteral("<p style='white-space:pre-wrap'>%1</p>").arg(text.toHtmlEscaped());
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(std::make_unique<Ui::MainWindow>())
+    : QMainWindow(parent),
+      ui(std::make_unique<Ui::MainWindow>()),
+      m_settings(std::make_unique<arx::AppSettings>())
 {
     ui->setupUi(this);
+    m_settingsAction = menuBar()->addAction(QString());
+    connect(m_settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
     populateCombos();
 
     ui->mainSplitter->setStretchFactor(0, 2);
     ui->mainSplitter->setStretchFactor(1, 3);
-    ui->fileList->header()->setSectionResizeMode(ColFile, QHeaderView::Interactive);
-    ui->fileList->header()->resizeSection(ColFile, 200);
-    ui->fileList->header()->resizeSection(ColStatus, 90);
+    // File names first: the name column takes the free space and is elided in the middle.
+    ui->fileList->setTextElideMode(Qt::ElideMiddle);
+    QHeaderView *header = ui->fileList->header();
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(ColFile, QHeaderView::Stretch);
+    header->setSectionResizeMode(ColStatus, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
+    header->resizeSection(ColDetail, 140);
     ui->progressBar->setRange(0, 1);
     ui->progressBar->setValue(0);
     ui->progressBar->setFormat(QStringLiteral("%v / %m"));
-
-    m_lastSourceDir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-    ui->outputDirEdit->setText(QDir::toNativeSeparators(
-        QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)));
 
     m_worker = new JobWorker;
     m_worker->moveToThread(&m_thread);
@@ -75,10 +87,19 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(ui->fileList, &QTreeWidget::currentItemChanged, this, &MainWindow::updatePreview);
     connect(ui->fileList, &QTreeWidget::itemSelectionChanged, this, &MainWindow::updateButtons);
-    connect(ui->formatCombo, &QComboBox::currentIndexChanged, this,
-            &MainWindow::updateQualityControls);
-    connect(ui->webpModeCombo, &QComboBox::currentIndexChanged, this,
-            &MainWindow::updateQualityControls);
+    connect(ui->formatCombo, &QComboBox::currentIndexChanged, this, [this] {
+        updateQualityControls();
+        onOutputSpecChanged();
+    });
+    connect(ui->webpModeCombo, &QComboBox::currentIndexChanged, this, [this] {
+        updateQualityControls();
+        onOutputSpecChanged();
+    });
+    connect(ui->scaleCombo, &QComboBox::currentIndexChanged, this, &MainWindow::onOutputSpecChanged);
+    connect(ui->qualitySpin, &QSpinBox::valueChanged, this, &MainWindow::onOutputSpecChanged);
+
+    retranslate();
+    restoreFolders();
     updateQualityControls();
     updateButtons();
 }
@@ -94,7 +115,66 @@ MainWindow::~MainWindow()
     }
 }
 
+// ------------------------------------------------------------- settings
+
+void MainWindow::restoreFolders()
+{
+    // Each folder falls back on its own; a stale value is not overwritten
+    // until the user confirms a new folder.
+    m_sourceDir = arx::resolveFolder(m_settings->sourceDir());
+
+    bool outFellBack = false;
+    const QString storedOut = m_settings->outputDir();
+    const QString out = arx::resolveFolder(storedOut, &outFellBack);
+    ui->outputDirEdit->setText(QDir::toNativeSeparators(out));
+    if (outFellBack && !storedOut.isEmpty()) {
+        ui->statusLabel->setText(tr("The previous output folder is not available (%1). Using %2 instead.")
+                                     .arg(QDir::toNativeSeparators(storedOut),
+                                          QDir::toNativeSeparators(out)));
+    }
+}
+
+void MainWindow::saveSettings()
+{
+    if (!m_settings->sync())
+        ui->statusLabel->setText(tr("Settings could not be saved. They will apply until the program is closed."));
+}
+
+void MainWindow::openSettings()
+{
+    SettingsDialog dlg(m_settings->noiseLevel(), m_settings->tileSize(),
+                       LanguageManager::instance().current(), this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    applySettings(dlg.noiseLevel(), dlg.tileSize(), dlg.languageChanged(), int(dlg.language()));
+}
+
+void MainWindow::applySettings(int noise, int tile, bool languageChanged, int language)
+{
+    const bool noiseChanged = noise != m_settings->noiseLevel();
+    m_settings->setNoiseLevel(noise);
+    m_settings->setTileSize(tile);
+    if (languageChanged) {
+        // Only an explicit choice is stored as a manual override.
+        const auto lang = arx::Language(language);
+        m_settings->setManualLanguage(lang);
+        LanguageManager::instance().apply(lang);
+    }
+    saveSettings();
+    if (noiseChanged)
+        onOutputSpecChanged();  // denoise level changes the output, too
+}
+
 // ------------------------------------------------------------------ controls
+
+void MainWindow::retranslate()
+{
+    m_settingsAction->setText(tr("&Settings"));
+    populateCombos();
+    updateQualityControls();
+    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
+        refreshItemTexts(ui->fileList->topLevelItem(i));
+}
 
 void MainWindow::populateCombos()
 {
@@ -159,6 +239,7 @@ void MainWindow::updateButtons()
     ui->formatCombo->setEnabled(!m_running);
     ui->webpModeCombo->setEnabled(!m_running);
     ui->scaleCombo->setEnabled(!m_running);
+    m_settingsAction->setEnabled(!m_running);
 }
 
 void MainWindow::setRunning(bool running)
@@ -174,13 +255,34 @@ arx::JobSpec MainWindow::currentSpec() const
     spec.outputDir = QDir::fromNativeSeparators(ui->outputDirEdit->text());
     spec.waifu2x.exePath = QDir(waifu2xDir()).filePath(QStringLiteral("waifu2x-ncnn-vulkan.exe"));
     spec.waifu2x.modelDir = QDir(waifu2xDir()).filePath(QStringLiteral("models-cunet"));
-    spec.waifu2x.noise = kDefaultNoise;
-    spec.waifu2x.tile = kDefaultTile;
+    spec.waifu2x.noise = m_settings->noiseLevel();
+    spec.waifu2x.tile = m_settings->tileSize();
     spec.waifu2x.scale = ui->scaleCombo->currentData().toInt();
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
     spec.encode.webpLossless = ui->webpModeCombo->currentData().toBool();
     spec.encode.quality = ui->qualitySpin->value();
     return spec;
+}
+
+void MainWindow::onOutputSpecChanged()
+{
+    if (m_running)
+        return;
+    // Results made with other settings no longer match: process them again.
+    int reset = 0;
+    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+        if (ItemState(item->data(ColFile, kRoleState).toInt()) == ItemState::Done) {
+            item->setData(ColFile, kRoleOutput, QString());
+            setItemState(item, ItemState::Pending);
+            ++reset;
+        }
+    }
+    if (reset > 0) {
+        ui->statusLabel->setText(tr("Output settings changed: %1 finished item(s) will be processed again.")
+                                     .arg(reset));
+        updatePreview();
+    }
 }
 
 // --------------------------------------------------------------------- list
@@ -210,18 +312,17 @@ int MainWindow::addFiles(const QStringList &files)
         const QString abs = QFileInfo(f).absoluteFilePath();
         auto *item = new QTreeWidgetItem(ui->fileList);
         item->setText(ColFile, QFileInfo(abs).fileName());
-        item->setToolTip(ColFile, QDir::toNativeSeparators(abs));
         item->setData(ColFile, kRolePath, abs);
         setItemState(item, ItemState::Pending);
         ++added;
     }
 
     QStringList msg;
-    msg << tr("Added %n image(s).", nullptr, added);
+    msg << tr("Images added: %1.").arg(added);
     if (duplicates > 0)
-        msg << tr("Skipped %n duplicate(s).", nullptr, duplicates);
+        msg << tr("Duplicates skipped: %1.").arg(duplicates);
     if (unsupported > 0)
-        msg << tr("Skipped %n unsupported file(s).", nullptr, unsupported);
+        msg << tr("Unsupported files skipped: %1.").arg(unsupported);
     ui->statusLabel->setText(msg.join(QLatin1Char(' ')));
 
     if (!ui->fileList->currentItem() && ui->fileList->topLevelItemCount() > 0)
@@ -233,19 +334,23 @@ int MainWindow::addFiles(const QStringList &files)
 void MainWindow::browseImages()
 {
     const QStringList files = QFileDialog::getOpenFileNames(
-        this, tr("Add Images"), m_lastSourceDir, tr("Images (*.png *.jpg *.jpeg *.webp)"));
+        this, tr("Add Images"), m_sourceDir, tr("Images (*.png *.jpg *.jpeg *.webp)"));
     if (files.isEmpty())
         return;  // canceled: keep the previous source folder
-    m_lastSourceDir = QFileInfo(files.first()).absolutePath();
+    m_sourceDir = QFileInfo(files.first()).absolutePath();
+    m_settings->setSourceDir(m_sourceDir);
+    saveSettings();
     addFiles(files);
 }
 
 void MainWindow::browseFolder()
 {
-    const QString dir = QFileDialog::getExistingDirectory(this, tr("Add Folder"), m_lastSourceDir);
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Add Folder"), m_sourceDir);
     if (dir.isEmpty())
         return;
-    m_lastSourceDir = dir;
+    m_sourceDir = dir;
+    m_settings->setSourceDir(dir);
+    saveSettings();
 
     // Scan off the GUI thread (folders may be on slow drives).
     m_scanning = true;
@@ -271,8 +376,10 @@ void MainWindow::browseOutput()
     const QString dir = QFileDialog::getExistingDirectory(
         this, tr("Select Output Folder"), QDir::fromNativeSeparators(ui->outputDirEdit->text()));
     if (dir.isEmpty())
-        return;
+        return;  // canceled: keep the previous output folder
     ui->outputDirEdit->setText(QDir::toNativeSeparators(dir));
+    m_settings->setOutputDir(dir);
+    saveSettings();
 }
 
 void MainWindow::removeSelected()
@@ -321,9 +428,14 @@ void MainWindow::refreshItemTexts(QTreeWidgetItem *item)
 {
     const auto state = ItemState(item->data(ColFile, kRoleState).toInt());
     const QString detail = item->data(ColFile, kRoleDetail).toString();
+    const QString path = QDir::toNativeSeparators(item->data(ColFile, kRolePath).toString());
     item->setText(ColStatus, stateText(state));
     item->setText(ColDetail, detail);
-    item->setToolTip(ColDetail, detail);
+    // Full path and full reason are always available as tooltips.
+    const QString full = detail.isEmpty() ? path : path + QLatin1Char('\n') + detail;
+    item->setToolTip(ColFile, wrapTooltip(full));
+    item->setToolTip(ColStatus, wrapTooltip(detail.isEmpty() ? stateText(state) : detail));
+    item->setToolTip(ColDetail, wrapTooltip(detail));
     item->setForeground(ColStatus, state == ItemState::Failed ? QBrush(Qt::red) : QBrush());
 }
 
@@ -335,25 +447,17 @@ void MainWindow::updatePreview()
         return;
     }
     const auto state = ItemState(item->data(ColFile, kRoleState).toInt());
+    using Hint = PreviewPane::ResultHint;
     QString output;
-    QString placeholder;
+    Hint hint = Hint::NotYet;
     switch (state) {
-    case ItemState::Done:
-        output = item->data(ColFile, kRoleOutput).toString();
-        break;
-    case ItemState::Failed:
-        placeholder = tr("Processing failed. See the Details column.");
-        break;
-    case ItemState::Processing:
-        placeholder = tr("Processing...");
-        break;
-    case ItemState::NotProcessed:
-        placeholder = tr("Not processed.");
-        break;
-    case ItemState::Pending:
-        break;
+    case ItemState::Done:         output = item->data(ColFile, kRoleOutput).toString(); break;
+    case ItemState::Failed:       hint = Hint::Failed; break;
+    case ItemState::Processing:   hint = Hint::Processing; break;
+    case ItemState::NotProcessed: hint = Hint::NotProcessed; break;
+    case ItemState::Pending:      break;
     }
-    ui->previewPane->showItem(item->data(ColFile, kRolePath).toString(), output, placeholder);
+    ui->previewPane->showItem(item->data(ColFile, kRolePath).toString(), output, hint);
 }
 
 // -------------------------------------------------------------------- batch
@@ -363,14 +467,21 @@ void MainWindow::start()
     if (m_running || ui->fileList->topLevelItemCount() == 0)
         return;
 
-    // Every start processes the whole list; existing outputs are never
-    // overwritten (new files get " (n)" suffixes).
+    // Only items that are not "Done" are processed; finished items stay as
+    // they are until the output settings change.
     QStringList files;
+    m_jobItems.clear();
     for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
         QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+        if (ItemState(item->data(ColFile, kRoleState).toInt()) == ItemState::Done)
+            continue;
         files << item->data(ColFile, kRolePath).toString();
-        item->setData(ColFile, kRoleOutput, QString());
+        m_jobItems << item;
         setItemState(item, ItemState::Pending);
+    }
+    if (files.isEmpty()) {
+        ui->statusLabel->setText(tr("All items are already done. Change the output settings or add images to process again."));
+        return;
     }
     updatePreview();
 
@@ -389,20 +500,22 @@ void MainWindow::start()
 
 void MainWindow::onItemStarted(int index)
 {
-    QTreeWidgetItem *item = ui->fileList->topLevelItem(index);
+    QTreeWidgetItem *item = m_jobItems.value(index);
     if (!item)
         return;
     setItemState(item, ItemState::Processing);
     ui->fileList->scrollToItem(item);
     ui->statusLabel->setText(tr("Processing %1 / %2: %3 (AI upscaling may take a while)")
                                  .arg(index + 1)
-                                 .arg(ui->fileList->topLevelItemCount())
+                                 .arg(m_jobItems.size())
                                  .arg(item->text(ColFile)));
+    if (item == ui->fileList->currentItem())
+        updatePreview();
 }
 
 void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
 {
-    QTreeWidgetItem *item = ui->fileList->topLevelItem(index);
+    QTreeWidgetItem *item = m_jobItems.value(index);
     if (!item)
         return;
     if (r.ok) {
@@ -423,12 +536,11 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
 {
     setRunning(false);
 
-    // Counts come from the list itself so the dialog always matches it.
+    // Counts come from this job's items in the list, so the dialog matches it.
     arx::BatchSummary shown = summary;
     shown.succeeded = shown.failed = shown.notProcessed = 0;
     QStringList failures;
-    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+    for (QTreeWidgetItem *item : std::as_const(m_jobItems)) {
         switch (ItemState(item->data(ColFile, kRoleState).toInt())) {
         case ItemState::Done:
             ++shown.succeeded;
@@ -448,6 +560,7 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
             break;
         }
     }
+    m_jobItems.clear();
 
     if (!summary.fatalError.isEmpty())
         ui->statusLabel->setText(tr("Stopped: %1").arg(summary.fatalError));
@@ -488,10 +601,7 @@ void MainWindow::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::LanguageChange) {
         ui->retranslateUi(this);
-        populateCombos();
-        updateQualityControls();
-        for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
-            refreshItemTexts(ui->fileList->topLevelItem(i));
+        retranslate();
     }
     QMainWindow::changeEvent(event);
 }
