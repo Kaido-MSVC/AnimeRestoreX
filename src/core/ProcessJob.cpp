@@ -113,24 +113,45 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     const bool hasAlpha = loaded.hasAlpha;
     loaded.image = QImage();  // free memory before inference
 
-    // 3. Inference.
-    const RunResult run = Waifu2xRunner::run(spec.waifu2x, inPng, outPng, cancel);
-    if (run.canceled)
-        return canceled();
-    if (!run.ok) {
-        ItemResult r = fail(run.error);
-        r.fatal = run.fatal;
-        return r;
+    // 3. Inference: one 2x pass, or for 4x a denoise+2x pass followed by an
+    //    upscale-only 2x pass. waifu2x exits with 0 on decode errors, so each
+    //    pass is verified by its output file and exact size.
+    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
+    QString passInput = inPng;
+    QSize passSize = inSize;
+    for (int i = 0; i < passes.size(); ++i) {
+        const QString passOutput = (i == passes.size() - 1)
+            ? outPng
+            : work.filePath(QStringLiteral("pass%1.png").arg(i + 1));
+        const RunResult run = Waifu2xRunner::run(passes.at(i), passInput, passOutput, cancel);
+        if (run.canceled)
+            return canceled();
+        if (!run.ok) {
+            ItemResult r = fail(run.error);
+            r.fatal = run.fatal;
+            return r;
+        }
+        if (!QFileInfo::exists(passOutput)) {
+            QString msg = tr("The AI engine did not produce an output image.");
+            if (!run.error.isEmpty())
+                msg += QLatin1Char(' ') + run.error;
+            return fail(msg);
+        }
+        const QSize expected(passSize.width() * 2, passSize.height() * 2);
+        const QSize got = QImageReader(passOutput, "png").size();
+        if (got != expected)
+            return fail(tr("The AI output has an unexpected size (%1 x %2, expected %3 x %4).")
+                            .arg(got.width()).arg(got.height())
+                            .arg(expected.width()).arg(expected.height()));
+        if (passInput != inPng)
+            QFile::remove(passInput);  // intermediate 2x image is no longer needed
+        passInput = passOutput;
+        passSize = expected;
+        if (cancel.load())
+            return canceled();
     }
 
-    // 4. Read back and verify. waifu2x exits with 0 on decode errors, so the
-    //    output file and its exact size are the real success criteria.
-    if (!QFileInfo::exists(outPng)) {
-        QString msg = tr("The AI engine did not produce an output image.");
-        if (!run.error.isEmpty())
-            msg += QLatin1Char(' ') + run.error;
-        return fail(msg);
-    }
+    // 4. Read back the final result.
     QImageReader reader(outPng, "png");
     QImage result = reader.read();
     if (result.isNull())

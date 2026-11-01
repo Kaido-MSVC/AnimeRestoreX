@@ -25,16 +25,29 @@ QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
     if (!QFileInfo(p.modelDir).isDir())
         return tr("The AI model folder is missing: %1").arg(QDir::toNativeSeparators(p.modelDir));
 
-    // cunet uses "noiseN_scale2.0x_model" for 2x/4x, or "scale2.0x_model" for noise -1.
-    const QString base = p.noise < 0 ? QStringLiteral("scale2.0x_model")
-                                     : QStringLiteral("noise%1_scale2.0x_model").arg(p.noise);
+    // cunet uses "noiseN_scale2.0x_model" with denoise, "scale2.0x_model" without.
     const QDir dir(p.modelDir);
-    for (const QString &ext : {QStringLiteral(".param"), QStringLiteral(".bin")}) {
-        if (!QFileInfo(dir.filePath(base + ext)).isFile())
-            return tr("The AI model file is missing: %1")
-                .arg(QDir::toNativeSeparators(dir.filePath(base + ext)));
+    for (const Waifu2xParams &pass : passes(p)) {
+        const QString base = pass.noise < 0 ? QStringLiteral("scale2.0x_model")
+                                            : QStringLiteral("noise%1_scale2.0x_model").arg(pass.noise);
+        for (const QString &ext : {QStringLiteral(".param"), QStringLiteral(".bin")}) {
+            if (!QFileInfo(dir.filePath(base + ext)).isFile())
+                return tr("The AI model file is missing: %1")
+                    .arg(QDir::toNativeSeparators(dir.filePath(base + ext)));
+        }
     }
     return {};
+}
+
+QList<Waifu2xParams> Waifu2xRunner::passes(const Waifu2xParams &p)
+{
+    Waifu2xParams first = p;
+    first.scale = 2;
+    if (p.scale != 4)
+        return {first};
+    Waifu2xParams second = first;
+    second.noise = -1;  // upscale only: the image was already denoised in pass 1
+    return {first, second};
 }
 
 QStringList Waifu2xRunner::arguments(const Waifu2xParams &p, const QString &inPng,

@@ -4,6 +4,7 @@
 #include "TestImages.h"
 
 #include "core/BatchRunner.h"
+#include "core/ImageLoader.h"
 #include "core/ProcessJob.h"
 #include "core/Waifu2xRunner.h"
 
@@ -33,6 +34,8 @@ private slots:
     void batchPreconditionStops();
     void batchEngineFailureStops();
     void batchCanceledBeforeStart();
+    void fourXIsTwoStage();
+    void fourXNeedsUpscaleOnlyModel();
 
 private:
     JobSpec spec(OutputFormat f, int scale) const;
@@ -297,6 +300,62 @@ void TestPipeline::batchCanceledBeforeStart()
     QVERIFY(r.canceled);
     QCOMPARE(r.notProcessed, 2);
     QCOMPARE(r.succeeded + r.failed, 0);
+}
+
+void TestPipeline::fourXIsTwoStage()
+{
+    // The pipeline's 4x PNG must equal running [-n 1 -s 2] then [-n -1 -s 2]
+    // by hand on the same normalised input, and must differ from waifu2x -s 4.
+    const ItemResult r = runOne(m_opaque, spec(OutputFormat::Png, 4));
+    QVERIFY2(r.ok, qPrintable(r.error));
+    const QImage pipeline = QImage(r.outputPath).convertToFormat(QImage::Format_RGB888);
+    QCOMPARE(pipeline.size(), QSize(384, 256));
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const LoadResult in = ImageLoader::load(m_opaque);
+    QVERIFY(in.ok);
+    const QString inPng = tmp.filePath(QStringLiteral("in.png"));
+    QVERIFY(in.image.save(inPng, "png"));
+
+    std::atomic_bool cancel{false};
+    JobSpec s = spec(OutputFormat::Png, 2);
+    Waifu2xParams first = s.waifu2x;   // -n 1 -s 2
+    Waifu2xParams second = first;
+    second.noise = -1;                 // -n -1 -s 2
+    QVERIFY(Waifu2xRunner::run(first, inPng, tmp.filePath(QStringLiteral("p1.png")), cancel).ok);
+    QVERIFY(Waifu2xRunner::run(second, tmp.filePath(QStringLiteral("p1.png")),
+                               tmp.filePath(QStringLiteral("p2.png")), cancel).ok);
+    const QImage manual = QImage(tmp.filePath(QStringLiteral("p2.png"))).convertToFormat(QImage::Format_RGB888);
+    QCOMPARE(manual, pipeline);
+
+    Waifu2xParams direct = s.waifu2x;
+    direct.scale = 4;                  // waifu2x's own -s 4 (denoise model twice)
+    QVERIFY(Waifu2xRunner::run(direct, inPng, tmp.filePath(QStringLiteral("d4.png")), cancel).ok);
+    const QImage d4 = QImage(tmp.filePath(QStringLiteral("d4.png"))).convertToFormat(QImage::Format_RGB888);
+    QCOMPARE(d4.size(), pipeline.size());
+    QVERIFY2(d4 != pipeline, "4x must not be waifu2x's direct -s 4");
+
+    // The intermediate 2x file is not left in the output folder.
+    QVERIFY(leftovers().isEmpty());
+}
+
+void TestPipeline::fourXNeedsUpscaleOnlyModel()
+{
+    // A model folder with only the denoise+2x model is fine for 2x, but 4x
+    // also needs scale2.0x_model for the second pass.
+    const QString dir = m_root.filePath(QStringLiteral("only-noise1/models-cunet"));
+    QVERIFY(QDir().mkpath(dir));
+    for (const char *ext : {".param", ".bin"}) {
+        const QString name = QStringLiteral("noise1_scale2.0x_model") + QLatin1String(ext);
+        QVERIFY(QFile::copy(m_engineDir + QStringLiteral("/models-cunet/") + name, dir + QLatin1Char('/') + name));
+    }
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.waifu2x.modelDir = dir;
+    QVERIFY(Waifu2xRunner::checkInstall(s.waifu2x).isEmpty());
+    s.waifu2x.scale = 4;
+    const QString err = Waifu2xRunner::checkInstall(s.waifu2x);
+    QVERIFY2(err.contains(QDir::toNativeSeparators(QStringLiteral("/scale2.0x_model."))), qPrintable(err));
 }
 
 QTEST_GUILESS_MAIN(TestPipeline)

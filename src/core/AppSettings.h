@@ -15,8 +15,9 @@ namespace arx {
 // application "AnimeRestoreX"). Source and output folders use separate keys.
 class AppSettings {
 public:
-    static constexpr int kDefaultNoise = 1;  // provisional until A9
-    static constexpr int kDefaultTile = 0;   // auto, provisional until A9
+    // Decided after the A9 measurements on the GTX 1060 6GB (2026-11-01).
+    static constexpr int kDefaultNoise = 1;
+    static constexpr int kDefaultTile = 0;   // auto
 
     AppSettings();
     ~AppSettings();

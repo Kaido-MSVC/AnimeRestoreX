@@ -7,6 +7,7 @@
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
 #include "core/OutputNaming.h"
+#include "core/Waifu2xRunner.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -42,6 +43,7 @@ private slots:
     void languagePriority();
     void settingsSeparateKeysAndValidation();
     void folderFallbackPerItem();
+    void waifu2xPasses();
 
 private:
     QByteArray encodeToBytes(const QImage &img, const EncodeOptions &opt);
@@ -455,6 +457,44 @@ void TestCore::folderFallbackPerItem()
     QCOMPARE(resolveFolder(gone, &fellBack), defaultImageFolder());
     QVERIFY(fellBack);
     QVERIFY(QFileInfo(defaultImageFolder()).isDir());
+}
+
+void TestCore::waifu2xPasses()
+{
+    Waifu2xParams p;
+    p.noise = 1;
+    p.tile = 200;
+
+    p.scale = 2;
+    QList<Waifu2xParams> ps = Waifu2xRunner::passes(p);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps[0].scale, 2);
+    QCOMPARE(ps[0].noise, 1);
+    QCOMPARE(ps[0].tile, 200);
+
+    // 4x: denoise + 2x, then upscale-only 2x (denoise runs once).
+    p.scale = 4;
+    ps = Waifu2xRunner::passes(p);
+    QCOMPARE(ps.size(), 2);
+    QCOMPARE(ps[0].scale, 2);
+    QCOMPARE(ps[0].noise, 1);
+    QCOMPARE(ps[1].scale, 2);
+    QCOMPARE(ps[1].noise, -1);
+    QCOMPARE(ps[1].tile, 200);
+    const QStringList args = Waifu2xRunner::arguments(ps[1], QStringLiteral("a.png"), QStringLiteral("b.png"));
+    QCOMPARE(args.at(args.indexOf(QStringLiteral("-n")) + 1), QStringLiteral("-1"));
+    QCOMPARE(args.at(args.indexOf(QStringLiteral("-s")) + 1), QStringLiteral("2"));
+
+    // No denoise at all: both passes upscale only.
+    p.noise = -1;
+    ps = Waifu2xRunner::passes(p);
+    QCOMPARE(ps.size(), 2);
+    QCOMPARE(ps[0].noise, -1);
+    QCOMPARE(ps[1].noise, -1);
+
+    // Defaults decided after A9.
+    QCOMPARE(AppSettings::kDefaultNoise, 1);
+    QCOMPARE(AppSettings::kDefaultTile, 0);
 }
 
 QTEST_GUILESS_MAIN(TestCore)

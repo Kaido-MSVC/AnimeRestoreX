@@ -118,10 +118,10 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `noise1_scale2.0x_model.bin` | 降噪 1＋2× | `862c0e40f3df956ff57bd4d168c85dea5d375b614077fdddd3ac8cfdb9a686da` |
 | `noise2_scale2.0x_model.bin` | 降噪 2＋2× | `5c836e6ae022636cdd5590fbb66dbca2a5fc20bbf8e628884c3612ef72d51858` |
 | `noise3_scale2.0x_model.bin` | 降噪 3＋2× | `f42c18610fecb14a40f75cca9b9276a6889689d5937a4f75f0c2b21bde7e49ed` |
-| `scale2.0x_model.bin` | 不降噪＋2× | `d82ed30207fd07e1c16726a9ca838ce44e6e25a105b0278c7ca681516ee0e18e` |
+| `scale2.0x_model.bin` | 只放大 2×（不降噪時；以及 4× 的第二階段） | `d82ed30207fd07e1c16726a9ca838ce44e6e25a105b0278c7ca681516ee0e18e` |
 | `noise0_scale2.0x_model.param` … `noise3_scale2.0x_model.param`、`scale2.0x_model.param` | 網路結構（5 檔內容相同） | `9b06073e039ca93d5bd79f6bb42016cd98d5bdefa0e9761df6b22b844c39965f` |
 
-4× 由上游以同一個 2× 模型連續執行兩次達成（`main.cpp`：`scale == 4` 時 `scale_run_count = 2`）。
+AnimeRestoreX 的 4× 分兩次呼叫 waifu2x-ncnn-vulkan：先用 `noiseN_scale2.0x_model` 降噪並放大 2×，再用 `scale2.0x_model` 只放大 2×（降噪只執行一次），所以 4× 也需要 `scale2.0x_model`。
 
 ## 5. Microsoft Visual C++ 執行階段
 

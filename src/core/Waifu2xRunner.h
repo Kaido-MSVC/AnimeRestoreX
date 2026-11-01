@@ -3,6 +3,7 @@
 #include "core/JobSpec.h"
 
 #include <QCoreApplication>
+#include <QList>
 #include <QString>
 #include <QStringList>
 
@@ -20,6 +21,12 @@ struct RunResult {
 class Waifu2xRunner {
     Q_DECLARE_TR_FUNCTIONS(Waifu2xRunner)
 public:
+    // Inference passes for a requested scale. Every pass is a 2x run:
+    //   2x: [-n N -s 2]
+    //   4x: [-n N -s 2] then [-n -1 -s 2]  (denoise only once; decided after A9)
+    // waifu2x's own "-s 4" would run the denoise+2x model twice.
+    static QList<Waifu2xParams> passes(const Waifu2xParams &p);
+
     // Checks that the executable and the model files needed for `p` exist.
     // Returns an empty string when OK, otherwise a user-facing reason.
     static QString checkInstall(const Waifu2xParams &p);
