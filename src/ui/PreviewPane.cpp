@@ -136,29 +136,38 @@ PreviewPane::PreviewPane(QWidget *parent) : QWidget(parent)
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
 
-    auto *top = new QHBoxLayout;
     m_modeLabel = new QLabel(this);
     m_mode = new QComboBox(this);
-    top->addWidget(m_modeLabel);
-    top->addWidget(m_mode);
-    top->addStretch();
-    root->addLayout(top);
+    m_modeLabel->setBuddy(m_mode);
 
+    // Each column: bold title row above its view. The preview mode sits at
+    // the right end of the Result title row (no extra row of its own).
     auto *views = new QHBoxLayout;
-    auto makeColumn = [&](QLabel *&title, QScrollArea *&area, ImageCanvas *&canvas) {
+    auto makeColumn = [&](QLabel *&title, QScrollArea *&area, ImageCanvas *&canvas, bool withMode) {
         auto *col = new QVBoxLayout;
+        auto *head = new QHBoxLayout;
         title = new QLabel(this);
+        QFont bold = title->font();
+        bold.setBold(true);
+        title->setFont(bold);
+        head->addWidget(title, 1);
+        if (withMode) {
+            head->addWidget(m_modeLabel);
+            head->addWidget(m_mode);
+        }
+        // Same title row height in both columns, so the two views line up.
+        title->setMinimumHeight(m_mode->sizeHint().height());
         area = new QScrollArea(this);
         canvas = new ImageCanvas;
         area->setWidget(canvas);
         area->setAlignment(Qt::AlignCenter);
-        area->setMinimumSize(fontMetrics().averageCharWidth() * 22, fontMetrics().lineSpacing() * 7);
-        col->addWidget(title);
+        area->setMinimumSize(fontMetrics().averageCharWidth() * 16, fontMetrics().lineSpacing() * 7);
+        col->addLayout(head);
         col->addWidget(area, 1);
         views->addLayout(col, 1);
     };
-    makeColumn(m_srcTitle, m_srcArea, m_src);
-    makeColumn(m_resTitle, m_resArea, m_res);
+    makeColumn(m_srcTitle, m_srcArea, m_src, false);
+    makeColumn(m_resTitle, m_resArea, m_res, true);
     root->addLayout(views, 1);
 
     m_note = new QLabel(this);
@@ -213,7 +222,7 @@ void PreviewPane::refreshMessages()
             break;
         }
         if (!isResult)
-            return tr("Select an image in the list.");
+            return m_hasItems ? tr("Select an image in the list.") : tr("No images added yet.");
         if (m_sourcePath.isEmpty())
             return {};
         switch (m_hint) {
@@ -265,6 +274,14 @@ PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path)
         l.thumb = img;
     l.full = std::move(img);
     return l;
+}
+
+void PreviewPane::setHasItems(bool hasItems)
+{
+    if (hasItems == m_hasItems)
+        return;
+    m_hasItems = hasItems;
+    refreshMessages();
 }
 
 void PreviewPane::clear()

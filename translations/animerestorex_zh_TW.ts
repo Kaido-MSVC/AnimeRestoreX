@@ -200,7 +200,15 @@
     </message>
     <message>
         <source>Details</source>
-        <translation>說明</translation>
+        <translation>詳細資訊</translation>
+    </message>
+    <message>
+        <source>Processing</source>
+        <translation>處理</translation>
+    </message>
+    <message>
+        <source>Denoise:</source>
+        <translation>降噪強度：</translation>
     </message>
     <message>
         <source>Output</source>
@@ -247,8 +255,28 @@
         <translation>無法儲存設定。本次執行期間仍會套用，關閉程式後不保留。</translation>
     </message>
     <message>
-        <source>&amp;Settings</source>
-        <translation>設定(&amp;S)</translation>
+        <source>&amp;File</source>
+        <translation>檔案(&amp;F)</translation>
+    </message>
+    <message>
+        <source>Add &amp;Images...</source>
+        <translation>匯入圖片(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Add &amp;Folder...</source>
+        <translation>匯入資料夾(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>E&amp;xit</source>
+        <translation>結束(&amp;X)</translation>
+    </message>
+    <message>
+        <source>&amp;Tools</source>
+        <translation>工具(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Settings...</source>
+        <translation>設定(&amp;S)…</translation>
     </message>
     <message>
         <source>&amp;Help</source>
@@ -259,12 +287,34 @@
         <translation>關於 AnimeRestoreX(&amp;A)</translation>
     </message>
     <message>
+        <source>No images yet.
+Use &quot;Add Images...&quot; or &quot;Add Folder...&quot; to start.</source>
+        <translation>尚未匯入圖片。
+請按「匯入圖片…」或「匯入資料夾…」開始。</translation>
+    </message>
+    <message>
         <source>Lossy</source>
         <translation>有損</translation>
     </message>
     <message>
         <source>Lossless</source>
         <translation>無損</translation>
+    </message>
+    <message>
+        <source>No upscaling (1×)</source>
+        <translation>不放大（1×）</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>不降噪</translation>
+    </message>
+    <message>
+        <source>0 (weakest)</source>
+        <translation>0（最弱）</translation>
+    </message>
+    <message>
+        <source>3 (strongest)</source>
+        <translation>3（最強）</translation>
     </message>
     <message>
         <source>PNG is always lossless.</source>
@@ -281,6 +331,12 @@
     <message>
         <source>0-99, lossy</source>
         <translation>0–99，有損</translation>
+    </message>
+    <message numerus="yes">
+        <source>Start (%n)</source>
+        <translation>
+            <numerusform>開始處理（%n）</numerusform>
+        </translation>
     </message>
     <message>
         <source>Output settings changed: %1 finished item(s) will be processed again.</source>
@@ -421,6 +477,10 @@
         <translation>載入中…</translation>
     </message>
     <message>
+        <source>No images added yet.</source>
+        <translation>尚未匯入圖片。</translation>
+    </message>
+    <message>
         <source>Not processed yet.</source>
         <translation>尚未處理。</translation>
     </message>
@@ -533,22 +593,6 @@
     <message>
         <source>Model:</source>
         <translation>模型：</translation>
-    </message>
-    <message>
-        <source>Denoise level:</source>
-        <translation>降噪強度：</translation>
-    </message>
-    <message>
-        <source>None</source>
-        <translation>不降噪</translation>
-    </message>
-    <message>
-        <source>0 (weakest)</source>
-        <translation>0（最弱）</translation>
-    </message>
-    <message>
-        <source>3 (strongest)</source>
-        <translation>3（最強）</translation>
     </message>
     <message>
         <source>Tile size:</source>

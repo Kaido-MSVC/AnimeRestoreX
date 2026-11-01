@@ -203,6 +203,14 @@
         <translation>詳細</translation>
     </message>
     <message>
+        <source>Processing</source>
+        <translation>処理</translation>
+    </message>
+    <message>
+        <source>Denoise:</source>
+        <translation>ノイズ除去：</translation>
+    </message>
+    <message>
         <source>Output</source>
         <translation>出力</translation>
     </message>
@@ -247,8 +255,28 @@
         <translation>設定を保存できませんでした。プログラムを終了するまでは適用されます。</translation>
     </message>
     <message>
-        <source>&amp;Settings</source>
-        <translation>設定(&amp;S)</translation>
+        <source>&amp;File</source>
+        <translation>ファイル(&amp;F)</translation>
+    </message>
+    <message>
+        <source>Add &amp;Images...</source>
+        <translation>画像を追加(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Add &amp;Folder...</source>
+        <translation>フォルダーを追加(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>E&amp;xit</source>
+        <translation>終了(&amp;X)</translation>
+    </message>
+    <message>
+        <source>&amp;Tools</source>
+        <translation>ツール(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Settings...</source>
+        <translation>設定(&amp;S)…</translation>
     </message>
     <message>
         <source>&amp;Help</source>
@@ -259,12 +287,34 @@
         <translation>AnimeRestoreX について(&amp;A)</translation>
     </message>
     <message>
+        <source>No images yet.
+Use &quot;Add Images...&quot; or &quot;Add Folder...&quot; to start.</source>
+        <translation>画像がまだありません。
+「画像を追加…」または「フォルダーを追加…」から始めてください。</translation>
+    </message>
+    <message>
         <source>Lossy</source>
         <translation>非可逆</translation>
     </message>
     <message>
         <source>Lossless</source>
         <translation>可逆</translation>
+    </message>
+    <message>
+        <source>No upscaling (1×)</source>
+        <translation>拡大しない（1×）</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>なし</translation>
+    </message>
+    <message>
+        <source>0 (weakest)</source>
+        <translation>0（最弱）</translation>
+    </message>
+    <message>
+        <source>3 (strongest)</source>
+        <translation>3（最強）</translation>
     </message>
     <message>
         <source>PNG is always lossless.</source>
@@ -281,6 +331,12 @@
     <message>
         <source>0-99, lossy</source>
         <translation>0～99、非可逆</translation>
+    </message>
+    <message numerus="yes">
+        <source>Start (%n)</source>
+        <translation>
+            <numerusform>処理開始（%n）</numerusform>
+        </translation>
     </message>
     <message>
         <source>Output settings changed: %1 finished item(s) will be processed again.</source>
@@ -421,6 +477,10 @@
         <translation>読み込み中…</translation>
     </message>
     <message>
+        <source>No images added yet.</source>
+        <translation>画像がまだ追加されていません。</translation>
+    </message>
+    <message>
         <source>Not processed yet.</source>
         <translation>まだ処理されていません。</translation>
     </message>
@@ -533,22 +593,6 @@
     <message>
         <source>Model:</source>
         <translation>モデル：</translation>
-    </message>
-    <message>
-        <source>Denoise level:</source>
-        <translation>ノイズ除去レベル：</translation>
-    </message>
-    <message>
-        <source>None</source>
-        <translation>なし</translation>
-    </message>
-    <message>
-        <source>0 (weakest)</source>
-        <translation>0（最弱）</translation>
-    </message>
-    <message>
-        <source>3 (strongest)</source>
-        <translation>3（最強）</translation>
     </message>
     <message>
         <source>Tile size:</source>

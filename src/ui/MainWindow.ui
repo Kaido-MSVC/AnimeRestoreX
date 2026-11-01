@@ -101,6 +101,49 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="settingsLayout" stretch="0,1">
+     <item>
+     <widget class="QGroupBox" name="processGroup">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="title">
+       <string>Processing</string>
+      </property>
+      <layout class="QFormLayout" name="processLayout">
+       <item row="0" column="0">
+        <widget class="QLabel" name="scaleLabel">
+         <property name="text">
+          <string>Upscale:</string>
+         </property>
+         <property name="buddy">
+          <cstring>scaleCombo</cstring>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="scaleCombo"/>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="noiseLabel">
+         <property name="text">
+          <string>Denoise:</string>
+         </property>
+         <property name="buddy">
+          <cstring>noiseCombo</cstring>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QComboBox" name="noiseCombo"/>
+       </item>
+      </layout>
+     </widget>
+     </item>
+     <item>
      <widget class="QGroupBox" name="outputGroup">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
@@ -173,16 +216,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QLabel" name="scaleLabel">
-           <property name="text">
-            <string>Upscale:</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QComboBox" name="scaleCombo"/>
-         </item>
-         <item>
           <spacer name="formatSpacer">
            <property name="orientation">
             <enum>Qt::Orientation::Horizontal</enum>
@@ -193,6 +226,8 @@
        </item>
       </layout>
      </widget>
+     </item>
+     </layout>
     </item>
     <item>
      <layout class="QHBoxLayout" name="actionLayout">
@@ -207,6 +242,9 @@
        <widget class="QPushButton" name="startButton">
         <property name="text">
          <string>Start</string>
+        </property>
+        <property name="default">
+         <bool>true</bool>
         </property>
        </widget>
       </item>

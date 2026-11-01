@@ -31,7 +31,10 @@ public:
     // cunet model file name (without extension) used by one pass.
     static QString modelBaseName(const Waifu2xParams &pass);
 
-    // Checks that the executable and the model files needed for `p` exist.
+    // Checks the scale / denoise combination only (1x needs denoise >= 0).
+    static QString checkParams(const Waifu2xParams &p);
+
+    // checkParams(), then that the executable and the model files needed for `p` exist.
     // Returns an empty string when OK, otherwise a user-facing reason.
     static QString checkInstall(const Waifu2xParams &p);
 

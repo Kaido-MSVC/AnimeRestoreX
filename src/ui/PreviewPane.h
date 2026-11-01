@@ -53,6 +53,8 @@ public:
                   ResultHint hint = ResultHint::NotYet);
     void clear();
     void retranslate();
+    // Whether the file list has items (changes the empty-preview message).
+    void setHasItems(bool hasItems);
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -85,6 +87,7 @@ private:
     QString m_sourcePath;
     QString m_resultPath;
     ResultHint m_hint = ResultHint::NotYet;
+    bool m_hasItems = false;
     ViewState m_srcState = ViewState::Empty;
     ViewState m_resState = ViewState::Empty;
     QString m_srcError;

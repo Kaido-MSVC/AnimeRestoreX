@@ -16,6 +16,7 @@ namespace arx { class AppSettings; }
 class ElidedLabel;
 class JobWorker;
 class QAction;
+class QLabel;
 class QMenu;
 class QTreeWidgetItem;
 
@@ -34,7 +35,7 @@ public:
     QString sourceFolder() const { return m_sourceDir; }
 
     // Applies values from the settings dialog (also used by tests).
-    void applySettings(int noise, int tile, bool languageChanged, int language);
+    void applySettings(int tile, bool languageChanged, int language);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -43,6 +44,9 @@ protected:
 
 private:
     void updateDetailColumnWidth();
+    QString processingProblem() const;  // empty if upscale / denoise can be run
+    void onProcessingChanged();
+    int pendingCount() const;           // items that Start would process
     void retranslate();
     void populateCombos();
     void updateQualityControls();
@@ -74,6 +78,12 @@ private:
     std::unique_ptr<Ui::MainWindow> ui;
     std::unique_ptr<arx::AppSettings> m_settings;
     ElidedLabel *m_status = nullptr;
+    QLabel *m_emptyHint = nullptr;
+    QMenu *m_fileMenu = nullptr;
+    QAction *m_addImagesAction = nullptr;
+    QAction *m_addFolderAction = nullptr;
+    QAction *m_exitAction = nullptr;
+    QMenu *m_toolsMenu = nullptr;
     QAction *m_settingsAction = nullptr;
     QMenu *m_helpMenu = nullptr;
     QAction *m_aboutAction = nullptr;

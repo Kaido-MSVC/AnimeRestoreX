@@ -8,7 +8,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-SettingsDialog::SettingsDialog(int noise, int tile, arx::Language language, QWidget *parent)
+SettingsDialog::SettingsDialog(int tile, arx::Language language, QWidget *parent)
     : QDialog(parent), m_initialLanguage(language)
 {
     auto *root = new QVBoxLayout(this);
@@ -18,11 +18,6 @@ SettingsDialog::SettingsDialog(int noise, int tile, arx::Language language, QWid
     m_modelLabel = new QLabel(this);
     m_modelName = new QLabel(QStringLiteral("waifu2x CUnet (models-cunet)"), this);
     model->addRow(m_modelLabel, m_modelName);
-    m_noiseLabel = new QLabel(this);
-    m_noise = new QComboBox(this);
-    for (int n = -1; n <= 3; ++n)
-        m_noise->addItem(QString(), n);
-    model->addRow(m_noiseLabel, m_noise);
     m_tileLabel = new QLabel(this);
     m_tile = new QComboBox(this);
     for (int t : {0, 400, 200, 100})
@@ -47,7 +42,6 @@ SettingsDialog::SettingsDialog(int noise, int tile, arx::Language language, QWid
     connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(m_buttons);
 
-    m_noise->setCurrentIndex(std::max(0, m_noise->findData(noise)));
     m_tile->setCurrentIndex(std::max(0, m_tile->findData(tile)));
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
     retranslate();
@@ -58,12 +52,6 @@ void SettingsDialog::retranslate()
     setWindowTitle(tr("Settings"));
     m_modelGroup->setTitle(tr("AI Model"));
     m_modelLabel->setText(tr("Model:"));
-    m_noiseLabel->setText(tr("Denoise level:"));
-    m_noise->setItemText(0, tr("None"));
-    m_noise->setItemText(1, tr("0 (weakest)"));
-    m_noise->setItemText(2, QStringLiteral("1"));
-    m_noise->setItemText(3, QStringLiteral("2"));
-    m_noise->setItemText(4, tr("3 (strongest)"));
     m_tileLabel->setText(tr("Tile size:"));
     m_tile->setItemText(0, tr("Auto"));
     m_tile->setItemText(1, QStringLiteral("400"));
@@ -82,6 +70,5 @@ void SettingsDialog::changeEvent(QEvent *event)
     QDialog::changeEvent(event);
 }
 
-int SettingsDialog::noiseLevel() const { return m_noise->currentData().toInt(); }
 int SettingsDialog::tileSize() const { return m_tile->currentData().toInt(); }
 arx::Language SettingsDialog::language() const { return arx::Language(m_lang->currentData().toInt()); }

@@ -47,6 +47,11 @@ private slots:
     void listElidesAndShowsFullReason();
     void folderMemoryRestoresIndependently();
     void autoLanguageIsNotSavedAsManual();
+    void denoiseOnMainWindow();
+    void oneXNeedsDenoise();
+    void qualityShownOnlyWhenUsed();
+    void startShowsPendingCountAndEmptyHint();
+    void menusFollowWindowsLayout();
     void languageSwitchRetranslates();
     void windowIconFromResources();
     void aboutDialogContents();
@@ -208,7 +213,7 @@ void TestUi::fullBatchThroughMainWindow()
 
     // Changing an output setting resets finished items to "Pending".
     auto *scale = w.findChild<QComboBox *>(QStringLiteral("scaleCombo"));
-    scale->setCurrentIndex(1);  // 4x
+    scale->setCurrentIndex(scale->findData(4));
     QCOMPARE(list->topLevelItem(0)->text(1), QStringLiteral("Pending"));
     QCOMPARE(list->topLevelItem(2)->text(1), QStringLiteral("Pending"));
     QCOMPARE(list->topLevelItem(1)->text(1), QStringLiteral("Failed"));  // untouched
@@ -331,11 +336,126 @@ void TestUi::autoLanguageIsNotSavedAsManual()
     QSettings().remove(QStringLiteral("ui/language"));
     MainWindow w;
     // Settings dialog accepted without changing the language.
-    w.applySettings(2, 200, false, int(arx::Language::TraditionalChinese));
+    w.applySettings(200, false, int(arx::Language::TraditionalChinese));
     arx::AppSettings s;
     QVERIFY(!s.manualLanguage().has_value());
-    QCOMPARE(s.noiseLevel(), 2);
     QCOMPARE(s.tileSize(), 200);
+}
+
+void TestUi::denoiseOnMainWindow()
+{
+    const QString a = m_dir.filePath(QStringLiteral("dn.png"));
+    QVERIFY(testimg::make(8, 8, false).save(a, "png"));
+    {
+        arx::AppSettings s;
+        s.setNoiseLevel(2);
+        QVERIFY(s.sync());
+    }
+    MainWindow w;
+    auto *noise = w.findChild<QComboBox *>(QStringLiteral("noiseCombo"));
+    QVERIFY(noise);
+    QCOMPARE(noise->currentData().toInt(), 2);  // restored from the settings
+
+    // Changing it is saved at once and resets finished items like other output settings.
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    w.addFiles({a});
+    list->topLevelItem(0)->setData(0, Qt::UserRole + 1, int(MainWindow::ItemState::Done));
+    noise->setCurrentIndex(noise->findData(3));
+    QCOMPARE(arx::AppSettings().noiseLevel(), 3);
+    QCOMPARE(list->topLevelItem(0)->text(1), QStringLiteral("Pending"));
+
+    // The settings dialog has no denoise control any more.
+    SettingsDialog sd(0, arx::Language::English, &w);
+    QCOMPARE(sd.findChildren<QComboBox *>().size(), 2);  // tile + language
+
+    arx::AppSettings s;
+    s.setNoiseLevel(arx::AppSettings::kDefaultNoise);
+    QVERIFY(s.sync());
+}
+
+void TestUi::oneXNeedsDenoise()
+{
+    const QString a = m_dir.filePath(QStringLiteral("1x.png"));
+    QVERIFY(testimg::make(8, 8, false).save(a, "png"));
+    MainWindow w;
+    w.addFiles({a});
+    auto *scale = w.findChild<QComboBox *>(QStringLiteral("scaleCombo"));
+    auto *noise = w.findChild<QComboBox *>(QStringLiteral("noiseCombo"));
+    auto *start = w.findChild<QPushButton *>(QStringLiteral("startButton"));
+    QCOMPARE(scale->currentData().toInt(), 2);  // default stays 2x
+    QVERIFY(scale->findData(1) >= 0);
+
+    scale->setCurrentIndex(scale->findData(1));
+    noise->setCurrentIndex(noise->findData(1));
+    QVERIFY(start->isEnabled());
+    noise->setCurrentIndex(noise->findData(-1));  // 1x + no denoise does nothing
+    QVERIFY(!start->isEnabled());
+    QVERIFY(start->toolTip().contains(QStringLiteral("1x")));
+    QVERIFY(w.findChild<ElidedLabel *>(QStringLiteral("statusLabel"))->text().contains(QStringLiteral("1x")));
+    scale->setCurrentIndex(scale->findData(2));
+    QVERIFY(start->isEnabled());
+    noise->setCurrentIndex(noise->findData(arx::AppSettings::kDefaultNoise));
+}
+
+void TestUi::qualityShownOnlyWhenUsed()
+{
+    MainWindow w;
+    w.show();
+    auto *format = w.findChild<QComboBox *>(QStringLiteral("formatCombo"));
+    auto *mode = w.findChild<QComboBox *>(QStringLiteral("webpModeCombo"));
+    auto *quality = w.findChild<QSpinBox *>(QStringLiteral("qualitySpin"));
+    format->setCurrentIndex(0);  // PNG
+    QVERIFY(!quality->isVisible());
+    QVERIFY(format->toolTip().contains(QStringLiteral("lossless")));
+    format->setCurrentIndex(1);  // JPEG
+    QVERIFY(quality->isVisible());
+    QCOMPARE(quality->maximum(), 100);
+    format->setCurrentIndex(2);  // WebP
+    mode->setCurrentIndex(0);    // lossy
+    QVERIFY(quality->isVisible());
+    QCOMPARE(quality->maximum(), 99);
+    mode->setCurrentIndex(1);    // lossless
+    QVERIFY(!quality->isVisible());
+    format->setCurrentIndex(0);
+}
+
+void TestUi::startShowsPendingCountAndEmptyHint()
+{
+    const QString a = m_dir.filePath(QStringLiteral("c1.png"));
+    const QString b = m_dir.filePath(QStringLiteral("c2.png"));
+    QVERIFY(testimg::make(8, 8, false).save(a, "png"));
+    QVERIFY(testimg::make(8, 8, false).save(b, "png"));
+    MainWindow w;
+    w.show();
+    auto *start = w.findChild<QPushButton *>(QStringLiteral("startButton"));
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QVERIFY(start->isDefault());
+    QCOMPARE(start->text(), QStringLiteral("Start"));
+    QLabel *hint = nullptr;
+    for (QLabel *l : list->viewport()->findChildren<QLabel *>())
+        hint = l;
+    QVERIFY(hint && hint->isVisible());
+
+    w.addFiles({a, b});
+    QCOMPARE(start->text(), QStringLiteral("Start (2)"));
+    QVERIFY(!hint->isVisible());
+    list->topLevelItem(0)->setData(0, Qt::UserRole + 1, int(MainWindow::ItemState::Done));
+    w.findChild<QComboBox *>(QStringLiteral("formatCombo"))->setCurrentIndex(0);  // no change: stays
+    list->clearSelection();
+    list->topLevelItem(1)->setSelected(true);
+    w.findChild<QPushButton *>(QStringLiteral("removeButton"))->click();
+    QCOMPARE(start->text(), QStringLiteral("Start"));  // only a Done item is left
+    w.findChild<QPushButton *>(QStringLiteral("clearButton"))->click();
+    QVERIFY(hint->isVisible());
+}
+
+void TestUi::menusFollowWindowsLayout()
+{
+    MainWindow w;
+    QStringList titles;
+    for (QAction *a : w.menuBar()->actions())
+        titles << a->text();
+    QCOMPARE(titles, (QStringList{QStringLiteral("&File"), QStringLiteral("&Tools"), QStringLiteral("&Help")}));
 }
 
 void TestUi::languageSwitchRetranslates()
@@ -348,10 +468,10 @@ void TestUi::languageSwitchRetranslates()
     QVERIFY2(QFile::exists(QStringLiteral(":/i18n/animerestorex_ja.qm")), "embedded .qm missing");
 
     // LanguageChange is delivered through the event loop.
-    w.applySettings(1, 0, true, int(arx::Language::TraditionalChinese));
+    w.applySettings(0, true, int(arx::Language::TraditionalChinese));
     QCOMPARE(LanguageManager::instance().current(), arx::Language::TraditionalChinese);
     QTRY_COMPARE(startButton->text(), QStringLiteral("開始處理"));
-    QCOMPARE(w.menuBar()->actions().first()->text(), QStringLiteral("設定(&S)"));
+    QCOMPARE(w.menuBar()->actions().first()->text(), QStringLiteral("檔案(&F)"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::TraditionalChinese));
 
     // Dialogs created after the switch are translated too.
@@ -368,7 +488,7 @@ void TestUi::languageSwitchRetranslates()
         w.show();
         QTest::qWait(300);
         w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
-        SettingsDialog sd(1, 0, LanguageManager::instance().current(), &w);
+        SettingsDialog sd(0, LanguageManager::instance().current(), &w);
         sd.show();
         QTest::qWait(200);
         sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
@@ -379,12 +499,12 @@ void TestUi::languageSwitchRetranslates()
     };
     snapshot(QStringLiteral("zh_TW"));
 
-    w.applySettings(1, 0, true, int(arx::Language::Japanese));
+    w.applySettings(0, true, int(arx::Language::Japanese));
     QTRY_COMPARE(startButton->text(), QStringLiteral("処理開始"));
     snapshot(QStringLiteral("ja"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::Japanese));
 
-    w.applySettings(1, 0, true, int(arx::Language::English));
+    w.applySettings(0, true, int(arx::Language::English));
     QTRY_COMPARE(startButton->text(), QStringLiteral("Start"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::English));
     QSettings().remove(QStringLiteral("ui/language"));

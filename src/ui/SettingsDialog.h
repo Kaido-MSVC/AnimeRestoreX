@@ -9,13 +9,13 @@ class QLabel;
 class QGroupBox;
 class QDialogButtonBox;
 
-// "Settings" window: AI model parameters (denoise, tile) and language.
+// "Settings" window: advanced AI model parameter (tile size) and language.
+// The denoise level lives in the main window since v1.1.
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
-    SettingsDialog(int noise, int tile, arx::Language language, QWidget *parent = nullptr);
+    SettingsDialog(int tile, arx::Language language, QWidget *parent = nullptr);
 
-    int noiseLevel() const;
     int tileSize() const;
     arx::Language language() const;
     // True only if the user picked a different language than the one shown at open.
@@ -31,11 +31,9 @@ private:
     QGroupBox *m_langGroup = nullptr;
     QLabel *m_modelLabel = nullptr;
     QLabel *m_modelName = nullptr;
-    QLabel *m_noiseLabel = nullptr;
     QLabel *m_tileLabel = nullptr;
     QLabel *m_tileHint = nullptr;
     QLabel *m_langLabel = nullptr;
-    QComboBox *m_noise = nullptr;
     QComboBox *m_tile = nullptr;
     QComboBox *m_lang = nullptr;
     QDialogButtonBox *m_buttons = nullptr;

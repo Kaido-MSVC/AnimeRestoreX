@@ -7,11 +7,18 @@
 
 namespace arx {
 
-QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
+QString Waifu2xRunner::checkParams(const Waifu2xParams &p)
 {
     // 1x is denoise only; without a denoise level waifu2x would do nothing.
     if (p.scale == 1 && p.noise < 0)
         return tr("\"No upscaling (1x)\" needs a denoise level. Choose a denoise level or an upscale factor.");
+    return {};
+}
+
+QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
+{
+    if (QString err = checkParams(p); !err.isEmpty())
+        return err;
 
     if (!QFileInfo(p.exePath).isFile())
         return tr("The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1")

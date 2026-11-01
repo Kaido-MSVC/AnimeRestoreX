@@ -3,6 +3,7 @@
 
 #include "core/AppSettings.h"
 #include "core/FolderScanner.h"
+#include "core/Waifu2xRunner.h"
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
 #include "ui/CompletionDialog.h"
@@ -19,6 +20,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QLabel>
+#include <QStyle>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -61,12 +64,24 @@ MainWindow::MainWindow(QWidget *parent)
     m_status = new ElidedLabel(this);
     m_status->setObjectName(QStringLiteral("statusLabel"));
     statusBar()->addWidget(m_status, 1);
-    m_settingsAction = menuBar()->addAction(QString());
-    connect(m_settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+    // Windows menu layout: File / Tools / Help.
+    m_fileMenu = menuBar()->addMenu(QString());
+    m_addImagesAction = m_fileMenu->addAction(QString(), this, &MainWindow::browseImages);
+    m_addFolderAction = m_fileMenu->addAction(QString(), this, &MainWindow::browseFolder);
+    m_fileMenu->addSeparator();
+    m_exitAction = m_fileMenu->addAction(QString(), this, &QWidget::close);
+    m_toolsMenu = menuBar()->addMenu(QString());
+    m_settingsAction = m_toolsMenu->addAction(QString(), this, &MainWindow::openSettings);
     m_helpMenu = menuBar()->addMenu(QString());
-    m_aboutAction = m_helpMenu->addAction(QString());
-    connect(m_aboutAction, &QAction::triggered, this, &MainWindow::openAbout);
+    m_aboutAction = m_helpMenu->addAction(QString(), this, &MainWindow::openAbout);
     populateCombos();
+
+    // Empty list: a centered hint instead of a blank white area.
+    m_emptyHint = new QLabel(ui->fileList->viewport());
+    m_emptyHint->setAlignment(Qt::AlignCenter);
+    m_emptyHint->setWordWrap(true);
+    m_emptyHint->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_emptyHint->setForegroundRole(QPalette::PlaceholderText);
 
     ui->mainSplitter->setStretchFactor(0, 2);
     ui->mainSplitter->setStretchFactor(1, 3);
@@ -77,6 +92,8 @@ MainWindow::MainWindow(QWidget *parent)
     header->setSectionResizeMode(ColFile, QHeaderView::Stretch);
     header->setSectionResizeMode(ColStatus, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
+    // A small window shrinks the preview first; the list keeps room for names.
+    ui->fileList->setMinimumWidth(fontMetrics().averageCharWidth() * 24);
     // The Details column follows the list width so the name column keeps most of it.
     ui->fileList->viewport()->installEventFilter(this);
     updateDetailColumnWidth();
@@ -111,7 +128,16 @@ MainWindow::MainWindow(QWidget *parent)
         updateQualityControls();
         onOutputSpecChanged();
     });
-    connect(ui->scaleCombo, &QComboBox::currentIndexChanged, this, &MainWindow::onOutputSpecChanged);
+    connect(ui->scaleCombo, &QComboBox::currentIndexChanged, this, [this] {
+        onOutputSpecChanged();
+        onProcessingChanged();
+    });
+    connect(ui->noiseCombo, &QComboBox::currentIndexChanged, this, [this] {
+        m_settings->setNoiseLevel(ui->noiseCombo->currentData().toInt());
+        saveSettings();
+        onOutputSpecChanged();  // the denoise level changes the output, too
+        onProcessingChanged();
+    });
     connect(ui->qualitySpin, &QSpinBox::valueChanged, this, &MainWindow::onOutputSpecChanged);
 
     retranslate();
@@ -163,11 +189,10 @@ void MainWindow::saveSettings()
 
 void MainWindow::openSettings()
 {
-    SettingsDialog dlg(m_settings->noiseLevel(), m_settings->tileSize(),
-                       LanguageManager::instance().current(), this);
+    SettingsDialog dlg(m_settings->tileSize(), LanguageManager::instance().current(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    applySettings(dlg.noiseLevel(), dlg.tileSize(), dlg.languageChanged(), int(dlg.language()));
+    applySettings(dlg.tileSize(), dlg.languageChanged(), int(dlg.language()));
 }
 
 void MainWindow::openAbout()
@@ -184,10 +209,8 @@ void MainWindow::resetProgress()
     ui->progressBar->setFormat(QStringLiteral("0 / 0"));
 }
 
-void MainWindow::applySettings(int noise, int tile, bool languageChanged, int language)
+void MainWindow::applySettings(int tile, bool languageChanged, int language)
 {
-    const bool noiseChanged = noise != m_settings->noiseLevel();
-    m_settings->setNoiseLevel(noise);
     m_settings->setTileSize(tile);
     if (languageChanged) {
         // Only an explicit choice is stored as a manual override.
@@ -196,30 +219,54 @@ void MainWindow::applySettings(int noise, int tile, bool languageChanged, int la
         LanguageManager::instance().apply(lang);
     }
     saveSettings();
-    if (noiseChanged)
-        onOutputSpecChanged();  // denoise level changes the output, too
+}
+
+QString MainWindow::processingProblem() const
+{
+    arx::Waifu2xParams p;
+    p.scale = ui->scaleCombo->currentData().toInt();
+    p.noise = ui->noiseCombo->currentData().toInt();
+    return arx::Waifu2xRunner::checkParams(p);
+}
+
+void MainWindow::onProcessingChanged()
+{
+    const QString problem = processingProblem();
+    if (!problem.isEmpty())
+        m_status->setText(problem);
+    updateButtons();
 }
 
 // ------------------------------------------------------------------ controls
 
 void MainWindow::retranslate()
 {
-    m_settingsAction->setText(tr("&Settings"));
+    m_fileMenu->setTitle(tr("&File"));
+    m_addImagesAction->setText(tr("Add &Images..."));
+    m_addFolderAction->setText(tr("Add &Folder..."));
+    m_exitAction->setText(tr("E&xit"));
+    m_toolsMenu->setTitle(tr("&Tools"));
+    m_settingsAction->setText(tr("&Settings..."));
     m_helpMenu->setTitle(tr("&Help"));
     m_aboutAction->setText(tr("&About AnimeRestoreX"));
+    m_emptyHint->setText(tr("No images yet.\nUse \"Add Images...\" or \"Add Folder...\" to start."));
     populateCombos();
     updateQualityControls();
     for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
         refreshItemTexts(ui->fileList->topLevelItem(i));
+    updateButtons();
 }
 
 void MainWindow::populateCombos()
 {
-    const int fmt = ui->formatCombo->currentIndex();
-    const int mode = ui->webpModeCombo->currentIndex();
-    const int scale = ui->scaleCombo->currentIndex();
+    // Selections are kept by value, so the item order may change between versions.
+    const QVariant fmt = ui->formatCombo->currentData();
+    const QVariant mode = ui->webpModeCombo->currentData();
+    const QVariant scale = ui->scaleCombo->currentData();
+    const QVariant noise = ui->noiseCombo->currentData();
 
-    const QSignalBlocker b1(ui->formatCombo), b2(ui->webpModeCombo), b3(ui->scaleCombo);
+    const QSignalBlocker b1(ui->formatCombo), b2(ui->webpModeCombo), b3(ui->scaleCombo),
+        b4(ui->noiseCombo);
     ui->formatCombo->clear();
     ui->formatCombo->addItem(QStringLiteral("PNG"), int(arx::OutputFormat::Png));
     ui->formatCombo->addItem(QStringLiteral("JPEG"), int(arx::OutputFormat::Jpeg));
@@ -228,12 +275,23 @@ void MainWindow::populateCombos()
     ui->webpModeCombo->addItem(tr("Lossy"), false);
     ui->webpModeCombo->addItem(tr("Lossless"), true);
     ui->scaleCombo->clear();
+    ui->scaleCombo->addItem(tr("No upscaling (1×)"), 1);
     ui->scaleCombo->addItem(QStringLiteral("2×"), 2);
     ui->scaleCombo->addItem(QStringLiteral("4×"), 4);
+    ui->noiseCombo->clear();
+    ui->noiseCombo->addItem(tr("None"), -1);
+    ui->noiseCombo->addItem(tr("0 (weakest)"), 0);
+    ui->noiseCombo->addItem(QStringLiteral("1"), 1);
+    ui->noiseCombo->addItem(QStringLiteral("2"), 2);
+    ui->noiseCombo->addItem(tr("3 (strongest)"), 3);
 
-    ui->formatCombo->setCurrentIndex(fmt < 0 ? 0 : fmt);
-    ui->webpModeCombo->setCurrentIndex(mode < 0 ? 0 : mode);
-    ui->scaleCombo->setCurrentIndex(scale < 0 ? 0 : scale);
+    auto select = [](QComboBox *c, const QVariant &value, const QVariant &fallback) {
+        c->setCurrentIndex(std::max(0, c->findData(value.isValid() ? value : fallback)));
+    };
+    select(ui->formatCombo, fmt, int(arx::OutputFormat::Png));
+    select(ui->webpModeCombo, mode, false);
+    select(ui->scaleCombo, scale, 2);
+    select(ui->noiseCombo, noise, m_settings->noiseLevel());
 }
 
 void MainWindow::updateQualityControls()
@@ -242,45 +300,70 @@ void MainWindow::updateQualityControls()
     const bool webp = fmt == arx::OutputFormat::WebP;
     const bool lossless = webp && ui->webpModeCombo->currentData().toBool();
 
+    // Everything after the format combo depends on the format and sits at the
+    // end of the row, so showing / hiding it never moves the other controls.
     ui->webpModeCombo->setVisible(webp);
-    QString hint;
+    QString qualityHint;
+    QString formatHint;
     switch (fmt) {
     case arx::OutputFormat::Png:
-        ui->qualitySpin->setEnabled(false);
-        hint = tr("PNG is always lossless.");
+        formatHint = tr("PNG is always lossless.");
         break;
     case arx::OutputFormat::Jpeg:
-        ui->qualitySpin->setEnabled(!m_running);
         ui->qualitySpin->setMaximum(100);
-        hint = tr("0-100, lossy");
+        qualityHint = tr("0-100, lossy");
         break;
     case arx::OutputFormat::WebP:
-        ui->qualitySpin->setEnabled(!lossless && !m_running);
         ui->qualitySpin->setMaximum(99);
-        hint = lossless ? tr("Lossless: quality setting not used.") : tr("0-99, lossy");
+        if (lossless)
+            formatHint = tr("Lossless: quality setting not used.");
+        else
+            qualityHint = tr("0-99, lossy");
         break;
     }
-    // A tooltip instead of an inline label: the hint length differs per
-    // format and language and used to widen the window and shift the row.
-    ui->qualitySpin->setToolTip(hint);
-    ui->qualityLabel->setToolTip(hint);
+    const bool hasQuality = !qualityHint.isEmpty();
+    ui->qualityLabel->setVisible(hasQuality);
+    ui->qualitySpin->setVisible(hasQuality);
+    ui->qualitySpin->setEnabled(hasQuality && !m_running);
+    ui->qualitySpin->setToolTip(qualityHint);
+    ui->qualityLabel->setToolTip(qualityHint);
+    ui->formatCombo->setToolTip(formatHint);
+    ui->webpModeCombo->setToolTip(formatHint);
+}
+
+int MainWindow::pendingCount() const
+{
+    int n = 0;
+    for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
+        if (ItemState(ui->fileList->topLevelItem(i)->data(ColFile, kRoleState).toInt()) != ItemState::Done)
+            ++n;
+    return n;
 }
 
 void MainWindow::updateButtons()
 {
     const bool idle = !m_running && !m_scanning;
     const bool hasItems = ui->fileList->topLevelItemCount() > 0;
+    const QString problem = processingProblem();
     ui->addImagesButton->setEnabled(idle);
     ui->addFolderButton->setEnabled(idle);
+    m_addImagesAction->setEnabled(idle);
+    m_addFolderAction->setEnabled(idle);
     ui->removeButton->setEnabled(idle && !ui->fileList->selectedItems().isEmpty());
     ui->clearButton->setEnabled(idle && hasItems);
-    ui->startButton->setEnabled(idle && hasItems);
+    ui->startButton->setEnabled(idle && hasItems && problem.isEmpty());
+    ui->startButton->setToolTip(problem);
+    const int pending = pendingCount();
+    ui->startButton->setText(pending > 0 && !m_running ? tr("Start (%n)", nullptr, pending) : tr("Start"));
     ui->cancelButton->setEnabled(m_running);
     ui->browseOutputButton->setEnabled(!m_running);
     ui->formatCombo->setEnabled(!m_running);
     ui->webpModeCombo->setEnabled(!m_running);
     ui->scaleCombo->setEnabled(!m_running);
+    ui->noiseCombo->setEnabled(!m_running);
     m_settingsAction->setEnabled(!m_running);
+    m_emptyHint->setVisible(!hasItems);
+    ui->previewPane->setHasItems(hasItems);
 }
 
 void MainWindow::setRunning(bool running)
@@ -296,7 +379,7 @@ arx::JobSpec MainWindow::currentSpec() const
     spec.outputDir = QDir::fromNativeSeparators(ui->outputDirEdit->text());
     spec.waifu2x.exePath = QDir(waifu2xDir()).filePath(QStringLiteral("waifu2x-ncnn-vulkan.exe"));
     spec.waifu2x.modelDir = QDir(waifu2xDir()).filePath(QStringLiteral("models-cunet"));
-    spec.waifu2x.noise = m_settings->noiseLevel();
+    spec.waifu2x.noise = ui->noiseCombo->currentData().toInt();
     spec.waifu2x.tile = m_settings->tileSize();
     spec.waifu2x.scale = ui->scaleCombo->currentData().toInt();
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
@@ -323,6 +406,7 @@ void MainWindow::onOutputSpecChanged()
         m_status->setText(tr("Output settings changed: %1 finished item(s) will be processed again.")
                                      .arg(reset));
         updatePreview();
+        updateButtons();  // pending count on the Start button
     }
 }
 
@@ -478,7 +562,10 @@ void MainWindow::refreshItemTexts(QTreeWidgetItem *item)
     item->setToolTip(ColFile, wrapTooltip(full));
     item->setToolTip(ColStatus, wrapTooltip(detail.isEmpty() ? stateText(state) : detail));
     item->setToolTip(ColDetail, wrapTooltip(detail));
-    item->setForeground(ColStatus, state == ItemState::Failed ? QBrush(Qt::red) : QBrush());
+    // Failure is shown by an icon as well, not by the red color alone.
+    const bool failed = state == ItemState::Failed;
+    item->setForeground(ColStatus, failed ? QBrush(Qt::red) : QBrush());
+    item->setIcon(ColStatus, failed ? style()->standardIcon(QStyle::SP_MessageBoxCritical) : QIcon());
 }
 
 void MainWindow::updatePreview()
@@ -508,6 +595,10 @@ void MainWindow::start()
 {
     if (m_running || ui->fileList->topLevelItemCount() == 0)
         return;
+    if (const QString problem = processingProblem(); !problem.isEmpty()) {
+        m_status->setText(problem);
+        return;
+    }
 
     // Only items that are not "Done" are processed; finished items stay as
     // they are until the output settings change.
@@ -645,8 +736,11 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == ui->fileList->viewport() && event->type() == QEvent::Resize)
+    if (watched == ui->fileList->viewport() && event->type() == QEvent::Resize) {
         updateDetailColumnWidth();
+        const int margin = fontMetrics().averageCharWidth() * 2;
+        m_emptyHint->setGeometry(ui->fileList->viewport()->rect().adjusted(margin, 0, -margin, 0));
+    }
     return QMainWindow::eventFilter(watched, event);
 }
 
