@@ -1,9 +1,10 @@
 # AnimeRestoreX
 
-Windows x64 desktop tool for AI denoising and 2x/4x upscaling of anime
+Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.0 (stage 4: release package and license materials).
+Status: v1.1 (UI improvements: high-DPI window fitting, processing/output
+layout, drag and drop, shortcuts, 1x denoise only). Plan: `docs/v1.1-ui-plan.md`.
 
 ## Release package
 
@@ -32,6 +33,9 @@ Visual Studio 2026 with MSVC 14.51, CMake, Ninja (paths in `CMakePresets.json`).
 pwsh -File build.ps1 -Preset release        # fetches waifu2x on first run
 pwsh -File build.ps1 -Preset debug -Test    # with developer tests (uses the GPU)
 ```
+
+`tst_ui_layout` runs the window size / layout checks on the real `windows`
+platform (windows flash briefly); the other UI tests run offscreen.
 
 The pinned waifu2x-ncnn-vulkan 20250915 release is fetched and SHA256-checked by
 `tools/fetch-waifu2x.ps1`; it is not stored in git.

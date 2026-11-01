@@ -59,7 +59,7 @@ void AboutDialog::retranslate()
         return QStringLiteral("<li><b>%1</b> — %2</li>").arg(name.toHtmlEscaped(), what.toHtmlEscaped());
     };
     QString html;
-    html += QStringLiteral("<p>%1</p>").arg(tr("AI denoising and 2x / 4x upscaling for anime illustrations.").toHtmlEscaped());
+    html += QStringLiteral("<p>%1</p>").arg(tr("AI denoising (1x) and 2x / 4x upscaling for anime illustrations.").toHtmlEscaped());
     html += QStringLiteral("<p>%1</p>").arg(
         tr("The AnimeRestoreX source code is released under the MIT License. "
            "The MIT License covers only AnimeRestoreX itself; the third-party components "

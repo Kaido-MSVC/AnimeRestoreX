@@ -12,8 +12,8 @@
         <translation>バージョン %1</translation>
     </message>
     <message>
-        <source>AI denoising and 2x / 4x upscaling for anime illustrations.</source>
-        <translation>アニメイラストの AI ノイズ除去と 2× / 4× 拡大ツール。</translation>
+        <source>AI denoising (1x) and 2x / 4x upscaling for anime illustrations.</source>
+        <translation>アニメイラストの AI ノイズ除去（1×）と 2× / 4× 拡大。</translation>
     </message>
     <message>
         <source>The AnimeRestoreX source code is released under the MIT License. The MIT License covers only AnimeRestoreX itself; the third-party components below remain under their own licenses.</source>

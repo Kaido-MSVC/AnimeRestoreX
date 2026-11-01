@@ -634,7 +634,7 @@ void TestUi::aboutDialogContents()
 {
     AboutDialog dlg;
     const QString text = dlg.bodyText();
-    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.0.0"),
+    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.1.0"),
                              QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
                              QStringLiteral("waifu2x-ncnn-vulkan"), QStringLiteral("ncnn (Tencent)"),
                              QStringLiteral("nagadomi/waifu2x"), QStringLiteral("Qt 6.12"),
