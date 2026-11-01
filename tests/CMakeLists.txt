@@ -1,0 +1,17 @@
+# Developer tests; not part of the distributed package.
+set(ARX_QT_BIN "${Qt6_DIR}/../../../bin")
+cmake_path(NORMAL_PATH ARX_QT_BIN)
+
+function(arx_add_test name)
+    qt_add_executable(${name} ${name}.cpp TestImages.h)
+    target_link_libraries(${name} PRIVATE arxcore Qt6::Test)
+    target_compile_definitions(${name} PRIVATE
+        ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}")
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")
+endfunction()
+
+arx_add_test(tst_core)
+arx_add_test(tst_pipeline)
+set_tests_properties(tst_pipeline PROPERTIES TIMEOUT 600)
