@@ -3,7 +3,18 @@
 Windows x64 desktop tool for AI denoising and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.0 in development (stage 3: languages, folder memory, settings).
+Status: v1.0 (stage 4: release package and license materials).
+
+## Release package
+
+```powershell
+pwsh -File tools/package.ps1     # release build -> dist/AnimeRestoreX-<ver>-win64.zip
+```
+
+Publish together: the zip, the three Qt 6.12.0 source archives copied to `dist/`
+(LGPLv3 corresponding source), and `dist/SHA256SUMS.txt`.
+License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md`, `licenses/`
+(regenerate with `tools/collect-licenses.ps1`).
 
 UI languages: 繁體中文, 日本語, English (source). Translations live in
 `translations/*.ts`; refresh them with `cmake --build build/debug --target update_translations`.

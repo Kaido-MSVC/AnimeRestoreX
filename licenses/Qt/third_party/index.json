@@ -1,0 +1,371 @@
+[
+  {
+    "Module": "qtbase",
+    "Id": "aglfn",
+    "Name": "Adobe Glyph List For New Fonts",
+    "Version": "1.7",
+    "License": "BSD-3-Clause",
+    "Files": "LICENSE.AGLFN.txt",
+    "Copyright": "Copyright 2002, 2003, 2005, 2006, 2008, 2010, 2015 Adobe Systems"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "blake2",
+    "Name": "BLAKE2 (reference implementation)",
+    "Version": "ed1974ea83433eba7b2d95c5dcd9ac33cb847913",
+    "License": "CC0-1.0 OR Apache-2.0",
+    "Files": "COPYING",
+    "Copyright": "Copyright 2012, Samuel Neves <sneves@dei.uc.pt>"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "d3d12memoryallocator",
+    "Name": "D3D12 Memory Allocator",
+    "Version": "v3.1.0",
+    "License": "MIT",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright (c) 2019-2026 Advanced Micro Devices, Inc. All rights reserved."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "doubleconversion",
+    "Name": "Efficient Binary-Decimal and Decimal-Binary Conversion Routines for IEEE Doubles",
+    "Version": "3.4.0",
+    "License": "BSD-3-Clause",
+    "Files": "LICENSE",
+    "Copyright": "Copyright 2006-2012, the V8 project authors"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "easing",
+    "Name": "Easing Equations by Robert Penner",
+    "Version": null,
+    "License": "BSD-3-Clause",
+    "Files": "LICENSE",
+    "Copyright": "Copyright (c) 2001 Robert Penner"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "emoji-segmenter",
+    "Name": "Emoji Segmenter",
+    "Version": "0.4.0",
+    "License": "Apache-2.0",
+    "Files": "Apache-2.0.txt",
+    "Copyright": "Copyright 2019 Google LLC"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "freetype",
+    "Name": "Freetype 2",
+    "Version": "2.14.3",
+    "License": "FTL OR GPL-2.0-only",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright (c) 2007-2014 Adobe Systems Incorporated Copyright (c) 2004-2026 Albert Chin-A-Young Copyright (c) 2018-2026 Armin Hasitzka, David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2000 Computing Research Labs, New Mexico State University Copyright (c) 1996-2026 David Turner, Robert Wilhelm, Dominik Röttsches, and Werner Lemberg Copyright (c) 2004-2026 David Turner, Robert Wilhelm, Werner Lemberg and George Williams Copyright (c) 2022-2026 David Turner, Robert Wilhelm, Werner Lemberg, and Moazin Khatti Copyright (c) 2008-2026 David Turner, Robert Wilhelm, Werner Lemberg, and suzuki toshiya Copyright (c) 2003-2026 David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2005-2026 David Turner Copyright (c) 2007-2026 Derek Clegg and Michael Toftdal Copyright (c) 2007 Dmitry Timoshkov for Codeweavers Copyright (c) 2001-2015 Francesco Zappa Nardelli Copyright (c) 2005, 2007, 2008, 2013 George Williams Copyright (c) 2013-2026 Google, Inc. Google Author(s) Behdad Esfahbod and Stuart Gill Copyright (c) 2013-2022 Google, Inc. Copyright (c) 2003 Huw D M Davies for Codeweavers Copyright (c) 2010-2026 Joel Klinghed Copyright (c) 1996-2026 Just van Rossum, David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2003-2026 Masatake YAMATO and Redhat K.K. Copyright (c) 2004-2026 Masatake YAMATO, Redhat K.K, David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2019-2026 Nikhil Ramakrishnan, David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2009-2026 Oran Agra and Mickey Gabel Copyright (c) 2007-2026 Rahul Bhalerao <rahul.bhalerao@redhat.com> Copyright (c) 2002-2026 Roberto Alameda Copyright (c) 2015-2026 Werner Lemberg Copyright (c) 2004-2026 suzuki toshiya, Masatake YAMATO, Red Hat K.K., David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2019 nyorain Copyright (c) 2022-2026 David Turner, Robert Wilhelm, Werner Lemberg, George Williams, and Dominik Röttsches Copyright (C) 2009, 2023 Red Hat, Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "freetype-bdf",
+    "Name": "Freetype 2 - Bitmap Distribution Format (BDF) support",
+    "Version": null,
+    "License": "MIT",
+    "Files": "BDF-LICENSE.txt",
+    "Copyright": "Copyright (c) 2000 Computing Research Labs, New Mexico State University Copyright (c) 2001-2014 Francesco Zappa Nardelli"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "freetype-pcf",
+    "Name": "Freetype 2 - Portable Compiled Format (PCF) support",
+    "Version": null,
+    "License": "MIT AND MIT-open-group",
+    "Files": "PCF-LICENSE.txt",
+    "Copyright": "Copyright (c) 2001, 2012 David Turner, Robert Wilhelm, and Werner Lemberg Copyright (c) 2000-2014 Francesco Zappa Nardelli Copyright (c) 1990, 1994, 1998 The Open Group"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "freetype-zlib",
+    "Name": "Freetype 2 - zlib",
+    "Version": null,
+    "License": "Zlib",
+    "Files": "ZLIB-LICENSE.txt",
+    "Copyright": "Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "grayraster",
+    "Name": "Anti-aliasing rasterizer from FreeType 2",
+    "Version": null,
+    "License": "FTL OR GPL-2.0-only",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright 2000-2016 by David Turner, Robert Wilhelm, and Werner Lemberg."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "harfbuzz-ng",
+    "Name": "HarfBuzz-NG",
+    "Version": "14.5.0",
+    "License": "MIT",
+    "Files": "COPYING",
+    "Copyright": "Copyright © 2010-2022 Google, Inc. Copyright © 2015-2020 Ebrahim Byagowi Copyright © 2019,2020 Facebook, Inc. Copyright © 2012,2015 Mozilla Foundation Copyright © 2011 Codethink Limited Copyright © 2008,2010 Nokia Corporation and/or its subsidiary(-ies) Copyright © 2009 Keith Stribley Copyright © 2011 Martin Hosken and SIL International Copyright © 2007 Chris Wilson Copyright © 2005,2006,2020,2021,2022,2023 Behdad Esfahbod Copyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023 Red Hat, Inc. Copyright © 1998-2005 David Turner and Werner Lemberg Copyright © 2016 Igalia S.L. Copyright © 2022 Matthias Clasen Copyright © 2018,2021 Khaled Hosny Copyright © 2018,2019,2020 Adobe, Inc Copyright © 2013-2015 Alexei Podtelezhnikov"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "icc-srgb-color-profile",
+    "Name": "sRGB color profile icc file",
+    "Version": null,
+    "License": "LicenseRef-ICC-License",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright International Color Consortium, 2015"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "libjpeg",
+    "Name": "LibJPEG-turbo",
+    "Version": "3.2.0",
+    "License": "IJG AND BSD-3-Clause",
+    "Files": "LICENSE, ijg-license.txt",
+    "Copyright": ""
+  },
+  {
+    "Module": "qtbase",
+    "Id": "libpng",
+    "Name": "LibPNG",
+    "Version": "1.6.58",
+    "License": "Libpng AND libpng-2.0",
+    "Files": "LICENSE",
+    "Copyright": "Copyright (c) 1995-2026 The PNG Reference Library Authors Copyright (c) 2000-2026 Cosmin Truta Copyright (c) 1998-2018 Glenn Randers-Pehrson Copyright (c) 1996-1997 Andreas Dilger Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc. Copyright (c) 2000-2017 Simon-Pierre Cadieux Copyright (c) 2000-2017 Eric S. Raymond Copyright (c) 2000-2017 Mans Rullgard Copyright (c) 2000-2017 Gilles Vollant Copyright (c) 2000-2017 James Yu Copyright (c) 2000-2017 Mandar Sahastrabuddhe Copyright (c) 1998-2000 Tom Lane Copyright (c) 1998-2000 Willem van Schaik Copyright (c) 1996-1997 John Bowler Copyright (c) 1996-1997 Kevin Bracey Copyright (c) 1996-1997 Sam Bushell Copyright (c) 1996-1997 Magnus Holmgren Copyright (c) 1996-1997 Greg Roelofs Copyright (c) 1996-1997 Tom Tanner Copyright (c) 1995-1996 Dave Martindale Copyright (c) 1995-1996 Paul Schmidt Copyright (c) 1995-1996 Tim Wegner"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "md4",
+    "Name": "MD4",
+    "Version": null,
+    "License": "CC0-1.0",
+    "Files": "CC0-1.0.txt",
+    "Copyright": "Written by Alexander Peslyak - better known as Solar Designer <solar@openwall.com> - in 2001, and placed in the public domain. There's absolutely no warranty."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "md4c",
+    "Name": "MD4C",
+    "Version": "0.5.3",
+    "License": "MIT",
+    "Files": "LICENSE.md",
+    "Copyright": "Copyright © 2016-2024 Martin Mitáš"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "md5",
+    "Name": "MD5",
+    "Version": null,
+    "License": "CC0-1.0",
+    "Files": "CC0-1.0.txt",
+    "Copyright": "Written by Colin Plumb in 1993, no copyright is claimed. Ian Jackson <ian@chiark.greenend.org.uk>."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "opengl-es2-headers",
+    "Name": "OpenGL ES 2 Headers",
+    "Version": "Revision 27673",
+    "License": "MIT",
+    "Files": "LICENSE.KHRONOS.txt",
+    "Copyright": "Copyright (c) 2013-2014 The Khronos Group Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "opengl-headers",
+    "Name": "OpenGL Headers",
+    "Version": "Revision 27684",
+    "License": "MIT",
+    "Files": "LICENSE.KHRONOS.txt",
+    "Copyright": "Copyright (c) 2013-2014 The Khronos Group Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "pcre2",
+    "Name": "PCRE2",
+    "Version": "10.48",
+    "License": "LicenseRef-BSD-3-Clause-with-PCRE2-Binary-Like-Packages-Exception",
+    "Files": "LICENCE.md",
+    "Copyright": "Copyright (c) 1997-2007 University of Cambridge Copyright (c) 2007-2024 Philip Hazel Copyright (c) 2010-2024 Zoltan Herczeg"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "pcre2-sljit",
+    "Name": "PCRE2 - Stack-less Just-In-Time Compiler",
+    "Version": "10.48",
+    "License": "BSD-2-Clause",
+    "Files": "LICENSE-SLJIT",
+    "Copyright": "Copyright Zoltan Herczeg"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "rfc6234",
+    "Name": "Secure Hash Algorithms SHA-384 and SHA-512",
+    "Version": null,
+    "License": "BSD-3-Clause",
+    "Files": "LICENSE",
+    "Copyright": "Copyright (c) 2011 IETF Trust and the persons identified as authors of the code."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "rhi-miniengine-d3d12-mipmap",
+    "Name": "Mipmap generator for D3D12",
+    "Version": "0aa79bad78992da0b6a8279ddb9002c1753cb849",
+    "License": "MIT",
+    "Files": "LICENSE.MiniEngine.txt",
+    "Copyright": "Copyright (c) 2015 Microsoft"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "sha1",
+    "Name": "Secure Hash Algorithm SHA-1",
+    "Version": null,
+    "License": "LicenseRef-SHA1-Public-Domain",
+    "Files": "LicenseRef-SHA1-Public-Domain.txt",
+    "Copyright": "Copyright (C) Dominik Reichl <dominik.reichl@t-online.de> Copyright (C) 2016 The Qt Company Ltd"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "sha3_endian",
+    "Name": "Secure Hash Algorithm SHA-3 - brg_endian",
+    "Version": "1.0.0",
+    "License": "BSD-2-Clause",
+    "Files": "BRG_ENDIAN_LICENSE",
+    "Copyright": "Copyright (c) 1998-2013, Brian Gladman, Worcester, UK. All rights reserved."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "sha3_keccak",
+    "Name": "Secure Hash Algorithm SHA-3 - Keccak",
+    "Version": "3.2",
+    "License": "CC0-1.0",
+    "Files": "CC0_LICENSE",
+    "Copyright": "Guido Bertoni, Joan Daemen, Michaël Peeters and Gilles Van Assche. To the extent possible under law, the implementers have waived all copyright and related or neighboring rights to the source code in this file."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "siphash",
+    "Name": "SipHash Algorithm",
+    "Version": null,
+    "License": "CC0-1.0",
+    "Files": "CC0-1.0.txt",
+    "Copyright": "Copyright (C) 2012-2014 Jean-Philippe Aumasson Copyright (C) 2012-2014 Daniel J. Bernstein <djb@cr.yp.to> Copyright (C) 2016 Intel Corporation"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "smooth-scaling-algorithm",
+    "Name": "Smooth Scaling Algorithm",
+    "Version": null,
+    "License": "BSD-2-Clause AND Imlib2",
+    "Files": "LICENSE.QIMAGETRANSFORM.txt",
+    "Copyright": "Copyright (C) 2004, 2005 Daniel M. Duley. (C) Carsten Haitzler and various contributors. (C) Willem Monsuwe <willem@stack.nl>"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "tika-mimetypes",
+    "Name": "Apache Tika MimeType Definitions",
+    "Version": "c29724782854bb5a319f4a1940d0828a58ace3f9",
+    "License": "Apache-2.0",
+    "Files": "Apache-2.0.txt",
+    "Copyright": "Copyright 2026 The Apache Software Foundation"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "tinycbor",
+    "Name": "TinyCBOR",
+    "Version": "7.0",
+    "License": "MIT",
+    "Files": "LICENSE",
+    "Copyright": "Copyright (C) 2015-2025 Intel Corporation"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "tlexpected",
+    "Name": "tl::expected",
+    "Version": "41d3e1f48d682992a2230b2a715bca38b848b269",
+    "License": "CC0-1.0",
+    "Files": "CC0-1.0.txt",
+    "Copyright": "To the extent possible under law, Sy Brand has waived all copyright and related or neighboring rights to the expected library. This work is published from: United Kingdom."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "unicode-character-database",
+    "Name": "Unicode Character Database (UCD)",
+    "Version": "36",
+    "License": "Unicode-3.0",
+    "Files": "Unicode-3.0.txt",
+    "Copyright": "Copyright (C) 1991-2025 Unicode, Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "unicode-cldr",
+    "Name": "Unicode Common Locale Data Repository (CLDR)",
+    "Version": "v48.2",
+    "License": "Unicode-3.0",
+    "Files": "Unicode-3.0.txt",
+    "Copyright": "Copyright (C) 2004-2025 Unicode, Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "vulkan-xml-spec",
+    "Name": "Vulkan API Registry",
+    "Version": "1.4.308",
+    "License": "Apache-2.0 OR MIT",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright (c) 2015-2025 The Khronos Group Inc."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "vulkanmemoryallocator",
+    "Name": "Vulkan Memory Allocator",
+    "Version": "3.3.0",
+    "License": "MIT",
+    "Files": "LICENSE.txt",
+    "Copyright": "Copyright (c) 2017-2025 Advanced Micro Devices, Inc. All rights reserved."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "wintab",
+    "Name": "Wintab API",
+    "Version": null,
+    "License": "LicenseRef-Lcs-Telegraphics",
+    "Files": "LicenseRef-Lcs-Telegraphics.txt",
+    "Copyright": "Copyright 1991-1998 by LCS/Telegraphics."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "xserverhelper",
+    "Name": "X Server helper",
+    "Version": null,
+    "License": "X11 AND HPND",
+    "Files": "LICENSE.XCONSORTIUM.txt",
+    "Copyright": "Copyright (c) 1987, 1988 X Consortium Copyright 1987, 1988 by Digital Equipment Corporation, Maynard, Massachusetts."
+  },
+  {
+    "Module": "qtbase",
+    "Id": "xsvg",
+    "Name": "XSVG",
+    "Version": null,
+    "License": "HPND-sell-variant",
+    "Files": "LICENSE.XSVG.txt",
+    "Copyright": "Copyright 2002 USC/Information Sciences Institute"
+  },
+  {
+    "Module": "qtbase",
+    "Id": "zlib",
+    "Name": "Data Compression Library (zlib)",
+    "Version": "1.3.2",
+    "License": "Zlib",
+    "Files": "LICENSE",
+    "Copyright": "(C) 1995-2026 Jean-loup Gailly and Mark Adler"
+  },
+  {
+    "Module": "qtimageformats",
+    "Id": "libwebp",
+    "Name": "WebP (libwebp)",
+    "Version": "1.6.0",
+    "License": "BSD-3-Clause",
+    "Files": "COPYING",
+    "Copyright": "Copyright (c) 2010, Google Inc. All rights reserved."
+  }
+]

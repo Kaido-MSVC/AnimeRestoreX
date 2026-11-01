@@ -1,0 +1,133 @@
+# Builds the release, assembles dist/AnimeRestoreX-<ver>-win64/, writes MANIFEST.txt,
+# zips it, and places the Qt 6.12.0 source archives and SHA256SUMS.txt next to the zip.
+# Only the components the app actually needs are deployed.
+[CmdletBinding()]
+param(
+    [switch]$SkipBuild
+)
+$ErrorActionPreference = 'Stop'
+
+$Root    = Split-Path -Parent $PSScriptRoot
+$Qt      = 'D:\qt\6.12.0\msvc2022_64'
+$VsRoot  = 'C:\Program Files\Microsoft Visual Studio\18\Community'
+$CrtDir  = Join-Path $VsRoot 'VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
+$CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+$W2x     = Join-Path $Root 'third_party\waifu2x'
+$W2xZip  = 'waifu2x-ncnn-vulkan-20250915-windows.zip'
+$QtSrc   = Join-Path $Root 'third_party\_download\qt-src'
+
+$Version = [regex]::Match((Get-Content (Join-Path $Root 'CMakeLists.txt') -Raw),
+                          'project\(AnimeRestoreX VERSION ([0-9.]+)').Groups[1].Value
+if (-not $Version) { throw 'Cannot read the project version' }
+$Name  = "AnimeRestoreX-$Version-win64"
+$Dist  = Join-Path $Root 'dist'
+$Stage = Join-Path $Dist $Name
+
+if (-not $SkipBuild) {
+    & (Join-Path $Root 'build.ps1') -Preset release
+    if ($LASTEXITCODE) { throw 'release build failed' }
+}
+& (Join-Path $Root 'tools\fetch-qt-sources.ps1')
+
+if (Test-Path $Stage) { Remove-Item $Stage -Recurse -Force }
+New-Item -ItemType Directory -Force $Stage | Out-Null
+
+$manifest = New-Object System.Collections.Generic.List[object]
+function Add-File([string]$src, [string]$rel, [string]$origin) {
+    $dest = Join-Path $Stage $rel
+    New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
+    Copy-Item -LiteralPath $src -Destination $dest
+    $script:manifest.Add([pscustomobject]@{ Path = $rel; Origin = $origin })
+}
+
+# 1. Application
+Add-File (Join-Path $Root 'build\release\AnimeRestoreX.exe') 'AnimeRestoreX.exe' 'built from this repository (MSVC 14.51.36231, Qt 6.12.0)'
+
+# 2. Qt via windeployqt: Core/Gui/Widgets, qwindows, qmodernwindowsstyle, qjpeg, qwebp, zh_TW/ja.
+$wdq = @(
+    '--release', '--no-compiler-runtime', '--no-opengl-sw', '--no-system-d3d-compiler',
+    '--no-system-dxc-compiler', '--no-ffmpeg',
+    '--skip-plugin-types', 'generic,iconengines,networkinformation,tls,qmltooling',
+    '--exclude-plugins', 'qgif,qicns,qico,qpdf,qsvg,qtga,qtiff,qwbmp,qdirect2d,qminimal,qoffscreen',
+    '--translations', 'zh_TW,ja',
+    '--qtpaths', (Join-Path $Qt 'bin\qtpaths.exe'),
+    '--list', 'mapping',
+    (Join-Path $Stage 'AnimeRestoreX.exe'))
+$mapping = & (Join-Path $Qt 'bin\windeployqt.exe') @wdq
+if ($LASTEXITCODE) { throw 'windeployqt failed' }
+foreach ($line in $mapping) {
+    $m = [regex]::Match($line, '^"(.+)" "(.+)"$')
+    if (-not $m.Success) { continue }
+    $src = $m.Groups[1].Value; $rel = $m.Groups[2].Value
+    if (-not (Test-Path (Join-Path $Stage $rel))) { continue }  # e.g. qtbase_*.qm merged into qt_*.qm
+    $origin = "Qt 6.12.0 official binary: $($src.Replace($Qt + '\', ''))"
+    if ($rel -like 'translations\qt_*.qm') {
+        $lang = [regex]::Match($rel, 'qt_(.+)\.qm').Groups[1].Value
+        $origin = "windeployqt merge of Qt 6.12.0 translations\qtbase_$lang.qm"
+    }
+    $manifest.Add([pscustomobject]@{ Path = $rel; Origin = $origin })
+}
+
+# 3. Visual C++ runtime of the build toolset (app-local)
+foreach ($dll in $CrtDlls) {
+    Add-File (Join-Path $CrtDir $dll) $dll 'VS 2026 VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
+}
+
+# 4. waifu2x-ncnn-vulkan 20250915 (unmodified) + the CUnet models used for 2x/4x
+foreach ($f in 'waifu2x-ncnn-vulkan.exe', 'vcomp140.dll', 'LICENSE') {
+    Add-File (Join-Path $W2x $f) "waifu2x\$f" "$W2xZip (unmodified)"
+}
+foreach ($m in 'noise0_scale2.0x_model', 'noise1_scale2.0x_model', 'noise2_scale2.0x_model',
+               'noise3_scale2.0x_model', 'scale2.0x_model') {
+    foreach ($ext in '.param', '.bin') {
+        Add-File (Join-Path $W2x "models-cunet\$m$ext") "waifu2x\models-cunet\$m$ext" "$W2xZip (unmodified)"
+    }
+}
+
+# 5. Documents and license texts
+Add-File (Join-Path $Root 'LICENSE') 'LICENSE' 'this repository'
+Add-File (Join-Path $Root 'THIRD_PARTY_NOTICES.md') 'THIRD_PARTY_NOTICES.md' 'this repository'
+Add-File (Join-Path $Root 'packaging\README.txt') 'README.txt' 'this repository'
+$licRoot = Join-Path $Root 'licenses'
+foreach ($f in Get-ChildItem $licRoot -Recurse -File) {
+    Add-File $f.FullName ('licenses\' + $f.FullName.Substring($licRoot.Length + 1)) 'this repository (tools\collect-licenses.ps1)'
+}
+
+# 6. Guard rails: nothing unexpected may be deployed.
+$forbidden = @('opengl32sw.dll', 'd3dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll', 'Qt6Svg.dll',
+               'Qt6Network.dll', 'qgif.dll', 'qico.dll', 'qsvg.dll', 'qtiff.dll', 'qtga.dll',
+               'qwbmp.dll', 'qicns.dll', 'qpdf.dll', 'qsvgicon.dll', 'qminimal.dll', 'qoffscreen.dll')
+$all = Get-ChildItem $Stage -Recurse -File
+$bad = $all | Where-Object { $forbidden -contains $_.Name }
+if ($bad) { throw "Unexpected files deployed: $($bad.Name -join ', ')" }
+$listed = $manifest.Path | ForEach-Object { $_.ToLowerInvariant() }
+$unlisted = $all | Where-Object { $listed -notcontains $_.FullName.Substring($Stage.Length + 1).ToLowerInvariant() }
+if ($unlisted) { throw "Files without a recorded origin: $($unlisted.FullName -join ', ')" }
+
+# 7. MANIFEST.txt (size, SHA256, origin of every file)
+$lines = New-Object System.Collections.Generic.List[string]
+$lines.Add("AnimeRestoreX $Version - file manifest")
+$lines.Add('SHA256  size  path  <- origin')
+$lines.Add('')
+foreach ($e in $manifest | Sort-Object Path) {
+    $p = Join-Path $Stage $e.Path
+    $hash = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()
+    $lines.Add(('{0}  {1,10}  {2}  <- {3}' -f $hash, (Get-Item -LiteralPath $p).Length, $e.Path, $e.Origin))
+}
+[IO.File]::WriteAllLines((Join-Path $Stage 'MANIFEST.txt'), $lines, (New-Object Text.UTF8Encoding($false)))
+
+# 8. Zip + Qt sources + checksums
+$zip = Join-Path $Dist "$Name.zip"
+if (Test-Path $zip) { Remove-Item $zip -Force }
+Compress-Archive -Path $Stage -DestinationPath $zip -CompressionLevel Optimal
+$qtNames = 'qtbase-everywhere-src-6.12.0.zip', 'qtimageformats-everywhere-src-6.12.0.zip', 'qttranslations-everywhere-src-6.12.0.zip'
+foreach ($q in $qtNames) { Copy-Item (Join-Path $QtSrc $q) (Join-Path $Dist $q) -Force }
+$sums = foreach ($f in @("$Name.zip") + $qtNames) {
+    '{0}  {1}' -f (Get-FileHash (Join-Path $Dist $f) -Algorithm SHA256).Hash.ToLowerInvariant(), $f
+}
+[IO.File]::WriteAllLines((Join-Path $Dist 'SHA256SUMS.txt'), [string[]]$sums, (New-Object Text.UTF8Encoding($false)))
+
+Write-Host ''
+Write-Host "Package : $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
+Write-Host "Files   : $($manifest.Count + 1) (incl. MANIFEST.txt)"
+Write-Host "Publish together: $Name.zip, $($qtNames -join ', '), SHA256SUMS.txt"

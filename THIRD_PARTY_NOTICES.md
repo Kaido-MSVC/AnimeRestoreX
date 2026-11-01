@@ -1,0 +1,135 @@
+# AnimeRestoreX 1.0.0 — Third-Party Notices / 第三方元件通知
+
+AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026 Kaido-MSVC）。
+**MIT 只涵蓋 AnimeRestoreX 自身**；本發行包內的第三方元件、模型與執行階段各自適用原授權。授權與版權原文放在 `licenses/`，本文件中的摘要不能取代原文。
+
+每個檔案的大小與 SHA256 列在發行包內的 `MANIFEST.txt`。
+
+## 1. 發行包內容與來源
+
+| 路徑 | 元件 | 版本 | 授權 | 來源 |
+|---|---|---|---|---|
+| `AnimeRestoreX.exe` | AnimeRestoreX | 1.0.0 | MIT | 以本專案原始碼建置（MSVC 14.51.36231、Qt 6.12.0） |
+| `Qt6Core.dll`、`Qt6Gui.dll`、`Qt6Widgets.dll` | Qt | 6.12.0 | LGPL-3.0-only | Qt 官方 6.12.0 `msvc2022_64` 二進位檔，未修改（見 §2） |
+| `platforms/qwindows.dll` | Qt Windows 平台外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
+| `styles/qmodernwindowsstyle.dll` | Qt Windows 樣式外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
+| `imageformats/qjpeg.dll` | Qt JPEG 外掛（內含 libjpeg-turbo） | 6.12.0 | LGPL-3.0-only；libjpeg-turbo：IJG AND BSD-3-Clause | 同上 |
+| `imageformats/qwebp.dll` | Qt WebP 外掛（內含 libwebp 1.6.0） | 6.12.0 | LGPL-3.0-only；libwebp：BSD-3-Clause | 同上 |
+| `translations/qt_zh_TW.qm`、`translations/qt_ja.qm` | Qt 內建字串翻譯 | 6.12.0 | LGPL-3.0-only | windeployqt 由 Qt 6.12.0 的 `qtbase_zh_TW.qm`／`qtbase_ja.qm` 合併產生（qttranslations） |
+| `msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` | Microsoft Visual C++ 執行階段 | 14.51.36247.0 | Microsoft Visual Studio「Distributable Code」條款（見 §5） | VS 2026 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`（與建置工具集 14.51 相同；app-local） |
+| `waifu2x/waifu2x-ncnn-vulkan.exe` | waifu2x-ncnn-vulkan（靜態連入 ncnn、glslang、libwebp 等，見 §3） | 20250915 | MIT（及 §3 所列） | 上游預編譯版 `waifu2x-ncnn-vulkan-20250915-windows.zip`，未修改 |
+| `waifu2x/vcomp140.dll` | Microsoft OpenMP 執行階段 | 14.44.35211.0 | Microsoft Visual Studio「Distributable Code」條款 | 原樣取自上述上游 zip（上游建置時隨附） |
+| `waifu2x/LICENSE` | waifu2x-ncnn-vulkan 授權 | 20250915 | MIT | 原樣取自上述上游 zip |
+| `waifu2x/models-cunet/*` | waifu2x CUnet 模型（ncnn 格式） | 見 §4 | MIT（依儲存庫授權推論，見 §4） | 原樣取自上述上游 zip |
+| `LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案 |
+
+不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組、其他 waifu2x 模型（upconv_7 系列）、cunet 的 1× 純降噪模型（`noise*_model.*`，本程式只做 2×／4×，不會使用）。
+
+不散布、由系統提供：Vulkan loader（`vulkan-1.dll`，隨 GPU 驅動安裝）、Universal CRT（`api-ms-win-crt-*`）、ICU（`icuuc.dll`）、Direct3D、DirectWrite 等 Windows 元件。
+
+## 2. Qt 6.12.0（LGPLv3）
+
+- 使用模組：Qt Core、Qt GUI、Qt Widgets（qtbase）、Qt Image Formats 的 WebP 外掛（qtimageformats）、Qt 翻譯（qttranslations）。全部為 The Qt Company 發布的官方 6.12.0 二進位檔，**未修改**（`Qt6Core.dll` 未經 windeployqt patch，雜湊與官方安裝檔相同）。
+- 版權：Copyright (C) The Qt Company Ltd. and other contributors.
+- 授權：GNU Lesser General Public License v3（`licenses/Qt/LGPL-3.0-only.txt`）。LGPLv3 以 GNU GPL v3 為基礎，所以一併附上 GPLv3 全文（`licenses/Qt/GPL-3.0-only.txt`）。附上 GPLv3 文本不代表本程式含有 GPL-only 的 Qt 模組。
+- **對應原始碼**：與本發行 zip 一同發布於同一位置，為官方原始碼封存，未修改：
+
+  | 檔案 | SHA256 |
+  |---|---|
+  | `qtbase-everywhere-src-6.12.0.zip` | `0529901575c413e34ded504eeda177c4a6dfd0dff1e39ed52c811dc5204b43c7` |
+  | `qtimageformats-everywhere-src-6.12.0.zip` | `664de2ba60a1e74105da844c061688ff5e6f8f046d5dd98e2d6b6ad3c553b4ca` |
+  | `qttranslations-everywhere-src-6.12.0.zip` | `286f0ca3ad669bc2d6fec0e209a797a08049d037c7a167e60eb3b4a640405aa5` |
+
+  原始出處：<https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/>（已依該處 `md5sums.txt` 驗證）。
+- **替換 Qt**：AnimeRestoreX 以動態連結使用 Qt。使用者可以用相容的 Qt 6.12.x（MSVC 2022 x64）建置，取代本資料夾中的 `Qt6*.dll` 與 `platforms/`、`styles/`、`imageformats/` 內的外掛後執行。本程式不限制為此目的而進行的修改或為除錯所需的逆向工程。AnimeRestoreX 自身原始碼另以 MIT 授權提供。
+- Qt 內含的第三方程式碼：下表列出編入上述 Qt 二進位檔的元件（依 Qt 6.12.0 原始碼中的 `qt_attribution.json` 整理；採保守列舉）。授權原文在 `licenses/Qt/third_party/<Id>/`，完整清單見同資料夾的 `index.json`。
+
+  | Id | 元件 | 版本 | 授權 |
+  |---|---|---|---|
+  | aglfn | Adobe Glyph List For New Fonts | 1.7 | BSD-3-Clause |
+  | blake2 | BLAKE2 (reference implementation) | ed1974ea | CC0-1.0 OR Apache-2.0 |
+  | d3d12memoryallocator | D3D12 Memory Allocator | v3.1.0 | MIT |
+  | doubleconversion | double-conversion | 3.4.0 | BSD-3-Clause |
+  | easing | Easing Equations by Robert Penner | — | BSD-3-Clause |
+  | emoji-segmenter | Emoji Segmenter | 0.4.0 | Apache-2.0 |
+  | freetype（含 -bdf、-pcf、-zlib） | FreeType 2 | 2.14.3 | FTL OR GPL-2.0-only（Qt 依 FTL 使用）；子元件 MIT／Zlib |
+  | grayraster | Anti-aliasing rasterizer from FreeType 2 | — | FTL OR GPL-2.0-only（依 FTL） |
+  | harfbuzz-ng | HarfBuzz | 14.5.0 | MIT |
+  | icc-srgb-color-profile | sRGB color profile | — | ICC License |
+  | libjpeg | libjpeg-turbo（qjpeg） | 3.2.0 | IJG AND BSD-3-Clause |
+  | libpng | libpng | 1.6.58 | Libpng AND libpng-2.0 |
+  | libwebp | libwebp（qwebp） | 1.6.0 | BSD-3-Clause（另附 PATENTS） |
+  | md4、md5、siphash、tlexpected、sha3_keccak | 雜湊與工具程式碼 | — | CC0-1.0 |
+  | md4c | MD4C | 0.5.3 | MIT |
+  | opengl-headers、opengl-es2-headers | Khronos OpenGL 標頭 | — | MIT |
+  | pcre2、pcre2-sljit | PCRE2 | 10.48 | BSD-3-Clause（含 PCRE2 例外）、BSD-2-Clause |
+  | rfc6234 | SHA-384/SHA-512 | — | BSD-3-Clause |
+  | rhi-miniengine-d3d12-mipmap | D3D12 mipmap generator | 0aa79bad | MIT |
+  | sha1 | SHA-1 | — | Public Domain |
+  | sha3_endian | brg_endian | 1.0.0 | BSD-2-Clause |
+  | smooth-scaling-algorithm | Smooth Scaling Algorithm | — | BSD-2-Clause AND Imlib2 |
+  | tika-mimetypes | Apache Tika MimeType Definitions | c2972478 | Apache-2.0 |
+  | tinycbor | TinyCBOR | 7.0 | MIT |
+  | unicode-character-database、unicode-cldr | Unicode UCD／CLDR | 36／v48.2 | Unicode-3.0 |
+  | vulkan-xml-spec | Vulkan API Registry | 1.4.308 | Apache-2.0 OR MIT |
+  | vulkanmemoryallocator | Vulkan Memory Allocator | 3.3.0 | MIT |
+  | wintab | Wintab API | — | LicenseRef-Lcs-Telegraphics |
+  | xserverhelper、xsvg | X Server helper、XSVG | — | X11 AND HPND、HPND-sell-variant |
+  | zlib | zlib | 1.3.2 | Zlib |
+
+## 3. waifu2x-ncnn-vulkan 20250915 與其靜態連入的元件
+
+上游：<https://github.com/nihui/waifu2x-ncnn-vulkan>，tag `20250915`（commit `a86cfb043e6482b5f08778a114df9b5faf6e73b7`）。發行檔 `waifu2x-ncnn-vulkan-20250915-windows.zip` 的 SHA256 為 `7425be94b94e4c8f37a1e433ac0e0100c43790e2c37418f4b65d8235adfbdc87`，與 GitHub 提供的 asset digest 一致。EXE 原樣散布，未修改。
+
+依該 tag 的 `src/CMakeLists.txt`、`deps_ncnn.cmake`、`deps_codec.cmake`、`main.cpp` 與 release workflow（Windows：`cmake -A x64`，預設選項，CRT 靜態連結 `/MT`），並在 EXE 內搜尋各函式庫的特徵字串，判定如下：
+
+| 元件 | 子模組 commit | 是否連入 EXE | 依據 | 授權原文 |
+|---|---|---|---|---|
+| waifu2x-ncnn-vulkan | a86cfb0 | 是（本體） | — | `licenses/waifu2x-ncnn-vulkan/LICENSE`（MIT, Copyright (c) 2019 nihui） |
+| ncnn | `c4193aad`（tag 20250916） | 是 | 建置連結 `ncnn`；EXE 內有大量 `ncnn` 字串 | `licenses/ncnn/LICENSE.txt`（BSD-3-Clause，含其第三方條款） |
+| glslang（nihui fork） | `8cd77a80`（ncnn 子模組） | 是 | ncnn 以 Vulkan 模式建置時內建；EXE 內有 GLSL 擴充名稱與 SPIR-V 字串 | `licenses/glslang/LICENSE.txt`（BSD-3-Clause、BSD-2-Clause、MIT、Apache-2.0 等） |
+| libwebp（含 sharpyuv） | `4fa21912` | 是 | 建置連結 `libwebp` 等；main.cpp 在 Windows 仍以 libwebp 處理 WebP；EXE 內有 `VP8L`／`VP8X`／`ALPH` | `licenses/libwebp/COPYING`、`PATENTS`（BSD-3-Clause＋Google 專利授權） |
+| dirent（`win32dirent.h`） | 隨 waifu2x 原始碼 | 是（標頭檔） | Windows 版以此提供目錄列舉 | `licenses/dirent/LICENSE`（MIT, Copyright (C) 1998-2019 Toni Ronkko） |
+| libjpeg-turbo | `4e151a4a` | **判定未連入** | 雖列在連結清單，但 `main.cpp` 在 `_WIN32` 下改用 Windows WIC 讀寫 JPEG／PNG，不引用其符號；EXE 內找不到任何 libjpeg 特徵字串（如 `Corrupt JPEG data`、`Bogus marker length`） | 為保險仍附：`licenses/libjpeg-turbo/LICENSE.md`、`README.ijg` |
+| libpng | `2b978915` | **判定未連入** | 同上；EXE 內找不到 `libpng version`、`Not a PNG file` 等字串 | 為保險仍附：`licenses/libpng/LICENSE` |
+| zlib-ng | `42543906` | **判定未連入** | 只供 libpng 使用；EXE 內找不到 `incorrect header check` 等 zlib 字串 | 為保險仍附：`licenses/zlib-ng/LICENSE.md` |
+| Microsoft C/C++ 執行階段（靜態） | — | 是 | `CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded` | Microsoft Visual Studio 授權條款 |
+| Microsoft OpenMP（`vcomp140.dll`） | — | 動態 | EXE 匯入 `VCOMP140.DLL` | 見 §5 |
+
+關於 glslang：該 commit 仍含由 GNU Bison 3.8.2 產生的 `glslang/MachineIndependent/glslang_tab.cpp`，授權為 GPL-3.0-or-later WITH Bison-exception-2.2。依 Bison 例外條款，包含 Bison 骨架的較大作品可依任意條款散布，因此不構成 GPL 散布義務；相關條文保留在 `licenses/glslang/LICENSE.txt`。
+
+「判定未連入」是依原始碼與二進位字串檢查得出的結論，並非上游明確聲明。
+
+## 4. waifu2x CUnet 模型（`waifu2x/models-cunet`）
+
+來源鏈：
+
+1. **nagadomi/waifu2x**（原始模型與訓練）：<https://github.com/nagadomi/waifu2x>，MIT License，Copyright (C) 2015 nagadomi（`licenses/waifu2x-models/nagadomi-waifu2x/LICENSE`，取自 commit `f2f5c882`）。
+2. **lltcggie/waifu2x-caffe**（轉為 Caffe 格式）：<https://github.com/lltcggie/waifu2x-caffe>，MIT License，Copyright (c) 2015 lltcggie（`licenses/waifu2x-models/waifu2x-caffe/LICENSE`，取自 commit `b272b6fe`）。
+3. **nihui/waifu2x-ncnn-vulkan**（轉為 ncnn `.param`／`.bin`）：儲存庫 `models/models-cunet`（最後變更 commit `a19cf5d3`），MIT License；上游 README 將上述兩者列為「Original waifu2x Project」。
+
+**權重授權係依儲存庫授權推論**：上述儲存庫並未對權重檔另行宣告授權，此處依其儲存庫的 MIT 授權推定權重可再散布。
+
+散布的檔案（取自上游 20250915 Windows zip，未修改；雜湊為 zip 內檔案本身，換行為 CRLF）：
+
+| 檔案 | 用途 | SHA256 |
+|---|---|---|
+| `noise0_scale2.0x_model.bin` | 降噪 0＋2× | `5329a9375c9cfb64a60a2903fd8ae6e2851d9b069556bf025dbab9d0216fb27c` |
+| `noise1_scale2.0x_model.bin` | 降噪 1＋2× | `862c0e40f3df956ff57bd4d168c85dea5d375b614077fdddd3ac8cfdb9a686da` |
+| `noise2_scale2.0x_model.bin` | 降噪 2＋2× | `5c836e6ae022636cdd5590fbb66dbca2a5fc20bbf8e628884c3612ef72d51858` |
+| `noise3_scale2.0x_model.bin` | 降噪 3＋2× | `f42c18610fecb14a40f75cca9b9276a6889689d5937a4f75f0c2b21bde7e49ed` |
+| `scale2.0x_model.bin` | 不降噪＋2× | `d82ed30207fd07e1c16726a9ca838ce44e6e25a105b0278c7ca681516ee0e18e` |
+| `noise0_scale2.0x_model.param` … `noise3_scale2.0x_model.param`、`scale2.0x_model.param` | 網路結構（5 檔內容相同） | `9b06073e039ca93d5bd79f6bb42016cd98d5bdefa0e9761df6b22b844c39965f` |
+
+4× 由上游以同一個 2× 模型連續執行兩次達成（`main.cpp`：`scale == 4` 時 `scale_run_count = 2`）。
+
+## 5. Microsoft Visual C++ 執行階段
+
+`msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`（14.51.36247.0）取自 Visual Studio 2026 Community 18.11 的 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`，對應建置 AnimeRestoreX 所用的 MSVC 工具集 14.51；以 app-local 方式放在程式資料夾。`waifu2x/vcomp140.dll`（14.44.35211.0）為上游 waifu2x-ncnn-vulkan 隨附的 OpenMP 執行階段，原樣保留。
+
+這些檔案屬於 Microsoft Visual Studio 授權條款中允許隨應用程式再散布的「Distributable Code」，清單見 <https://aka.ms/vs/18/redistribution>。版權屬 Microsoft Corporation。
+
+## 6. 其他
+
+- Vulkan：本程式與 waifu2x-ncnn-vulkan 都不散布 Vulkan loader 或 SDK，執行時使用 GPU 驅動提供的 `vulkan-1.dll`。
+- 名稱「waifu2x」等屬於各自作者；本程式與上述專案沒有隸屬關係。

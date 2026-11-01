@@ -519,6 +519,10 @@
         <translation>AI エンジン（waifu2x-ncnn-vulkan.exe）が見つかりません：%1</translation>
     </message>
     <message>
+        <source>The program folder path is too long for the AI engine (%1 characters, the limit is 255). Please move AnimeRestoreX to a shorter folder path.</source>
+        <translation>プログラムフォルダーのパスが長すぎるため、AI エンジンを使用できません（%1 文字、上限は 255 文字）。AnimeRestoreX をパスの短いフォルダーに移動してください。</translation>
+    </message>
+    <message>
         <source>The AI model folder is missing: %1</source>
         <translation>AI モデルフォルダーが見つかりません：%1</translation>
     </message>

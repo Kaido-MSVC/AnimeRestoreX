@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QLibraryInfo>
+#include <QStringList>
 
 LanguageManager &LanguageManager::instance()
 {
@@ -31,12 +32,18 @@ bool LanguageManager::apply(arx::Language lang)
         return false;  // translation missing -> stay English
     }
 
-    // Qt's own strings (standard buttons etc.). Deployed builds ship them in
-    // <app>/translations, which QLibraryInfo resolves without a qt.conf.
-    const QString qtDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
-    if (m_qt.load(QStringLiteral("qtbase_%1").arg(code), qtDir)
-        || m_qt.load(QStringLiteral("qt_%1").arg(code), qtDir)) {
-        m_qtInstalled = QCoreApplication::installTranslator(&m_qt);
+    // Qt's own strings (standard buttons etc.). The release package ships the
+    // windeployqt-merged qt_<lang>.qm in <app>/translations; development builds
+    // use the Qt installation's qtbase_<lang>.qm.
+    const QStringList dirs{
+        QCoreApplication::applicationDirPath() + QStringLiteral("/translations"),
+        QLibraryInfo::path(QLibraryInfo::TranslationsPath)};
+    for (const QString &dir : dirs) {
+        if (m_qt.load(QStringLiteral("qt_%1").arg(code), dir)
+            || m_qt.load(QStringLiteral("qtbase_%1").arg(code), dir)) {
+            m_qtInstalled = QCoreApplication::installTranslator(&m_qt);
+            break;
+        }
     }
     m_appInstalled = QCoreApplication::installTranslator(&m_app);
     if (m_appInstalled)

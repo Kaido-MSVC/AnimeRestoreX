@@ -13,6 +13,15 @@ QString Waifu2xRunner::checkInstall(const Waifu2xParams &p)
         return tr("The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1")
             .arg(QDir::toNativeSeparators(p.exePath));
 
+    // waifu2x-ncnn-vulkan builds the model file path with swprintf into a
+    // wchar_t[256] buffer (src/main.cpp, 20250915); longer paths fail to load.
+    const QString longest = QDir::toNativeSeparators(
+        QFileInfo(p.modelDir).absoluteFilePath() + QStringLiteral("/noise0_scale2.0x_model.param"));
+    if (longest.size() >= 256)
+        return tr("The program folder path is too long for the AI engine (%1 characters, the limit is 255). "
+                  "Please move AnimeRestoreX to a shorter folder path.")
+            .arg(longest.size());
+
     if (!QFileInfo(p.modelDir).isDir())
         return tr("The AI model folder is missing: %1").arg(QDir::toNativeSeparators(p.modelDir));
 

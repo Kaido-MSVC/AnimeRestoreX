@@ -193,6 +193,15 @@ void TestPipeline::missingModelIsReported()
     QVERIFY(QDir().mkpath(partial));
     s.waifu2x.modelDir = partial;
     QVERIFY(!Waifu2xRunner::checkInstall(s.waifu2x).isEmpty());
+
+    // The engine's model path buffer is 256 wide chars: reject longer install paths.
+    JobSpec ok = spec(OutputFormat::Png, 2);
+    QVERIFY(Waifu2xRunner::checkInstall(ok.waifu2x).isEmpty());
+    const QString longDir = QStringLiteral("C:/") + QString(240, QLatin1Char('a')) + QStringLiteral("/models-cunet");
+    ok.waifu2x.modelDir = longDir;
+    // (checked before the folder itself, so it need not exist)
+    const QString longErr = Waifu2xRunner::checkInstall(ok.waifu2x);
+    QVERIFY2(longErr.contains(QStringLiteral("too long")), qPrintable(longErr));
 }
 
 void TestPipeline::cancelKillsProcess()
