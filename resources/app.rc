@@ -1,0 +1,3 @@
+// Application icon shown by Windows Explorer / taskbar for AnimeRestoreX.exe.
+// icons/app.ico is generated from icons/app.svg by tools/make-icons.ps1.
+IDI_ICON1 ICON "icons/app.ico"

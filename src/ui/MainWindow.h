@@ -15,6 +15,7 @@ namespace Ui { class MainWindow; }
 namespace arx { class AppSettings; }
 class JobWorker;
 class QAction;
+class QMenu;
 class QTreeWidgetItem;
 
 class MainWindow : public QMainWindow {
@@ -52,6 +53,8 @@ private:
     void browseFolder();
     void browseOutput();
     void openSettings();
+    void openAbout();
+    void resetProgress();  // empty list: show "0 / 0"
     void removeSelected();
     void clearList();
     void start();
@@ -68,6 +71,8 @@ private:
     std::unique_ptr<Ui::MainWindow> ui;
     std::unique_ptr<arx::AppSettings> m_settings;
     QAction *m_settingsAction = nullptr;
+    QMenu *m_helpMenu = nullptr;
+    QAction *m_aboutAction = nullptr;
     QThread m_thread;
     JobWorker *m_worker = nullptr;
     QThreadPool m_scanPool;

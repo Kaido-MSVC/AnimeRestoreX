@@ -2,6 +2,69 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ja_JP">
 <context>
+    <name>AboutDialog</name>
+    <message>
+        <source>About AnimeRestoreX</source>
+        <translation>AnimeRestoreX について</translation>
+    </message>
+    <message>
+        <source>Version %1</source>
+        <translation>バージョン %1</translation>
+    </message>
+    <message>
+        <source>AI denoising and 2x / 4x upscaling for anime illustrations.</source>
+        <translation>アニメイラストの AI ノイズ除去と 2× / 4× 拡大ツール。</translation>
+    </message>
+    <message>
+        <source>The AnimeRestoreX source code is released under the MIT License. The MIT License covers only AnimeRestoreX itself; the third-party components below remain under their own licenses.</source>
+        <translation>AnimeRestoreX のソースコードは MIT ライセンスで公開されています。MIT ライセンスが適用されるのは AnimeRestoreX 本体のみで、以下のサードパーティ製コンポーネントにはそれぞれのライセンスが適用されます。</translation>
+    </message>
+    <message>
+        <source>Third-party components</source>
+        <translation>サードパーティ製コンポーネント</translation>
+    </message>
+    <message>
+        <source>AI inference engine that performs the denoising and upscaling (MIT License).</source>
+        <translation>ノイズ除去と拡大を行う AI 推論エンジン（MIT ライセンス）。</translation>
+    </message>
+    <message>
+        <source>Neural network inference framework with Vulkan GPU acceleration, built into waifu2x-ncnn-vulkan (BSD 3-Clause License).</source>
+        <translation>Vulkan による GPU 高速化に対応したニューラルネットワーク推論フレームワーク。waifu2x-ncnn-vulkan に組み込まれています（BSD 3-Clause ライセンス）。</translation>
+    </message>
+    <message>
+        <source>Trained models for anime-style illustrations (MIT License).</source>
+        <translation>アニメ調イラスト向けに学習されたモデル（MIT ライセンス）。</translation>
+    </message>
+    <message>
+        <source>User interface and image reading and writing (GNU LGPL v3).</source>
+        <translation>ユーザーインターフェースと画像の読み書き（GNU LGPL v3）。</translation>
+    </message>
+    <message>
+        <source>See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.</source>
+        <translation>完全な一覧とライセンス本文は THIRD_PARTY_NOTICES.md と licenses フォルダーを参照してください。</translation>
+    </message>
+    <message>
+        <source>Open License Files</source>
+        <translation>ライセンスファイルを開く</translation>
+    </message>
+    <message>
+        <source>About Qt</source>
+        <translation>Qt について</translation>
+    </message>
+    <message>
+        <source>The license files (LICENSE, THIRD_PARTY_NOTICES.md) were not found in:
+%1</source>
+        <translation>次の場所にライセンスファイル（LICENSE、THIRD_PARTY_NOTICES.md）が見つかりません：
+%1</translation>
+    </message>
+    <message>
+        <source>Cannot open the folder:
+%1</source>
+        <translation>フォルダーを開けません：
+%1</translation>
+    </message>
+</context>
+<context>
     <name>CompletionDialog</name>
     <message>
         <source>Processing Canceled</source>
@@ -179,6 +242,14 @@
     <message>
         <source>&amp;Settings</source>
         <translation>設定(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;Help</source>
+        <translation>ヘルプ(&amp;H)</translation>
+    </message>
+    <message>
+        <source>&amp;About AnimeRestoreX</source>
+        <translation>AnimeRestoreX について(&amp;A)</translation>
     </message>
     <message>
         <source>Lossy</source>

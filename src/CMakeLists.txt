@@ -23,8 +23,24 @@ qt_add_library(arxui STATIC
     ui/CompletionDialog.h ui/CompletionDialog.cpp
     ui/SettingsDialog.h ui/SettingsDialog.cpp
     ui/LanguageManager.h ui/LanguageManager.cpp
+    ui/AboutDialog.h ui/AboutDialog.cpp
+    ui/AppIcon.h
 )
 target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets)
+target_compile_definitions(arxui PRIVATE ARX_VERSION="${PROJECT_VERSION}")
+
+# Window icon PNGs (pre-rendered from resources/icons/app.svg; see tools/make-icons.ps1).
+qt_add_resources(arxui "app_icons"
+    PREFIX "/icons"
+    BASE "${CMAKE_SOURCE_DIR}/resources/icons"
+    FILES
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_16.png
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_24.png
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_32.png
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_48.png
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_64.png
+        ${CMAKE_SOURCE_DIR}/resources/icons/app_256.png
+)
 
 # Traditional Chinese and Japanese; English is the source language.
 # .qm files are embedded under :/i18n. Update .ts with: cmake --build <dir> --target update_translations
@@ -40,6 +56,7 @@ qt_add_translations(
 
 qt_add_executable(AnimeRestoreX WIN32
     main.cpp
+    ${CMAKE_SOURCE_DIR}/resources/app.rc   # embeds resources/icons/app.ico
 )
 target_link_libraries(AnimeRestoreX PRIVATE arxui)
 target_compile_definitions(AnimeRestoreX PRIVATE PROJECT_VERSION_STRING="${PROJECT_VERSION}")

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2EC4C9"/>
+      <stop offset="1" stop-color="#6A5ACD"/>
+    </linearGradient>
+    <clipPath id="roundA"><rect x="8" y="8" width="240" height="240" rx="52"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bgA)"/>
+  <g clip-path="url(#roundA)">
+    <!-- lower-left: jagged pixel staircase (the low-resolution side) -->
+    <path d="M8 248 V168 H48 V136 H80 V104 H112 V72 H144 V40 H176 V8 H248 V248 Z" fill="#FFFFFF" fill-opacity="0.18"/>
+    <path d="M40 216 V184 H72 V152 H104 V120 H136 V88 H168 V56" fill="none" stroke="#1B1F3B" stroke-width="18" stroke-linejoin="miter"/>
+    <!-- upper-right: the same contour, restored as a smooth line -->
+    <path d="M88 216 C 128 214, 210 150, 212 64" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round"/>
+  </g>
+  <!-- sparkle -->
+  <path d="M196 30 L204 52 L226 60 L204 68 L196 90 L188 68 L166 60 L188 52 Z" fill="#FFE27A"/>
+</svg>

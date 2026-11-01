@@ -3,6 +3,7 @@
 #include "core/ChildProcessGuard.h"
 #include "core/JobSpec.h"
 #include "core/Language.h"
+#include "ui/AppIcon.h"
 #include "ui/LanguageManager.h"
 #include "ui/MainWindow.h"
 
@@ -19,6 +20,8 @@ int main(int argc, char *argv[])
 
     // 72 MP RGBA is ~288 MB; raise Qt's default reader limit (official example uses 1024 MB).
     QImageReader::setAllocationLimit(1024);
+
+    QApplication::setWindowIcon(appIcon());
 
     qRegisterMetaType<arx::JobSpec>();
     qRegisterMetaType<arx::ItemResult>();

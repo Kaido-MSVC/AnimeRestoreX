@@ -16,6 +16,10 @@ Publish together: the zip, the three Qt 6.12.0 source archives copied to `dist/`
 License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md`, `licenses/`
 (regenerate with `tools/collect-licenses.ps1`).
 
+Icons: `resources/icons/app.svg` is the source; the committed `app.ico` and
+`app_<size>.png` are regenerated with `pwsh -File tools/make-icons.ps1`
+(developer-only, needs Qt Svg). Normal builds use the committed files.
+
 UI languages: 繁體中文, 日本語, English (source). Translations live in
 `translations/*.ts`; refresh them with `cmake --build build/debug --target update_translations`.
 

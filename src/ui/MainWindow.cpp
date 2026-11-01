@@ -3,6 +3,8 @@
 
 #include "core/AppSettings.h"
 #include "core/FolderScanner.h"
+#include "ui/AboutDialog.h"
+#include "ui/AppIcon.h"
 #include "ui/CompletionDialog.h"
 #include "ui/JobWorker.h"
 #include "ui/LanguageManager.h"
@@ -15,6 +17,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 
@@ -48,8 +51,12 @@ MainWindow::MainWindow(QWidget *parent)
       m_settings(std::make_unique<arx::AppSettings>())
 {
     ui->setupUi(this);
+    setWindowIcon(appIcon());
     m_settingsAction = menuBar()->addAction(QString());
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+    m_helpMenu = menuBar()->addMenu(QString());
+    m_aboutAction = m_helpMenu->addAction(QString());
+    connect(m_aboutAction, &QAction::triggered, this, &MainWindow::openAbout);
     populateCombos();
 
     ui->mainSplitter->setStretchFactor(0, 2);
@@ -62,9 +69,7 @@ MainWindow::MainWindow(QWidget *parent)
     header->setSectionResizeMode(ColStatus, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
     header->resizeSection(ColDetail, 140);
-    ui->progressBar->setRange(0, 1);
-    ui->progressBar->setValue(0);
-    ui->progressBar->setFormat(QStringLiteral("%v / %m"));
+    resetProgress();
 
     m_worker = new JobWorker;
     m_worker->moveToThread(&m_thread);
@@ -149,6 +154,20 @@ void MainWindow::openSettings()
     applySettings(dlg.noiseLevel(), dlg.tileSize(), dlg.languageChanged(), int(dlg.language()));
 }
 
+void MainWindow::openAbout()
+{
+    AboutDialog dlg(this);
+    dlg.exec();
+}
+
+void MainWindow::resetProgress()
+{
+    // QProgressBar needs max > 0 to show an empty (not busy) bar; the text is fixed.
+    ui->progressBar->setRange(0, 1);
+    ui->progressBar->setValue(0);
+    ui->progressBar->setFormat(QStringLiteral("0 / 0"));
+}
+
 void MainWindow::applySettings(int noise, int tile, bool languageChanged, int language)
 {
     const bool noiseChanged = noise != m_settings->noiseLevel();
@@ -170,6 +189,8 @@ void MainWindow::applySettings(int noise, int tile, bool languageChanged, int la
 void MainWindow::retranslate()
 {
     m_settingsAction->setText(tr("&Settings"));
+    m_helpMenu->setTitle(tr("&Help"));
+    m_aboutAction->setText(tr("&About AnimeRestoreX"));
     populateCombos();
     updateQualityControls();
     for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
@@ -389,8 +410,10 @@ void MainWindow::removeSelected()
         m_keys.remove(pathKey(item->data(ColFile, kRolePath).toString()));
         delete item;
     }
-    if (ui->fileList->topLevelItemCount() == 0)
+    if (ui->fileList->topLevelItemCount() == 0) {
         ui->previewPane->clear();
+        resetProgress();
+    }
     updateButtons();
 }
 
@@ -399,8 +422,7 @@ void MainWindow::clearList()
     ui->fileList->clear();
     m_keys.clear();
     ui->previewPane->clear();
-    ui->progressBar->setRange(0, 1);
-    ui->progressBar->setValue(0);
+    resetProgress();
     ui->statusLabel->clear();
     updateButtons();
 }
@@ -490,6 +512,7 @@ void MainWindow::start()
     m_finishedCount = 0;
     ui->progressBar->setRange(0, int(files.size()));
     ui->progressBar->setValue(0);
+    ui->progressBar->setFormat(QStringLiteral("%v / %m"));
     ui->statusLabel->setText(tr("Starting..."));
     setRunning(true);
 

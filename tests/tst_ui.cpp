@@ -2,6 +2,7 @@
 // drives the real main window and uses the waifu2x copy next to the test exe.
 #include "TestImages.h"
 
+#include "ui/AboutDialog.h"
 #include "ui/CompletionDialog.h"
 #include "ui/LanguageManager.h"
 #include "ui/SettingsDialog.h"
@@ -12,6 +13,7 @@
 
 #include <QComboBox>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMenuBar>
 #include <QSettings>
 #include <QSpinBox>
@@ -43,6 +45,10 @@ private slots:
     void folderMemoryRestoresIndependently();
     void autoLanguageIsNotSavedAsManual();
     void languageSwitchRetranslates();
+    void windowIconFromResources();
+    void aboutDialogContents();
+    void aboutDialogLicenseFolder();
+    void progressResetsWhenListEmpties();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -357,6 +363,10 @@ void TestUi::languageSwitchRetranslates()
         sd.show();
         QTest::qWait(200);
         sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
+        AboutDialog ad(&w);
+        ad.show();
+        QTest::qWait(200);
+        ad.grab().save(QDir(snapDir).filePath(QStringLiteral("about_%1.png").arg(tag)));
     };
     snapshot(QStringLiteral("zh_TW"));
 
@@ -369,6 +379,99 @@ void TestUi::languageSwitchRetranslates()
     QTRY_COMPARE(startButton->text(), QStringLiteral("Start"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::English));
     QSettings().remove(QStringLiteral("ui/language"));
+}
+
+void TestUi::windowIconFromResources()
+{
+    for (int s : {16, 24, 32, 48, 64, 256})
+        QVERIFY2(QFile::exists(QStringLiteral(":/icons/app_%1.png").arg(s)), "embedded icon PNG missing");
+    MainWindow w;
+    const QIcon icon = w.windowIcon();
+    QVERIFY(!icon.isNull());
+    const QList<QSize> sizes = icon.availableSizes();
+    QVERIFY(sizes.contains(QSize(16, 16)));
+    QVERIFY(sizes.contains(QSize(256, 256)));
+}
+
+void TestUi::aboutDialogContents()
+{
+    AboutDialog dlg;
+    const QString text = dlg.bodyText();
+    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.0.0"),
+                             QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
+                             QStringLiteral("waifu2x-ncnn-vulkan"), QStringLiteral("ncnn (Tencent)"),
+                             QStringLiteral("nagadomi/waifu2x"), QStringLiteral("Qt 6.12"),
+                             QStringLiteral("LGPL")})
+        QVERIFY2(text.contains(s), qPrintable(s));
+    QVERIFY(dlg.openLicensesButton());
+    QVERIFY(dlg.aboutQtButton());
+
+    // Help menu entry exists in the main window.
+    MainWindow w;
+    bool found = false;
+    for (QAction *a : w.menuBar()->actions())
+        if (a->menu())
+            for (QAction *sub : a->menu()->actions())
+                found |= sub->text().contains(QStringLiteral("About AnimeRestoreX"));
+    QVERIFY(found);
+
+    // Translated together with the rest of the UI.
+    LanguageManager::instance().apply(arx::Language::TraditionalChinese);
+    AboutDialog zh;
+    QCOMPARE(zh.windowTitle(), QStringLiteral("關於 AnimeRestoreX"));
+    QVERIFY(zh.bodyText().contains(QStringLiteral("第三方元件")));
+    LanguageManager::instance().apply(arx::Language::Japanese);
+    AboutDialog ja;
+    QCOMPARE(ja.windowTitle(), QStringLiteral("AnimeRestoreX について"));
+    LanguageManager::instance().apply(arx::Language::English);
+}
+
+void TestUi::aboutDialogLicenseFolder()
+{
+    const QString dir = m_dir.filePath(QStringLiteral("授權 資料夾"));
+    QVERIFY(QDir().mkpath(dir));
+    QVERIFY(!AboutDialog::licenseFilesPresent(dir));
+
+    QString captured;
+    autoCloseNextModal(&captured);
+    QVERIFY(!AboutDialog::openLicenseFolder(nullptr, dir));
+    QVERIFY2(captured.contains(QStringLiteral("not found")), qPrintable(captured));
+
+    for (const char *name : {"LICENSE", "THIRD_PARTY_NOTICES.md"}) {
+        QFile f(QDir(dir).filePath(QString::fromLatin1(name)));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("x");
+    }
+    QVERIFY(AboutDialog::licenseFilesPresent(dir));
+}
+
+void TestUi::progressResetsWhenListEmpties()
+{
+    const QString a = m_dir.filePath(QStringLiteral("p1.png"));
+    const QString b = m_dir.filePath(QStringLiteral("p2.png"));
+    QVERIFY(testimg::make(8, 8, false).save(a, "png"));
+    QVERIFY(testimg::make(8, 8, false).save(b, "png"));
+
+    MainWindow w;
+    auto *bar = w.findChild<QProgressBar *>(QStringLiteral("progressBar"));
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QCOMPARE(bar->text(), QStringLiteral("0 / 0"));  // at startup
+
+    // Clear List
+    w.addFiles({a, b});
+    w.findChild<QPushButton *>(QStringLiteral("clearButton"))->click();
+    QCOMPARE(list->topLevelItemCount(), 0);
+    QCOMPARE(bar->text(), QStringLiteral("0 / 0"));
+
+    // Remove every item with "Remove"
+    w.addFiles({a, b});
+    bar->setRange(0, 2);  // simulate a finished run showing "2 / 2"
+    bar->setValue(2);
+    bar->setFormat(QStringLiteral("%v / %m"));
+    list->selectAll();
+    w.findChild<QPushButton *>(QStringLiteral("removeButton"))->click();
+    QCOMPARE(list->topLevelItemCount(), 0);
+    QCOMPARE(bar->text(), QStringLiteral("0 / 0"));
 }
 
 QTEST_MAIN(TestUi)
