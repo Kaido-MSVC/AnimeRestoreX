@@ -3,13 +3,22 @@
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.2.0 (new "creative studio" look that follows the Windows light /
+Status: **v1.2.0** (new "creative studio" look that follows the Windows light /
 dark setting, list thumbnails, estimated per-image / batch progress with time
-left; version filled into THIRD_PARTY_NOTICES by CMake). v1.1 plan:
-`docs/v1.1-ui-plan.md`; log: `docs/開發記錄.md` §12–13.
+left; version filled into THIRD_PARTY_NOTICES by CMake). v1.1.1 refined the
+appearance and layout; v1.1.0 added high-DPI fitting, drag and drop, keyboard
+shortcuts, and 1x denoise-only mode. UI plan: `docs/v1.1-ui-plan.md`; log:
+`docs/開發記錄.md` §12–14.
 
 Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
 `resources/theme/` are regenerated with `pwsh -File tools/make-theme-arrows.ps1`.
+
+## Download
+
+[AnimeRestoreX v1.1.1](https://github.com/Kaido-MSVC/AnimeRestoreX/releases/tag/v1.1.1):
+download `AnimeRestoreX-1.1.1-win64.zip`, extract the entire archive, then run
+`AnimeRestoreX.exe`. Requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable
+GPU and a compatible driver. The executable is unsigned.
 
 ## Release package
 
