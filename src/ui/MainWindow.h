@@ -116,6 +116,16 @@ private:
     arx::ProgressEstimator m_estimator;
     QElapsedTimer m_clock;
     QTimer *m_progressTimer = nullptr;
+    // Progress text sits above the thin bars (the bars draw no text).
+    ElidedLabel *m_itemProgressLabel = nullptr;
+    ElidedLabel *m_batchProgressLabel = nullptr;
+    void setBatchProgressText(const QString &text);
+    void setItemProgressText(const QString &text);
+    void setItemProgressVisible(bool visible);
+    // List thumbnails, decoded off the GUI thread.
+    QThreadPool m_thumbPool;
+    int thumbnailSide() const;  // logical px
+    void requestThumbnail(const QString &path);
     QString m_device;       // GPU reported by the engine in this session
     QString m_ratesDevice;  // device whose measured speeds the estimator uses
     void onDeviceDetected(const QString &device);

@@ -12,6 +12,7 @@
 #include "ui/JobWorker.h"
 #include "ui/LanguageManager.h"
 #include "ui/SettingsDialog.h"
+#include "ui/Theme.h"
 
 #include <QAction>
 #include <QApplication>
@@ -21,7 +22,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QImageReader>
 #include <QLabel>
+#include <QPainterPath>
 #include <QStyle>
 #include <QMenu>
 #include <QMenuBar>
@@ -162,8 +165,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_emptyHint->setForegroundRole(QPalette::PlaceholderText);
     m_dropOverlay = new DropOverlay(ui->fileList->viewport());
 
-    ui->mainSplitter->setStretchFactor(0, 2);
-    ui->mainSplitter->setStretchFactor(1, 3);
+    // Equal halves by default: the list rows carry thumbnails since v1.2.
+    // (A splitter position saved by the user is restored later and wins.)
+    ui->mainSplitter->setStretchFactor(0, 1);
+    ui->mainSplitter->setStretchFactor(1, 1);
     // File names first: the name column takes the free space and is elided in the middle.
     ui->fileList->setTextElideMode(Qt::ElideMiddle);
     QHeaderView *header = ui->fileList->header();
@@ -175,7 +180,24 @@ MainWindow::MainWindow(QWidget *parent)
     header->setSectionResizeMode(ColDetail, QHeaderView::Interactive);
     // The Details column follows the list width so the name column keeps most of it.
     ui->fileList->viewport()->installEventFilter(this);
+    // Thumbnails: one row per image with a small preview next to the name.
+    const int thumb = thumbnailSide();
+    ui->fileList->setIconSize(QSize(thumb, thumb));
+    ui->fileList->setAlternatingRowColors(false);
+    m_thumbPool.setMaxThreadCount(2);
     updateDetailColumnWidth();
+
+    // Progress: a text line above each thin bar ("AI processing 1/2 · est. 34%").
+    m_itemProgressLabel = new ElidedLabel(this);
+    m_itemProgressLabel->setObjectName(QStringLiteral("itemProgressLabel"));
+    m_batchProgressLabel = new ElidedLabel(this);
+    m_batchProgressLabel->setObjectName(QStringLiteral("batchProgressLabel"));
+    ui->progressLayout->insertWidget(0, m_itemProgressLabel);
+    ui->progressLayout->insertWidget(2, m_batchProgressLabel);
+    ui->progressLayout->setSpacing(3);
+    ui->itemProgressBar->setTextVisible(false);
+    ui->progressBar->setTextVisible(false);
+    setItemProgressVisible(false);
     resetProgress();
 
     m_worker = new JobWorker;
@@ -251,6 +273,8 @@ MainWindow::~MainWindow()
 {
     m_scanPool.clear();
     m_scanPool.waitForDone();
+    m_thumbPool.clear();
+    m_thumbPool.waitForDone();
     if (m_thread.isRunning()) {
         m_worker->requestCancel();
         m_thread.quit();
@@ -302,7 +326,83 @@ void MainWindow::resetProgress()
     // QProgressBar needs max > 0 to show an empty (not busy) bar; the text is fixed.
     ui->progressBar->setRange(0, 1);
     ui->progressBar->setValue(0);
-    ui->progressBar->setFormat(QStringLiteral("0 / 0"));
+    setBatchProgressText(QStringLiteral("0 / 0"));
+}
+
+void MainWindow::setBatchProgressText(const QString &text)
+{
+    // The bar keeps the text as its format (accessibility, tests); the label shows it.
+    ui->progressBar->setFormat(text);
+    m_batchProgressLabel->setText(text);
+}
+
+void MainWindow::setItemProgressText(const QString &text)
+{
+    ui->itemProgressBar->setFormat(text);
+    m_itemProgressLabel->setText(text);
+}
+
+void MainWindow::setItemProgressVisible(bool visible)
+{
+    ui->itemProgressBar->setVisible(visible);
+    m_itemProgressLabel->setVisible(visible);
+}
+
+int MainWindow::thumbnailSide() const
+{
+    // About two and a half text lines: large enough to recognise an image.
+    return std::max(32, int(std::lround(fontMetrics().height() * 2.3)));
+}
+
+void MainWindow::requestThumbnail(const QString &path)
+{
+    const int side = thumbnailSide();
+    const qreal dpr = devicePixelRatioF();
+    const QColor frame = theme::color("border");
+    m_thumbPool.start([this, path, side, dpr, frame] {
+        // Header first, then decode at (about) the thumbnail size.
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        QSize size = reader.size();
+        const int px = int(std::ceil(side * dpr));
+        if (size.isValid()) {
+            if (reader.transformation() & QImageIOHandler::TransformationRotate90)
+                size.transpose();
+            reader.setScaledSize(size.scaled(px, px, Qt::KeepAspectRatio));
+        }
+        const QImage img = reader.read();
+        QImage tile(px, px, QImage::Format_ARGB32_Premultiplied);
+        tile.fill(Qt::transparent);
+        if (!img.isNull()) {
+            QPainter p(&tile);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setRenderHint(QPainter::SmoothPixmapTransform);
+            const QImage fitted = img.size() == QSize(px, px) || (img.width() <= px && img.height() <= px)
+                                      ? img
+                                      : img.scaled(px, px, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            const QRectF r((px - fitted.width()) / 2.0, (px - fitted.height()) / 2.0, fitted.width(),
+                           fitted.height());
+            QPainterPath clip;
+            const qreal radius = 6 * dpr;
+            clip.addRoundedRect(r, radius, radius);
+            p.setClipPath(clip);
+            p.drawImage(r, fitted);
+            p.setClipping(false);
+            p.setPen(QPen(frame, dpr));
+            p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+        }
+        tile.setDevicePixelRatio(dpr);
+        QMetaObject::invokeMethod(this, [this, path, tile] {
+            // The item may have been removed while the thumbnail was decoded.
+            for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i) {
+                QTreeWidgetItem *item = ui->fileList->topLevelItem(i);
+                if (item->data(ColFile, kRolePath).toString() == path) {
+                    item->setIcon(ColFile, QIcon(QPixmap::fromImage(tile)));
+                    break;
+                }
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::applySettings(int tile, bool languageChanged, int language)
@@ -365,7 +465,8 @@ void MainWindow::updateEmptyHintWidth()
     const int hint = m_emptyHint->fontMetrics()
                          .boundingRect(QRect(), Qt::AlignCenter, m_emptyHint->text())
                          .width();
-    const int frame = 2 * ui->fileList->frameWidth();
+    // Frame plus the style sheet's list padding (4 px each side).
+    const int frame = 2 * ui->fileList->frameWidth() + 2 * 4;
     ui->fileList->setMinimumWidth(std::max(ch * 24, hint + 2 * ch + frame));
 }
 
@@ -382,7 +483,8 @@ int MainWindow::statusColumnWidth() const
         const int extra = s == ItemState::Failed ? icon + itemFm.averageCharWidth() : 0;
         w = std::max(w, itemFm.horizontalAdvance(stateText(s)) + extra);
     }
-    return w + itemFm.averageCharWidth() * 2;
+    // Room for the style sheet's item padding (4 px each side) as well.
+    return w + itemFm.averageCharWidth() * 2 + 8;
 }
 
 void MainWindow::updateNoiseChoices()
@@ -580,6 +682,10 @@ int MainWindow::addFiles(const QStringList &files)
     int added = 0;
     int duplicates = 0;
     int unsupported = 0;
+    QPixmap blank(ui->fileList->iconSize() * devicePixelRatioF());
+    blank.setDevicePixelRatio(devicePixelRatioF());
+    blank.fill(Qt::transparent);
+    const QIcon blankIcon(blank);
     for (const QString &f : files) {
         if (!arx::isSupportedImageFile(f)) {
             ++unsupported;
@@ -595,7 +701,9 @@ int MainWindow::addFiles(const QStringList &files)
         auto *item = new QTreeWidgetItem(ui->fileList);
         item->setText(ColFile, QFileInfo(abs).fileName());
         item->setData(ColFile, kRolePath, abs);
+        item->setIcon(ColFile, blankIcon);  // keeps names aligned until the thumbnail is ready
         setItemState(item, ItemState::Pending);
+        requestThumbnail(abs);
         ++added;
     }
 
@@ -806,7 +914,7 @@ void MainWindow::refreshItemTexts(QTreeWidgetItem *item)
     item->setToolTip(ColDetail, wrapTooltip(detail));
     // Failure is shown by an icon as well, not by the red color alone.
     const bool failed = state == ItemState::Failed;
-    item->setForeground(ColStatus, failed ? QBrush(Qt::red) : QBrush());
+    item->setForeground(ColStatus, failed ? QBrush(theme::danger()) : QBrush());
     item->setIcon(ColStatus, failed ? style()->standardIcon(QStyle::SP_MessageBoxCritical) : QIcon());
 }
 
@@ -875,8 +983,8 @@ void MainWindow::start()
     ui->progressBar->setRange(0, 1000);
     ui->progressBar->setValue(0);
     ui->itemProgressBar->setValue(0);
-    ui->itemProgressBar->setFormat(QString());
-    ui->itemProgressBar->setVisible(true);
+    setItemProgressText(QString());
+    setItemProgressVisible(true);
     m_status->setText(tr("Starting..."));
     setRunning(true);
     refreshProgress();
@@ -986,12 +1094,12 @@ void MainWindow::refreshProgress()
                                   .arg(percent(snap.batchFraction))
                                   .arg(remainingText(snap.remainingSec));
     ui->progressBar->setValue(permille(snap.batchFraction));
-    ui->progressBar->setFormat(batchText);
+    setBatchProgressText(batchText);
     ui->progressBar->setToolTip(batchText + QLatin1Char('\n') + hint);
     if (snap.index >= 0) {
         const QString itemText = tr("%1 · est. %2%").arg(stageText(snap)).arg(percent(snap.itemFraction));
         ui->itemProgressBar->setValue(permille(snap.itemFraction));
-        ui->itemProgressBar->setFormat(itemText);
+        setItemProgressText(itemText);
         ui->itemProgressBar->setToolTip(itemText + QLatin1Char('\n') + hint);
     }
 }
@@ -1001,10 +1109,10 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
     m_progressTimer->stop();
     setRunning(false);
     // Back to the plain count of this job; the estimate is no longer shown.
-    ui->itemProgressBar->setVisible(false);
+    setItemProgressVisible(false);
     ui->progressBar->setRange(0, std::max(1, int(m_jobItems.size())));
     ui->progressBar->setValue(m_finishedCount);
-    ui->progressBar->setFormat(QStringLiteral("%1 / %2").arg(m_finishedCount).arg(m_jobItems.size()));
+    setBatchProgressText(QStringLiteral("%1 / %2").arg(m_finishedCount).arg(m_jobItems.size()));
     ui->progressBar->setToolTip(QString());
     // Measured speeds make the next estimate (also in later sessions) better;
     // they are stored only under a GPU the engine actually reported.
@@ -1094,9 +1202,10 @@ void MainWindow::updateDetailColumnWidth()
     // available in the File / Status tooltips.
     const int ch = ui->fileList->fontMetrics().averageCharWidth();
     const int view = ui->fileList->viewport()->width();
-    // The name column always keeps at least 40% of the list; in a very
-    // narrow list the Status text is elided (full text in the tooltip).
-    const int nameMin = view * 2 / 5;
+    // The name column always keeps at least 40% of the list for the text,
+    // plus the thumbnail; in a very narrow list the Status text is elided
+    // (full text in the tooltip).
+    const int nameMin = std::min(view, view * 2 / 5 + ui->fileList->iconSize().width() + 8);
     const int status = std::min(statusColumnWidth(), view - nameMin);
     ui->fileList->header()->resizeSection(ColStatus, status);
     const int room = view - nameMin - status;
@@ -1112,6 +1221,10 @@ void MainWindow::changeEvent(QEvent *event)
     if (event->type() == QEvent::LanguageChange) {
         ui->retranslateUi(this);
         retranslate();
+    } else if (event->type() == QEvent::PaletteChange) {
+        // Light / dark switch: the Failed color comes from the theme.
+        for (int i = 0; i < ui->fileList->topLevelItemCount(); ++i)
+            refreshItemTexts(ui->fileList->topLevelItem(i));
     }
     QMainWindow::changeEvent(event);
 }

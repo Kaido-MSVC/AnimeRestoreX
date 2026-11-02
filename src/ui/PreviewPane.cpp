@@ -9,6 +9,8 @@
 #include <QPainter>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStyleOptionComboBox>
+#include <QStylePainter>
 #include <QVBoxLayout>
 
 namespace {
@@ -27,6 +29,25 @@ const QBrush &checkerBrush()
     }();
     return brush;
 }
+
+// A combo box that elides its text ("Fit to win…") when it is narrower than
+// its contents, instead of cutting the text off.
+class ElidingComboBox : public QComboBox {
+public:
+    using QComboBox::QComboBox;
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QStylePainter p(this);
+        QStyleOptionComboBox opt;
+        initStyleOption(&opt);
+        p.drawComplexControl(QStyle::CC_ComboBox, opt);
+        const QRect text = style()->subControlRect(QStyle::CC_ComboBox, &opt, QStyle::SC_ComboBoxEditField, this);
+        opt.currentText = fontMetrics().elidedText(opt.currentText, Qt::ElideRight, text.width());
+        p.drawControl(QStyle::CE_ComboBoxLabel, opt);
+    }
+};
 
 } // namespace
 
@@ -95,7 +116,7 @@ QRectF ImageCanvas::fittedRect() const
 void ImageCanvas::paintEvent(QPaintEvent *event)
 {
     QPainter p(this);
-    p.fillRect(event->rect(), palette().window());
+    p.fillRect(event->rect(), palette().base());  // the card surface around the image
 
     if (!hasImage()) {
         p.setPen(palette().color(QPalette::PlaceholderText));
@@ -137,8 +158,11 @@ PreviewPane::PreviewPane(QWidget *parent) : QWidget(parent)
     root->setContentsMargins(0, 0, 0, 0);
 
     m_modeLabel = new QLabel(this);
-    m_mode = new QComboBox(this);
+    m_mode = new ElidingComboBox(this);
     m_modeLabel->setBuddy(m_mode);
+    // Full text when there is room; in a narrow window the combo may shrink
+    // (text elided) instead of raising the window's minimum width.
+    m_mode->setMinimumWidth(fontMetrics().averageCharWidth() * 8 + 32);
 
     // Each column: bold title row above its view. The preview mode sits at
     // the right end of the Result title row (no extra row of its own).
@@ -158,6 +182,7 @@ PreviewPane::PreviewPane(QWidget *parent) : QWidget(parent)
         // Same title row height in both columns, so the two views line up.
         title->setMinimumHeight(m_mode->sizeHint().height());
         area = new QScrollArea(this);
+        area->setObjectName(QStringLiteral("previewArea"));  // styled as a card (Theme)
         canvas = new ImageCanvas;
         area->setWidget(canvas);
         area->setAlignment(Qt::AlignCenter);

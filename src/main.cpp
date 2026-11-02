@@ -6,6 +6,7 @@
 #include "ui/AppIcon.h"
 #include "ui/LanguageManager.h"
 #include "ui/MainWindow.h"
+#include "ui/Theme.h"
 
 #include <QApplication>
 #include <QImageReader>
@@ -22,6 +23,8 @@ int main(int argc, char *argv[])
     QImageReader::setAllocationLimit(1024);
 
     QApplication::setWindowIcon(appIcon());
+    // v1.2 theme; follows the Windows light / dark setting while running.
+    theme::install(app);
 
     qRegisterMetaType<arx::JobSpec>();
     qRegisterMetaType<arx::ItemResult>();

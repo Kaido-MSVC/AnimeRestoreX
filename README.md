@@ -3,9 +3,13 @@
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.2.0 in progress (estimated per-image / batch progress with time
+Status: v1.2.0 (new "creative studio" look that follows the Windows light /
+dark setting, list thumbnails, estimated per-image / batch progress with time
 left; version filled into THIRD_PARTY_NOTICES by CMake). v1.1 plan:
-`docs/v1.1-ui-plan.md`; log: `docs/開發記錄.md` §12.
+`docs/v1.1-ui-plan.md`; log: `docs/開發記錄.md` §12–13.
+
+Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
+`resources/theme/` are regenerated with `pwsh -File tools/make-theme-arrows.ps1`.
 
 ## Release package
 

@@ -25,7 +25,7 @@ set_tests_properties(tst_ui PROPERTIES TIMEOUT 600
 # the windows platform (windows flash briefly on the desktop).
 add_test(NAME tst_ui_layout COMMAND tst_ui
     windowFitsCommonScreens minimumSizeWithinBudgetAllLanguages
-    windowGeometryRestoresAndFallsBack detailColumnFollowsListWidth)
+    windowGeometryRestoresAndFallsBack detailColumnFollowsListWidth themeFollowsColorScheme)
 set_tests_properties(tst_ui_layout PROPERTIES TIMEOUT 120
     ENVIRONMENT "QT_QPA_PLATFORM=windows"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")

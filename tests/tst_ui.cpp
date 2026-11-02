@@ -10,6 +10,7 @@
 #include "ui/SettingsDialog.h"
 #include "ui/MainWindow.h"
 #include "ui/PreviewPane.h"
+#include "ui/Theme.h"
 
 #include "core/AppSettings.h"
 
@@ -33,6 +34,8 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QStyleHints>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTreeWidget>
@@ -69,6 +72,9 @@ private slots:
     void windowGeometryRestoresAndFallsBack();
     void statusMessagesStaySingleLine();
     void detailColumnFollowsListWidth();
+    void themeStyleSheetIsComplete();
+    void themeFollowsColorScheme();
+    void listShowsThumbnails();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -89,7 +95,28 @@ void TestUi::initTestCase()
     qRegisterMetaType<arx::BatchSummary>();
     qRegisterMetaType<QList<arx::ItemPlan>>();
     QVERIFY(m_dir.isValid());
+    // Same look as the app (Fusion, font, style sheet), so the layout checks measure it.
+    theme::install(*qApp);
 }
+
+void TestUi::themeStyleSheetIsComplete()
+{
+    for (auto mode : {theme::Mode::Light, theme::Mode::Dark}) {
+        const QString qss = theme::styleSheet(mode);
+        // Every {token} was replaced.
+        QVERIFY2(!qss.contains(QRegularExpression(QStringLiteral("\\{[a-z_]+\\}"))), qPrintable(qss.left(200)));
+        // The chevron images of this mode exist in the resources (1x and 2x).
+        const QString m = mode == theme::Mode::Dark ? QStringLiteral("dark") : QStringLiteral("light");
+        for (const QString &dir : {QStringLiteral("down"), QStringLiteral("up")}) {
+            QVERIFY(qss.contains(QStringLiteral(":/theme/chevron-%1-%2.png").arg(dir, m)));
+            QVERIFY(QFile::exists(QStringLiteral(":/theme/chevron-%1-%2.png").arg(dir, m)));
+            QVERIFY(QFile::exists(QStringLiteral(":/theme/chevron-%1-%2@2x.png").arg(dir, m)));
+        }
+    }
+    QVERIFY(theme::palette(theme::Mode::Light).color(QPalette::Window).lightness() > 200);
+    QVERIFY(theme::palette(theme::Mode::Dark).color(QPalette::Window).lightness() < 60);
+}
+
 
 void TestUi::autoCloseNextModal(QString *captured)
 {
@@ -196,6 +223,10 @@ void TestUi::fullBatchThroughMainWindow()
     // While running: per-image bar and a batch bar marked as an estimate.
     QVERIFY(itemBar->isVisible());
     QVERIFY2(bar->text().startsWith(QStringLiteral("0 / 3 · est. ")), qPrintable(bar->text()));
+    // The text is shown by the label above the thin bar.
+    auto *batchLabel = w.findChild<ElidedLabel *>(QStringLiteral("batchProgressLabel"));
+    QCOMPARE(batchLabel->text(), bar->text());
+    QVERIFY(w.findChild<ElidedLabel *>(QStringLiteral("itemProgressLabel"))->isVisible());
     QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 120000);
 
     QVERIFY2(summary.contains(QStringLiteral("Succeeded: 2")), qPrintable(summary));
@@ -875,8 +906,47 @@ void TestUi::detailColumnFollowsListWidth()
         QVERIFY2(list->header()->sectionSize(0) >= view * 2 / 5,
                  qPrintable(QStringLiteral("name %1 of %2").arg(list->header()->sectionSize(0)).arg(view)));
         if (width == 1100)  // the default window size shows all three columns
-            QVERIFY(!list->isColumnHidden(2));
+            QVERIFY2(!list->isColumnHidden(2),
+                     qPrintable(QStringLiteral("view %1 name %2 status %3 ch %4")
+                                    .arg(view).arg(list->header()->sectionSize(0))
+                                    .arg(list->header()->sectionSize(1))
+                                    .arg(list->fontMetrics().averageCharWidth())));
     }
+}
+
+void TestUi::themeFollowsColorScheme()
+{
+    REQUIRE_REAL_PLATFORM();
+    auto *hints = QGuiApplication::styleHints();
+    MainWindow w;
+    w.show();
+    for (auto scheme : {Qt::ColorScheme::Dark, Qt::ColorScheme::Light}) {
+        hints->setColorScheme(scheme);  // what Windows does when the user switches
+        const auto expected = scheme == Qt::ColorScheme::Dark ? theme::Mode::Dark : theme::Mode::Light;
+        QTRY_COMPARE(theme::currentMode(), expected);
+        QCOMPARE(qApp->palette().color(QPalette::Window), theme::palette(expected).color(QPalette::Window));
+        QTRY_COMPARE(w.palette().color(QPalette::Window), theme::palette(expected).color(QPalette::Window));
+    }
+    hints->unsetColorScheme();
+    QTRY_COMPARE(theme::currentMode(), theme::systemMode());
+}
+
+void TestUi::listShowsThumbnails()
+{
+    const QString a = m_dir.filePath(QStringLiteral("thumb 縮圖.png"));
+    QVERIFY(testimg::make(300, 120, true).save(a, "png"));
+    MainWindow w;
+    w.show();
+    QCOMPARE(w.addFiles({a}), 1);
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QTreeWidgetItem *item = list->topLevelItem(0);
+    // The decoded thumbnail replaces the blank placeholder (not fully transparent).
+    QTRY_VERIFY_WITH_TIMEOUT([&] {
+        const QImage img = item->icon(0).pixmap(list->iconSize()).toImage();
+        const QColor center = img.pixelColor(img.width() / 2, img.height() / 2);
+        return center.alpha() > 0;
+    }(), 5000);
+    QVERIFY(list->iconSize().height() >= 32);
 }
 
 QTEST_MAIN(TestUi)
