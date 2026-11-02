@@ -149,6 +149,7 @@ RunResult Waifu2xRunner::run(const Waifu2xParams &p, const QString &inPng, const
     err += proc.readAllStandardError();
 
     r.device = deviceName(err);
+    r.stderrText = QString::fromLocal8Bit(err).trimmed().right(8000);
     const QString detail = summarizeStderr(err);
     if (proc.exitStatus() == QProcess::CrashExit) {
         r.error = tr("The AI engine crashed.");

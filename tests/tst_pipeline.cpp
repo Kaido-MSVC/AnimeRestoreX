@@ -19,6 +19,22 @@
 
 using namespace arx;
 
+namespace {
+
+// Failure messages keep the reason, the failing step and the engine stderr,
+// so a failure seen once can be traced from the test log afterwards.
+QString why(const ItemResult &r)
+{
+    return r.diagnostics.isEmpty() ? r.error : r.error + QLatin1Char('\n') + r.diagnostics;
+}
+
+QString why(const RunResult &r)
+{
+    return QStringLiteral("%1\nengine stderr:\n%2").arg(r.error, r.stderrText);
+}
+
+} // namespace
+
 class TestPipeline : public QObject {
     Q_OBJECT
 private slots:
@@ -107,6 +123,7 @@ ItemResult TestPipeline::runOne(const QString &src, const JobSpec &s)
     if (!pre.isEmpty()) {
         ItemResult r;
         r.error = pre;
+        r.diagnostics = QStringLiteral("step: preconditions");
         return r;
     }
     return ProcessJob::run(src, s, cancel);
@@ -116,7 +133,7 @@ void TestPipeline::png2xOpaque()
 {
     const QByteArray before = testimg::sha256(m_opaque);
     const ItemResult r = runOne(m_opaque, spec(OutputFormat::Png, 2));
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     QCOMPARE(QFileInfo(r.outputPath).fileName(), QStringLiteral("線畫 テスト_2x.png"));
     QImageReader rd(r.outputPath);
     QCOMPARE(rd.format(), QByteArray("png"));
@@ -128,7 +145,7 @@ void TestPipeline::png2xOpaque()
 void TestPipeline::webp4xLossyAlpha()
 {
     const ItemResult r = runOne(m_alpha, spec(OutputFormat::WebP, 4));
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     QFile f(r.outputPath);
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QByteArray bytes = f.readAll();
@@ -145,7 +162,7 @@ void TestPipeline::webpLosslessAndJpeg()
     JobSpec s = spec(OutputFormat::WebP, 2);
     s.encode.webpLossless = true;
     ItemResult r = runOne(m_alpha, s);
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     QFile f(r.outputPath);
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QByteArray bytes = f.readAll();
@@ -153,7 +170,7 @@ void TestPipeline::webpLosslessAndJpeg()
     QVERIFY(!bytes.contains("VP8 "));
 
     r = runOne(m_alpha, spec(OutputFormat::Jpeg, 2));
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     QCOMPARE(QFileInfo(r.outputPath).suffix(), QStringLiteral("jpg"));
     const QImage j(r.outputPath);
     QCOMPARE(j.size(), QSize(160, 120));
@@ -165,7 +182,7 @@ void TestPipeline::sameNameGetsNumbered()
 {
     const JobSpec s = spec(OutputFormat::Png, 2);
     const ItemResult a = runOne(m_opaque, s);  // png2xOpaque already made the first
-    QVERIFY2(a.ok, qPrintable(a.error));
+    QVERIFY2(a.ok, qPrintable(why(a)));
     QCOMPARE(QFileInfo(a.outputPath).fileName(), QStringLiteral("線畫 テスト_2x (1).png"));
 }
 
@@ -181,6 +198,7 @@ void TestPipeline::corruptInputFailsCleanly()
     const ItemResult r = runOne(bad, spec(OutputFormat::Png, 2));
     QVERIFY(!r.ok);
     QVERIFY(!r.error.isEmpty());
+    QVERIFY2(r.diagnostics.startsWith(QStringLiteral("step: load")), qPrintable(r.diagnostics));
     qInfo() << "corrupt input error:" << r.error;
     QCOMPARE(QDir(m_outDir).entryList(QDir::Files | QDir::Hidden).size(), before);
 }
@@ -225,7 +243,7 @@ void TestPipeline::cancelKillsProcess()
     t.join();
     if (r.ok)
         QSKIP("inference finished before cancel; GPU too fast for this check");
-    QVERIFY(r.canceled);
+    QVERIFY2(r.canceled, qPrintable(why(r)));
     QVERIFY(timer.elapsed() < 10000);
     QVERIFY(leftovers().isEmpty());
     QVERIFY(!QFileInfo::exists(QDir(m_outDir).filePath(QStringLiteral("big_4x.png"))));
@@ -242,12 +260,17 @@ void TestPipeline::batchMixedContinuesAfterFailure()
     const QStringList files{m_opaque, bad, m_alpha};
     QList<int> started;
     QList<QPair<int, bool>> finished;
+    QStringList reasons;
     BatchCallbacks cb;
     cb.itemStarted = [&](int i) { started << i; };
-    cb.itemFinished = [&](int i, const ItemResult &r) { finished << qMakePair(i, r.ok); };
+    cb.itemFinished = [&](int i, const ItemResult &r) {
+        finished << qMakePair(i, r.ok);
+        if (!r.ok)
+            reasons << QStringLiteral("item %1: %2").arg(i).arg(why(r));
+    };
     std::atomic_bool cancel{false};
     const BatchSummary s = runBatch(files, spec(OutputFormat::WebP, 2), cancel, cb);
-    QCOMPARE(s.succeeded, 2);
+    QVERIFY2(s.succeeded == 2, qPrintable(reasons.join(QLatin1Char('\n'))));
     QCOMPARE(s.failed, 1);
     QCOMPARE(s.notProcessed, 0);
     QVERIFY(!s.canceled);
@@ -319,9 +342,11 @@ void TestPipeline::stagesAreReportedInOrder()
         QCOMPARE(index, 0);
         events << e;
     };
+    QString reason;
+    cb.itemFinished = [&](int, const ItemResult &res) { reason = why(res); };
     std::atomic_bool cancel{false};
     const BatchSummary r = runBatch({m_opaque}, s, cancel, cb);
-    QCOMPARE(r.succeeded, 1);
+    QVERIFY2(r.succeeded == 1, qPrintable(reason + QLatin1Char('\n') + r.fatalError));
     QCOMPARE(events.size(), plan.stages.size());
     for (int i = 0; i < events.size(); ++i) {
         QCOMPARE(events[i].stage, plan.stages[i].stage);
@@ -339,7 +364,7 @@ void TestPipeline::fourXIsTwoStage()
     // The pipeline's 4x PNG must equal running [-n 1 -s 2] then [-n -1 -s 2]
     // by hand on the same normalised input, and must differ from waifu2x -s 4.
     const ItemResult r = runOne(m_opaque, spec(OutputFormat::Png, 4));
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     const QImage pipeline = QImage(r.outputPath).convertToFormat(QImage::Format_RGB888);
     QCOMPARE(pipeline.size(), QSize(384, 256));
 
@@ -355,15 +380,18 @@ void TestPipeline::fourXIsTwoStage()
     Waifu2xParams first = s.waifu2x;   // -n 1 -s 2
     Waifu2xParams second = first;
     second.noise = -1;                 // -n -1 -s 2
-    QVERIFY(Waifu2xRunner::run(first, inPng, tmp.filePath(QStringLiteral("p1.png")), cancel).ok);
-    QVERIFY(Waifu2xRunner::run(second, tmp.filePath(QStringLiteral("p1.png")),
-                               tmp.filePath(QStringLiteral("p2.png")), cancel).ok);
+    const RunResult r1 = Waifu2xRunner::run(first, inPng, tmp.filePath(QStringLiteral("p1.png")), cancel);
+    QVERIFY2(r1.ok, qPrintable(QStringLiteral("manual pass 1: ") + why(r1)));
+    const RunResult r2 = Waifu2xRunner::run(second, tmp.filePath(QStringLiteral("p1.png")),
+                                            tmp.filePath(QStringLiteral("p2.png")), cancel);
+    QVERIFY2(r2.ok, qPrintable(QStringLiteral("manual pass 2: ") + why(r2)));
     const QImage manual = QImage(tmp.filePath(QStringLiteral("p2.png"))).convertToFormat(QImage::Format_RGB888);
     QCOMPARE(manual, pipeline);
 
     Waifu2xParams direct = s.waifu2x;
     direct.scale = 4;                  // waifu2x's own -s 4 (denoise model twice)
-    QVERIFY(Waifu2xRunner::run(direct, inPng, tmp.filePath(QStringLiteral("d4.png")), cancel).ok);
+    const RunResult r4 = Waifu2xRunner::run(direct, inPng, tmp.filePath(QStringLiteral("d4.png")), cancel);
+    QVERIFY2(r4.ok, qPrintable(QStringLiteral("direct -s 4: ") + why(r4)));
     const QImage d4 = QImage(tmp.filePath(QStringLiteral("d4.png"))).convertToFormat(QImage::Format_RGB888);
     QCOMPARE(d4.size(), pipeline.size());
     QVERIFY2(d4 != pipeline, "4x must not be waifu2x's direct -s 4");
@@ -394,7 +422,7 @@ void TestPipeline::oneXDenoiseOnly()
 {
     // 1x keeps the size and runs the noiseN_model once.
     const ItemResult r = runOne(m_opaque, spec(OutputFormat::Png, 1));
-    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY2(r.ok, qPrintable(why(r)));
     QCOMPARE(QFileInfo(r.outputPath).fileName(), QStringLiteral("線畫 テスト_1x.png"));
     const QImage out = QImage(r.outputPath).convertToFormat(QImage::Format_RGB888);
     QCOMPARE(out.size(), QSize(96, 64));

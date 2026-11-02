@@ -34,6 +34,9 @@ struct ItemResult {
     bool fatal = false;  // shared error (engine/GPU); the batch must stop
     QString outputPath;  // set when ok
     QString error;       // set when !ok && !canceled
+    // Not shown in the UI: the step that failed and the engine stderr of the
+    // last pass, for tests and troubleshooting.
+    QString diagnostics;
 };
 
 } // namespace arx

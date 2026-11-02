@@ -17,7 +17,7 @@ namespace arx {
 
 namespace {
 
-ItemResult fail(const QString &msg)
+ItemResult failure(const QString &msg)
 {
     ItemResult r;
     r.error = msg;
@@ -136,7 +136,20 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
             progress.stageStarted(StageEvent{stage, pass, int(passes.size())});
     };
 
+    // Failures carry the step and the last engine stderr as diagnostics
+    // (for tests and troubleshooting; the UI shows only `error`).
+    QString step;
+    QString engineStderr;
+    auto fail = [&](const QString &msg) {
+        ItemResult r = failure(msg);
+        r.diagnostics = QStringLiteral("step: %1").arg(step);
+        if (!engineStderr.isEmpty())
+            r.diagnostics += QStringLiteral("\nengine stderr:\n") + engineStderr;
+        return r;
+    };
+
     // 1. Load and validate.
+    step = QStringLiteral("load");
     report(Stage::Load, 0);
     LoadResult loaded = ImageLoader::load(sourcePath);
     if (!loaded.ok)
@@ -151,6 +164,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
         return canceled();
 
     // 2. Write the normalised 8-bit image as a temporary PNG.
+    step = QStringLiteral("write temporary PNG");
     QTemporaryDir work(QDir(QDir::tempPath()).filePath(QStringLiteral("AnimeRestoreX-XXXXXX")));
     if (!work.isValid())
         return fail(tr("Cannot create a temporary folder: %1").arg(work.errorString()));
@@ -176,8 +190,13 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
         const QString passOutput = (i == passes.size() - 1)
             ? outPng
             : work.filePath(QStringLiteral("pass%1.png").arg(i + 1));
+        step = QStringLiteral("inference pass %1/%2 (%3, -n %4 -s %5)")
+                   .arg(i + 1).arg(passes.size())
+                   .arg(Waifu2xRunner::modelBaseName(passes.at(i)))
+                   .arg(passes.at(i).noise).arg(passes.at(i).scale);
         report(Stage::Inference, i);
         const RunResult run = Waifu2xRunner::run(passes.at(i), passInput, passOutput, cancel);
+        engineStderr = run.stderrText;
         if (!run.device.isEmpty() && progress.deviceDetected)
             progress.deviceDetected(run.device);
         if (run.canceled)
@@ -209,6 +228,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     }
 
     // 4. Read back the final result.
+    step = QStringLiteral("read back AI output");
     report(Stage::Encode, 0);
     QImageReader reader(outPng, "png");
     QImage result = reader.read();
@@ -227,6 +247,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
         return canceled();
 
     // 5. Encode into a temporary file inside the output folder.
+    step = QStringLiteral("encode");
     const QString stem = OutputNaming::stem(sourcePath, scale);
     const QString ext = ImageEncoder::extension(spec.encode.format);
     const QString tmpPath = OutputNaming::tempPath(spec.outputDir, stem);
@@ -248,6 +269,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
         return canceled();
 
     // 6. Commit under the final, non-overwriting name.
+    step = QStringLiteral("commit output file");
     QString commitError;
     const QString finalPath = OutputNaming::commit(tmpPath, spec.outputDir, stem, ext, &commitError);
     if (finalPath.isEmpty())

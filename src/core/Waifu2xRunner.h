@@ -17,6 +17,7 @@ struct RunResult {
     bool fatal = false;  // engine cannot start or no usable GPU: affects every item
     QString error;
     QString device;      // GPU(s) the engine reported (see deviceName), may be empty
+    QString stderrText;  // complete engine stderr (diagnostics; at most 8000 chars)
 };
 
 class Waifu2xRunner {

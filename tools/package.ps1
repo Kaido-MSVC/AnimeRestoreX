@@ -43,11 +43,12 @@ function Add-File([string]$src, [string]$rel, [string]$origin) {
 # 1. Application
 Add-File (Join-Path $Root 'build\release\AnimeRestoreX.exe') 'AnimeRestoreX.exe' 'built from this repository (MSVC 14.51.36231, Qt 6.12.0)'
 
-# 2. Qt via windeployqt: Core/Gui/Widgets, qwindows, qmodernwindowsstyle, qjpeg, qwebp, zh_TW/ja.
+# 2. Qt via windeployqt: Core/Gui/Widgets, qwindows, qjpeg, qwebp, zh_TW/ja.
+#    No style plugin: since 1.2.0 the app uses Fusion, which is built into Qt6Widgets.
 $wdq = @(
     '--release', '--no-compiler-runtime', '--no-opengl-sw', '--no-system-d3d-compiler',
     '--no-system-dxc-compiler', '--no-ffmpeg',
-    '--skip-plugin-types', 'generic,iconengines,networkinformation,tls,qmltooling',
+    '--skip-plugin-types', 'generic,iconengines,networkinformation,tls,qmltooling,styles',
     '--exclude-plugins', 'qgif,qicns,qico,qpdf,qsvg,qtga,qtiff,qwbmp,qdirect2d,qminimal,qoffscreen',
     '--translations', 'zh_TW,ja',
     '--qtpaths', (Join-Path $Qt 'bin\qtpaths.exe'),
@@ -103,7 +104,8 @@ foreach ($f in Get-ChildItem $licRoot -Recurse -File) {
 # 6. Guard rails: nothing unexpected may be deployed.
 $forbidden = @('opengl32sw.dll', 'd3dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll', 'Qt6Svg.dll',
                'Qt6Network.dll', 'qgif.dll', 'qico.dll', 'qsvg.dll', 'qtiff.dll', 'qtga.dll',
-               'qwbmp.dll', 'qicns.dll', 'qpdf.dll', 'qsvgicon.dll', 'qminimal.dll', 'qoffscreen.dll')
+               'qwbmp.dll', 'qicns.dll', 'qpdf.dll', 'qsvgicon.dll', 'qminimal.dll', 'qoffscreen.dll',
+               'qmodernwindowsstyle.dll')
 $all = Get-ChildItem $Stage -Recurse -File
 $bad = $all | Where-Object { $forbidden -contains $_.Name }
 if ($bad) { throw "Unexpected files deployed: $($bad.Name -join ', ')" }

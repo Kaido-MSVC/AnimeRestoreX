@@ -231,7 +231,9 @@ void apply(Mode mode)
 
 void install(QApplication &app)
 {
-    QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    // Fusion is built into Qt6Widgets (no style plugin is shipped since 1.2.0).
+    if (QStyle *fusion = QStyleFactory::create(QStringLiteral("Fusion")))
+        QApplication::setStyle(fusion);
 
     // Segoe UI Variable (Windows 11) when present, otherwise Segoe UI; CJK
     // text falls back to the Windows fonts for the script as before.

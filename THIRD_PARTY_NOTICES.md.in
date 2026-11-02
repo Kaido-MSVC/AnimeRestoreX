@@ -12,7 +12,6 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `AnimeRestoreX.exe` | AnimeRestoreX | @PROJECT_VERSION@ | MIT | 以本專案原始碼建置（MSVC 14.51.36231、Qt 6.12.0） |
 | `Qt6Core.dll`、`Qt6Gui.dll`、`Qt6Widgets.dll` | Qt | 6.12.0 | LGPL-3.0-only | Qt 官方 6.12.0 `msvc2022_64` 二進位檔，未修改（見 §2） |
 | `platforms/qwindows.dll` | Qt Windows 平台外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
-| `styles/qmodernwindowsstyle.dll` | Qt Windows 樣式外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
 | `imageformats/qjpeg.dll` | Qt JPEG 外掛（內含 libjpeg-turbo） | 6.12.0 | LGPL-3.0-only；libjpeg-turbo：IJG AND BSD-3-Clause | 同上 |
 | `imageformats/qwebp.dll` | Qt WebP 外掛（內含 libwebp 1.6.0） | 6.12.0 | LGPL-3.0-only；libwebp：BSD-3-Clause | 同上 |
 | `translations/qt_zh_TW.qm`、`translations/qt_ja.qm` | Qt 內建字串翻譯 | 6.12.0 | LGPL-3.0-only | windeployqt 由 Qt 6.12.0 的 `qtbase_zh_TW.qm`／`qtbase_ja.qm` 合併產生（qttranslations） |
@@ -41,7 +40,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
   | `qttranslations-everywhere-src-6.12.0.zip` | `286f0ca3ad669bc2d6fec0e209a797a08049d037c7a167e60eb3b4a640405aa5` |
 
   原始出處：<https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/>（已依該處 `md5sums.txt` 驗證）。
-- **替換 Qt**：AnimeRestoreX 以動態連結使用 Qt。使用者可以用相容的 Qt 6.12.x（MSVC 2022 x64）建置，取代本資料夾中的 `Qt6*.dll` 與 `platforms/`、`styles/`、`imageformats/` 內的外掛後執行。本程式不限制為此目的而進行的修改或為除錯所需的逆向工程。AnimeRestoreX 自身原始碼另以 MIT 授權提供。
+- **替換 Qt**：AnimeRestoreX 以動態連結使用 Qt。使用者可以用相容的 Qt 6.12.x（MSVC 2022 x64）建置，取代本資料夾中的 `Qt6*.dll` 與 `platforms/`、`imageformats/` 內的外掛後執行。本程式不限制為此目的而進行的修改或為除錯所需的逆向工程。AnimeRestoreX 自身原始碼另以 MIT 授權提供。
 - Qt 內含的第三方程式碼：下表列出編入上述 Qt 二進位檔的元件（依 Qt 6.12.0 原始碼中的 `qt_attribution.json` 整理；採保守列舉）。授權原文在 `licenses/Qt/third_party/<Id>/`，完整清單見同資料夾的 `index.json`。
 
   | Id | 元件 | 版本 | 授權 |

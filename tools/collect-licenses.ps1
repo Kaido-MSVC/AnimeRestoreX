@@ -57,7 +57,8 @@ $qtLicenseFiles = @(
     @{ zip = 'qtimageformats'; entry = 'src/3rdparty/libwebp/PATENTS'; dest = 'Qt\third_party\libwebp\PATENTS' }
 )
 # qt_attribution.json directories (relative to <module>/src) for code in
-# Qt6Core / Qt6Gui / Qt6Widgets, qwindows, qmodernwindowsstyle, qjpeg, qwebp.
+# Qt6Core / Qt6Gui / Qt6Widgets, qwindows, qjpeg, qwebp. (The style plugin
+# qmodernwindowsstyle, shipped until 1.1.1, has no third-party code of its own.)
 $qtAttributions = @{
     qtbase = @('3rdparty/D3D12MemoryAllocator', '3rdparty/VulkanMemoryAllocator', '3rdparty/blake2',
                '3rdparty/double-conversion', '3rdparty/easing', '3rdparty/emoji-segmenter',

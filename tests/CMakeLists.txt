@@ -9,12 +9,16 @@ function(arx_add_test name)
         ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}"
         ARX_TEST_VERSION="${PROJECT_VERSION}"
         ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${name} ${ARX_TEST_ARGS_${name}})
     set_tests_properties(${name} PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")
 endfunction()
 
 arx_add_test(tst_core arxcore)
+# The GPU pipeline test also writes its full log (failure reasons, failing
+# step, engine stderr) to tests/tst_pipeline-last.txt in the build folder,
+# so a one-off failure can be traced even if the console output is lost.
+set(ARX_TEST_ARGS_tst_pipeline -o -,txt -o "${CMAKE_CURRENT_BINARY_DIR}/tst_pipeline-last.txt,txt")
 arx_add_test(tst_pipeline arxcore)
 set_tests_properties(tst_pipeline PROPERTIES TIMEOUT 600)
 arx_add_test(tst_ui arxui)
