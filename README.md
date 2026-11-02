@@ -3,22 +3,36 @@
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: **v1.2.0** (new "creative studio" look that follows the Windows light /
-dark setting, list thumbnails, estimated per-image / batch progress with time
-left; version filled into THIRD_PARTY_NOTICES by CMake). v1.1.1 refined the
-appearance and layout; v1.1.0 added high-DPI fitting, drag and drop, keyboard
-shortcuts, and 1x denoise-only mode. UI plan: `docs/v1.1-ui-plan.md`; log:
-`docs/開發記錄.md` §12–14.
+## Features
 
-Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
-`resources/theme/` are regenerated with `pwsh -File tools/make-theme-arrows.ps1`.
+- AI denoising without upscaling (1x) and 2x / 4x upscaling with the waifu2x
+  CUnet model; PNG, JPEG and WebP input and output (WebP lossy or lossless).
+- Batch list with thumbnails; add images or whole folders, also by drag and drop.
+- Side-by-side preview of the original and the result (fit to window or 100%).
+- Progress for the current image (reading → AI processing → encoding) and for
+  the whole batch, with an estimated time left. The estimate is based on the
+  image size and the speed measured on your GPU, and is marked as an estimate.
+- Light and dark theme that follows the Windows setting.
+- User interface in 繁體中文, 日本語 and English; high-DPI aware.
+
+The changes in each version are listed on the [Releases page](https://github.com/Kaido-MSVC/AnimeRestoreX/releases).
 
 ## Download
 
-[AnimeRestoreX v1.1.1](https://github.com/Kaido-MSVC/AnimeRestoreX/releases/tag/v1.1.1):
-download `AnimeRestoreX-1.1.1-win64.zip`, extract the entire archive, then run
-`AnimeRestoreX.exe`. Requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable
-GPU and a compatible driver. The executable is unsigned.
+Download the latest version from the
+[Releases page](https://github.com/Kaido-MSVC/AnimeRestoreX/releases/latest):
+take `AnimeRestoreX-<version>-win64.zip`, extract the entire archive, then run
+`AnimeRestoreX.exe` (no installation). To check the download, compare its
+SHA256 with `SHA256SUMS.txt` attached to the same release.
+
+Requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a
+compatible driver. The executable is unsigned.
+
+## Development notes
+
+UI plan: `docs/v1.1-ui-plan.md`; build and decision log: `docs/開發記錄.md`.
+Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
+`resources/theme/` are regenerated with `pwsh -File tools/make-theme-arrows.ps1`.
 
 ## Release package
 
