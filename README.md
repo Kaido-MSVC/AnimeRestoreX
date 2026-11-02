@@ -3,8 +3,9 @@
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
 
-Status: v1.1 (UI improvements: high-DPI window fitting, processing/output
-layout, drag and drop, shortcuts, 1x denoise only). Plan: `docs/v1.1-ui-plan.md`.
+Status: v1.2.0 in progress (estimated per-image / batch progress with time
+left; version filled into THIRD_PARTY_NOTICES by CMake). v1.1 plan:
+`docs/v1.1-ui-plan.md`; log: `docs/開發記錄.md` §12.
 
 ## Release package
 
@@ -14,8 +15,10 @@ pwsh -File tools/package.ps1     # release build -> dist/AnimeRestoreX-<ver>-win
 
 Publish together: the zip, the three Qt 6.12.0 source archives copied to `dist/`
 (LGPLv3 corresponding source), and `dist/SHA256SUMS.txt`.
-License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md`, `licenses/`
-(regenerate with `tools/collect-licenses.ps1`).
+License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md.in`, `licenses/`
+(regenerate with `tools/collect-licenses.ps1`). The build writes
+`THIRD_PARTY_NOTICES.md` next to the executable with `@PROJECT_VERSION@`
+replaced by the version in `CMakeLists.txt`; the package ships that file.
 
 Icons: `resources/icons/app.svg` is the source; the committed `app.ico` and
 `app_<size>.png` are regenerated with `pwsh -File tools/make-icons.ps1`

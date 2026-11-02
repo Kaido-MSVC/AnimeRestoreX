@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/JobSpec.h"
+#include "core/Progress.h"
 
 #include <QString>
 #include <QStringList>
@@ -21,6 +22,9 @@ struct BatchSummary {
 struct BatchCallbacks {
     std::function<void(int index)> itemStarted;
     std::function<void(int index, const ItemResult &result)> itemFinished;
+    std::function<void(int index, const StageEvent &e)> stageStarted;
+    std::function<void(int index, double fraction)> stageFraction;
+    std::function<void(const QString &device)> deviceDetected;
 };
 
 // Processes files one at a time with the same JobSpec snapshot. A failing

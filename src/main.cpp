@@ -26,6 +26,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<arx::JobSpec>();
     qRegisterMetaType<arx::ItemResult>();
     qRegisterMetaType<arx::BatchSummary>();
+    qRegisterMetaType<QList<arx::ItemPlan>>();
 
     // Create the kill-on-close job object up front.
     arx::ChildProcessGuard::instance();

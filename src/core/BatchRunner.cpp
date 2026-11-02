@@ -24,7 +24,13 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec,
         }
         if (cb.itemStarted)
             cb.itemStarted(i);
-        const ItemResult r = ProcessJob::run(files.at(i), spec, cancel);
+        ProgressSink sink;
+        if (cb.stageStarted)
+            sink.stageStarted = [&cb, i](const StageEvent &e) { cb.stageStarted(i, e); };
+        if (cb.stageFraction)
+            sink.stageFraction = [&cb, i](double f) { cb.stageFraction(i, f); };
+        sink.deviceDetected = cb.deviceDetected;
+        const ItemResult r = ProcessJob::run(files.at(i), spec, cancel, sink);
         if (cb.itemFinished)
             cb.itemFinished(i, r);
 

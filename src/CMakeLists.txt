@@ -11,6 +11,7 @@ qt_add_library(arxcore STATIC
     core/AppSettings.h core/AppSettings.cpp
     core/ChildProcessGuard.h core/ChildProcessGuard.cpp
     core/JobSpec.h
+    core/Progress.h core/Progress.cpp
 )
 target_include_directories(arxcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(arxcore PUBLIC Qt6::Core Qt6::Gui)

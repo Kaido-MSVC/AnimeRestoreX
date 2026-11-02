@@ -83,10 +83,61 @@ QString ProcessJob::checkPreconditions(const JobSpec &spec)
     return {};
 }
 
-ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
-                           const std::atomic_bool &cancel)
+ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec)
 {
+    // Default speeds in seconds per output megapixel. Rough values from the
+    // A9 measurements (GTX 1060 6GB); they are replaced by measured speeds
+    // after the first image, so they only shape the very first estimate.
+    constexpr double kLoadRate = 0.10;        // decode + temporary PNG, per input MP
+    constexpr double kUpscaleRate = 0.37;     // cunet 2x, per output MP
+    constexpr double kDenoiseOnlyRate = 1.0;  // cunet 1x (noiseN_model), per output MP
+    constexpr double kEngineStartSec = 1.0;   // process start, Vulkan init, model load
+
+    const QSize in = QImageReader(sourcePath).size();  // header only; invalid if unreadable
+    const double inMp = in.isValid() ? double(in.width()) * in.height() / 1e6 : 0.0;
+    const int scale = spec.waifu2x.scale;
+
+    ItemPlan plan;
+    plan.weight = inMp * scale * scale;
+    plan.stages << StagePlan{Stage::Load, 0, QStringLiteral("load"), inMp, kLoadRate, 0.0};
+
+    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
+    double mp = inMp;
+    for (int i = 0; i < passes.size(); ++i) {
+        const Waifu2xParams &pass = passes.at(i);
+        mp *= double(pass.scale) * pass.scale;
+        plan.stages << StagePlan{Stage::Inference, i,
+                                 QStringLiteral("waifu2x/") + Waifu2xRunner::modelBaseName(pass), mp,
+                                 pass.scale == 1 ? kDenoiseOnlyRate : kUpscaleRate, kEngineStartSec};
+    }
+
+    // Read back, convert and encode, per output MP.
+    QString key;
+    double rate = 0;
+    switch (spec.encode.format) {
+    case OutputFormat::Png:  key = QStringLiteral("encode/png");  rate = 0.15; break;
+    case OutputFormat::Jpeg: key = QStringLiteral("encode/jpeg"); rate = 0.05; break;
+    case OutputFormat::WebP:
+        key = spec.encode.webpLossless ? QStringLiteral("encode/webp-lossless")
+                                       : QStringLiteral("encode/webp");
+        rate = spec.encode.webpLossless ? 1.0 : 0.15;
+        break;
+    }
+    plan.stages << StagePlan{Stage::Encode, 0, key, plan.weight, rate, 0.0};
+    return plan;
+}
+
+ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
+                           const std::atomic_bool &cancel, const ProgressSink &progress)
+{
+    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
+    auto report = [&](Stage stage, int pass) {
+        if (progress.stageStarted)
+            progress.stageStarted(StageEvent{stage, pass, int(passes.size())});
+    };
+
     // 1. Load and validate.
+    report(Stage::Load, 0);
     LoadResult loaded = ImageLoader::load(sourcePath);
     if (!loaded.ok)
         return fail(loaded.error);
@@ -116,15 +167,19 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     // 3. Inference: one pass for 1x (denoise only) and 2x, or for 4x a
     //    denoise+2x pass followed by an upscale-only 2x pass. waifu2x exits
     //    with 0 on decode errors, so each pass is verified by its output file
-    //    and exact size.
-    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
+    //    and exact size. waifu2x-ncnn-vulkan has no progress output, so
+    //    progress.stageFraction is not used here (an engine that reports real
+    //    progress would forward it during the pass).
     QString passInput = inPng;
     QSize passSize = inSize;
     for (int i = 0; i < passes.size(); ++i) {
         const QString passOutput = (i == passes.size() - 1)
             ? outPng
             : work.filePath(QStringLiteral("pass%1.png").arg(i + 1));
+        report(Stage::Inference, i);
         const RunResult run = Waifu2xRunner::run(passes.at(i), passInput, passOutput, cancel);
+        if (!run.device.isEmpty() && progress.deviceDetected)
+            progress.deviceDetected(run.device);
         if (run.canceled)
             return canceled();
         if (!run.ok) {
@@ -154,6 +209,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     }
 
     // 4. Read back the final result.
+    report(Stage::Encode, 0);
     QImageReader reader(outPng, "png");
     QImage result = reader.read();
     if (result.isNull())

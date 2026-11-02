@@ -37,6 +37,7 @@ private slots:
     void fourXIsTwoStage();
     void fourXNeedsUpscaleOnlyModel();
     void oneXDenoiseOnly();
+    void stagesAreReportedInOrder();
 
 private:
     JobSpec spec(OutputFormat f, int scale) const;
@@ -301,6 +302,36 @@ void TestPipeline::batchCanceledBeforeStart()
     QVERIFY(r.canceled);
     QCOMPARE(r.notProcessed, 2);
     QCOMPARE(r.succeeded + r.failed, 0);
+}
+
+void TestPipeline::stagesAreReportedInOrder()
+{
+    // Every stage of the progress plan is reported, in order, with the pass number.
+    const JobSpec s = spec(OutputFormat::Png, 4);
+    const ItemPlan plan = ProcessJob::progressPlan(m_opaque, s);
+    QCOMPARE(plan.weight, 96.0 * 64 * 16 / 1e6);
+
+    QList<StageEvent> events;
+    QStringList devices;
+    BatchCallbacks cb;
+    cb.deviceDetected = [&](const QString &d) { devices << d; };
+    cb.stageStarted = [&](int index, const StageEvent &e) {
+        QCOMPARE(index, 0);
+        events << e;
+    };
+    std::atomic_bool cancel{false};
+    const BatchSummary r = runBatch({m_opaque}, s, cancel, cb);
+    QCOMPARE(r.succeeded, 1);
+    QCOMPARE(events.size(), plan.stages.size());
+    for (int i = 0; i < events.size(); ++i) {
+        QCOMPARE(events[i].stage, plan.stages[i].stage);
+        QCOMPARE(events[i].pass, plan.stages[i].pass);
+        QCOMPARE(events[i].passCount, 2);
+    }
+    // The engine names its GPU after each pass (measured speeds are kept per GPU).
+    QCOMPARE(devices.size(), 2);
+    QVERIFY(!devices.first().isEmpty());
+    QCOMPARE(devices.first(), devices.last());
 }
 
 void TestPipeline::fourXIsTwoStage()

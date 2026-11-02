@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(AnimeRestoreX VERSION 1.1.1 LANGUAGES CXX)
+project(AnimeRestoreX VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,10 @@ set(ARX_WAIFU2X_DIR "${CMAKE_SOURCE_DIR}/third_party/waifu2x"
     CACHE PATH "Directory holding waifu2x-ncnn-vulkan.exe and models-cunet")
 
 add_subdirectory(src)
+
+# THIRD_PARTY_NOTICES.md is generated next to the executable with the project
+# version filled in; tools/package.ps1 ships this generated copy.
+configure_file(THIRD_PARTY_NOTICES.md.in "${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md" @ONLY)
 
 option(ARX_BUILD_TESTS "Build developer tests (not shipped)" ON)
 if(ARX_BUILD_TESTS)

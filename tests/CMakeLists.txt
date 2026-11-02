@@ -6,7 +6,9 @@ function(arx_add_test name)
     qt_add_executable(${name} ${name}.cpp TestImages.h)
     target_link_libraries(${name} PRIVATE ${ARGN} Qt6::Test)
     target_compile_definitions(${name} PRIVATE
-        ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}")
+        ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}"
+        ARX_TEST_VERSION="${PROJECT_VERSION}"
+        ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")

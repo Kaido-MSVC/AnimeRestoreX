@@ -1,4 +1,5 @@
 #include "core/AppSettings.h"
+#include "core/Progress.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -15,6 +16,17 @@ const QString kNoiseKey = QStringLiteral("model/noiseLevel");
 const QString kTileKey = QStringLiteral("model/tileSize");
 const QString kGeometryKey = QStringLiteral("window/geometry");
 const QString kSplitterKey = QStringLiteral("window/splitter");
+const QString kProgressDeviceKey = QStringLiteral("progress/lastDevice");
+
+// "progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
+// are replaced in the device name.
+QString ratesGroup(QString device)
+{
+    device.replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char('\\'), QLatin1Char('_'));
+    if (device.trimmed().isEmpty())
+        device = QStringLiteral("unknown");
+    return QStringLiteral("progress/rates/") + device;
+}
 
 bool isExistingDir(const QString &dir)
 {
@@ -70,6 +82,33 @@ QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey)
 void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }
 QByteArray AppSettings::splitterState() const { return m_s->value(kSplitterKey).toByteArray(); }
 void AppSettings::setSplitterState(const QByteArray &state) { m_s->setValue(kSplitterKey, state); }
+
+QHash<QString, double> AppSettings::progressRates(const QString &device) const
+{
+    QHash<QString, double> rates;
+    m_s->beginGroup(ratesGroup(device));
+    for (const QString &key : m_s->allKeys()) {
+        bool ok = false;
+        const double v = m_s->value(key).toDouble(&ok);
+        if (ok && ProgressEstimator::isValidRate(v))
+            rates.insert(key, v);
+    }
+    m_s->endGroup();
+    return rates;
+}
+
+void AppSettings::setProgressRates(const QString &device, const QHash<QString, double> &rates)
+{
+    m_s->beginGroup(ratesGroup(device));
+    m_s->remove(QString());  // the whole group of this device
+    for (auto it = rates.cbegin(); it != rates.cend(); ++it)
+        if (ProgressEstimator::isValidRate(it.value()))
+            m_s->setValue(it.key(), it.value());
+    m_s->endGroup();
+}
+
+QString AppSettings::progressDevice() const { return m_s->value(kProgressDeviceKey).toString(); }
+void AppSettings::setProgressDevice(const QString &device) { m_s->setValue(kProgressDeviceKey, device); }
 
 bool AppSettings::sync()
 {

@@ -16,6 +16,7 @@ struct RunResult {
     bool canceled = false;
     bool fatal = false;  // engine cannot start or no usable GPU: affects every item
     QString error;
+    QString device;      // GPU(s) the engine reported (see deviceName), may be empty
 };
 
 class Waifu2xRunner {
@@ -50,6 +51,12 @@ public:
 
     // Extracts the meaningful part of waifu2x stderr (drops GPU info lines).
     static QString summarizeStderr(const QByteArray &stderrData);
+
+    // Names of the Vulkan devices in the "[0 NVIDIA GeForce GTX 1060 6GB]  queueC=..."
+    // lines waifu2x prints at start, in index order, joined with " + ".
+    // waifu2x does not say which device "-g auto" picked, so with several
+    // GPUs the whole set identifies the machine. Empty if none was printed.
+    static QString deviceName(const QByteArray &stderrData);
 };
 
 } // namespace arx

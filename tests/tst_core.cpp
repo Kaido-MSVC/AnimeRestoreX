@@ -7,6 +7,8 @@
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
 #include "core/OutputNaming.h"
+#include "core/ProcessJob.h"
+#include "core/Progress.h"
 #include "core/Waifu2xRunner.h"
 
 #include <QBuffer>
@@ -17,6 +19,8 @@
 #include <QTemporaryDir>
 #include <QtEndian>
 #include <QtTest>
+
+#include <limits>
 
 using namespace arx;
 
@@ -44,6 +48,13 @@ private slots:
     void settingsSeparateKeysAndValidation();
     void folderFallbackPerItem();
     void waifu2xPasses();
+    void progressPlanFollowsPasses();
+    void estimatorStageProgressAndCalibration();
+    void estimatorBatchWeightAndRemaining();
+    void estimatorUsesEngineFraction();
+    void progressRatesPersist();
+    void deviceNameFromStderr();
+    void estimatorWaitsForDevice();
 
 private:
     QByteArray encodeToBytes(const QImage &img, const EncodeOptions &opt);
@@ -510,6 +521,213 @@ void TestCore::waifu2xPasses()
     // Defaults decided after A9.
     QCOMPARE(AppSettings::kDefaultNoise, 1);
     QCOMPARE(AppSettings::kDefaultTile, 0);
+}
+
+void TestCore::progressPlanFollowsPasses()
+{
+    const QString img = m_dir.filePath(QStringLiteral("plan 計画.png"));
+    QVERIFY(testimg::make(200, 100, false).save(img, "png"));  // 0.02 MP
+    JobSpec spec;
+    spec.waifu2x.noise = 1;
+    spec.waifu2x.scale = 4;
+    spec.encode.format = OutputFormat::WebP;
+    spec.encode.webpLossless = true;
+
+    ItemPlan plan = ProcessJob::progressPlan(img, spec);
+    QCOMPARE(plan.stages.size(), 4);  // load, two inference passes, encode
+    QCOMPARE(plan.stages[0].stage, Stage::Load);
+    QCOMPARE(plan.stages[0].megapixels, 0.02);
+    QCOMPARE(plan.stages[1].stage, Stage::Inference);
+    QCOMPARE(plan.stages[1].pass, 0);
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("waifu2x/noise1_scale2.0x_model"));
+    QCOMPARE(plan.stages[1].megapixels, 0.08);   // 2x output
+    QCOMPARE(plan.stages[2].pass, 1);
+    QCOMPARE(plan.stages[2].rateKey, QStringLiteral("waifu2x/scale2.0x_model"));
+    QCOMPARE(plan.stages[2].megapixels, 0.32);   // 4x output
+    QCOMPARE(plan.stages[3].stage, Stage::Encode);
+    QCOMPARE(plan.stages[3].rateKey, QStringLiteral("encode/webp-lossless"));
+    QCOMPARE(plan.weight, 0.32);
+
+    spec.waifu2x.scale = 1;
+    plan = ProcessJob::progressPlan(img, spec);
+    QCOMPARE(plan.stages.size(), 3);
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("waifu2x/noise1_model"));
+    QCOMPARE(plan.weight, 0.02);
+
+    // Unreadable header: size unknown, the estimator uses an average weight.
+    plan = ProcessJob::progressPlan(m_dir.filePath(QStringLiteral("missing.png")), spec);
+    QCOMPARE(plan.weight, 0.0);
+}
+
+namespace {
+
+// One 2x item: load 1 MP (0.1 s/MP), inference 4 MP (0.5 s/MP + 1 s), encode 4 MP (0.25 s/MP).
+// Expected: 0.1 + 3 + 1 = 4.1 s.
+ItemPlan testPlan(double inMp)
+{
+    ItemPlan p;
+    p.weight = inMp * 4;
+    p.stages << StagePlan{Stage::Load, 0, QStringLiteral("load"), inMp, 0.1, 0}
+             << StagePlan{Stage::Inference, 0, QStringLiteral("model"), inMp * 4, 0.5, 1.0}
+             << StagePlan{Stage::Encode, 0, QStringLiteral("encode"), inMp * 4, 0.25, 0};
+    return p;
+}
+
+} // namespace
+
+void TestCore::estimatorStageProgressAndCalibration()
+{
+    ProgressEstimator e;
+    e.startBatch({testPlan(1.0)}, 0);
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Load, 0, 1}, 0);
+    e.stageStarted(0, {Stage::Inference, 0, 1}, 100);  // load took 0.1 s as expected
+
+    // Halfway through the 3 s inference stage: (0.1 + 1.5) / 4.1 of the item.
+    ProgressSnapshot s = e.snapshot(1600);
+    QCOMPARE(s.stage, Stage::Inference);
+    QCOMPARE(s.passCount, 1);
+    QVERIFY(qAbs(s.itemFraction - 1.6 / 4.1) < 1e-3);
+    QCOMPARE(s.remainingSec, -1.0);  // no inference speed measured yet
+
+    // A stage that runs far longer than expected never shows as complete,
+    // and the progress keeps rising.
+    const double late1 = e.snapshot(20000).itemFraction;
+    const double late2 = e.snapshot(60000).itemFraction;
+    QVERIFY(late1 < 0.99 && late2 <= 0.99 && late2 >= late1);
+
+    // Inference really took 7 s (1 s overhead + 6 s for 4 MP = 1.5 s/MP).
+    e.stageStarted(0, {Stage::Encode, 0, 1}, 7100);
+    QVERIFY(e.hasMeasuredInference());
+    QCOMPARE(e.learnedRates().value(QStringLiteral("model")), 1.5);
+    QVERIFY(e.snapshot(7100).itemFraction >= late2);  // never goes back
+    e.itemFinished(0, true, 8100);
+    QCOMPARE(e.learnedRates().value(QStringLiteral("encode")), 0.25);
+    QCOMPARE(e.snapshot(8100).batchFraction, 1.0);
+
+    // The next measurement is blended with the previous one.
+    e.startBatch({testPlan(1.0)}, 0);
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Inference, 0, 1}, 0);
+    e.stageStarted(0, {Stage::Encode, 0, 1}, 3000);  // 0.5 s/MP this time
+    QCOMPARE(e.learnedRates().value(QStringLiteral("model")), 1.0);
+
+    // A failed or canceled item does not count its interrupted stage.
+    e.startBatch({testPlan(1.0)}, 0);
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Inference, 0, 1}, 0);
+    e.itemFinished(0, false, 100);
+    QCOMPARE(e.learnedRates().value(QStringLiteral("model")), 1.0);
+}
+
+void TestCore::estimatorBatchWeightAndRemaining()
+{
+    ProgressEstimator e;
+    e.setLearnedRates({{QStringLiteral("model"), 0.5}, {QStringLiteral("bad"), -1.0}});
+    QVERIFY(!e.learnedRates().contains(QStringLiteral("bad")));
+    // A small and a 3x larger item: the batch is weighted by output pixels.
+    e.startBatch({testPlan(1.0), testPlan(3.0)}, 0);
+    QVERIFY(e.hasMeasuredInference());
+    ProgressSnapshot s = e.snapshot(0);
+    QCOMPARE(s.index, -1);
+    QVERIFY(qAbs(s.remainingSec - (4.1 + 0.3 + 7.0 + 3.0)) < 1e-6);
+
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Load, 0, 1}, 0);
+    e.itemFinished(0, true, 100);  // finished early (e.g. tiny result)
+    s = e.snapshot(100);
+    QCOMPARE(s.batchFraction, 0.25);  // 4 of 16 output MP
+    QVERIFY(qAbs(s.remainingSec - 10.3) < 1e-6);
+
+    // An item whose size is unknown counts as an average one.
+    ItemPlan unknown = testPlan(1.0);
+    unknown.weight = 0;
+    e.startBatch({testPlan(1.0), unknown}, 0);
+    e.itemStarted(0, 0);
+    e.itemFinished(0, false, 10);
+    QCOMPARE(e.snapshot(10).batchFraction, 0.5);
+
+    // An unmeasured model uses its default scaled by the measured machine speed.
+    ProgressEstimator f;
+    f.setLearnedRates({{QStringLiteral("model"), 1.0}});  // twice the default 0.5
+    ItemPlan other = testPlan(1.0);
+    other.stages[1].rateKey = QStringLiteral("other-model");
+    f.startBatch({testPlan(1.0), other}, 0);
+    QCOMPARE(f.stageSeconds(other.stages[1]), 1.0 + 4 * 1.0);
+}
+
+void TestCore::estimatorUsesEngineFraction()
+{
+    // An engine that reports real progress overrides the time estimate.
+    ProgressEstimator e;
+    e.startBatch({testPlan(1.0)}, 0);
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Inference, 0, 1}, 0);
+    e.stageFraction(0, 0.5, 100);
+    ProgressSnapshot s = e.snapshot(100);
+    QVERIFY(qAbs(s.itemFraction - (0.1 + 0.5 * 3.0) / 4.1) < 1e-3);
+    e.stageFraction(0, 0.2, 200);  // never goes back
+    QVERIFY(e.snapshot(200).itemFraction >= s.itemFraction);
+    e.stageFraction(1, 0.9, 200);  // other item: ignored
+    QVERIFY(qAbs(e.snapshot(200).itemFraction - s.itemFraction) < 1e-9);
+}
+
+void TestCore::progressRatesPersist()
+{
+    const QString gtx = QStringLiteral("NVIDIA GeForce GTX 1060 6GB");
+    const QString other = QStringLiteral("AMD Radeon RX 7600 / test");  // "/" must not split groups
+    {
+        AppSettings s;
+        s.setProgressRates(gtx, {{QStringLiteral("waifu2x/noise1_scale2.0x_model"), 0.42},
+                                 {QStringLiteral("encode/png"), 0.1},
+                                 {QStringLiteral("broken"), std::numeric_limits<double>::infinity()}});
+        s.setProgressRates(other, {{QStringLiteral("waifu2x/noise1_scale2.0x_model"), 0.2}});
+        s.setProgressDevice(gtx);
+        QVERIFY(s.sync());
+    }
+    {
+        QSettings raw;
+        raw.setValue(QStringLiteral("progress/rates/") + gtx + QStringLiteral("/junk"), QStringLiteral("abc"));
+    }
+    AppSettings s;
+    QCOMPARE(s.progressDevice(), gtx);
+    const QHash<QString, double> rates = s.progressRates(gtx);
+    QCOMPARE(rates.size(), 2);
+    QCOMPARE(rates.value(QStringLiteral("waifu2x/noise1_scale2.0x_model")), 0.42);
+    QCOMPARE(rates.value(QStringLiteral("encode/png")), 0.1);
+    // Each GPU keeps its own speeds; an unknown GPU has none.
+    QCOMPARE(s.progressRates(other).value(QStringLiteral("waifu2x/noise1_scale2.0x_model")), 0.2);
+    QCOMPARE(s.progressRates(other).size(), 1);
+    QVERIFY(s.progressRates(QStringLiteral("Intel Arc A770")).isEmpty());
+}
+
+void TestCore::deviceNameFromStderr()
+{
+    // Lines as printed by waifu2x-ncnn-vulkan 20250915 on the GTX 1060 (one line per property).
+    const QByteArray one =
+        "[0 NVIDIA GeForce GTX 1060 6GB]  queueC=2[8]  queueT=1[2]\r\n"
+        "[0 NVIDIA GeForce GTX 1060 6GB]  fp16-p/s/u/a=1/1/1/0  int8-p/s/u/a=1/1/1/1\r\n"
+        "[0 NVIDIA GeForce GTX 1060 6GB]  subgroup=32(32~32)  ops=1/1/1/1/1/1/1/1/1/1\r\n"
+        "decode image x failed\r\n";
+    QCOMPARE(Waifu2xRunner::deviceName(one), QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
+    const QByteArray two =
+        "[1 AMD Radeon(TM) Graphics]  queueC=1[2]\n"
+        "[0 NVIDIA GeForce RTX 4060]  queueC=2[8]\n";
+    QCOMPARE(Waifu2xRunner::deviceName(two),
+             QStringLiteral("NVIDIA GeForce RTX 4060 + AMD Radeon(TM) Graphics"));
+    QVERIFY(Waifu2xRunner::deviceName("invalid gpu device\n").isEmpty());
+}
+
+void TestCore::estimatorWaitsForDevice()
+{
+    // Speeds of a GPU that is not confirmed yet give no remaining time.
+    ProgressEstimator e;
+    e.setLearnedRates({{QStringLiteral("model"), 0.5}});
+    e.setDeviceConfirmed(false);
+    e.startBatch({testPlan(1.0)}, 0);
+    QCOMPARE(e.snapshot(0).remainingSec, -1.0);
+    e.setDeviceConfirmed(true);
+    QVERIFY(e.snapshot(0).remainingSec > 0);
 }
 
 QTEST_GUILESS_MAIN(TestCore)

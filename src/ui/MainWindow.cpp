@@ -33,9 +33,11 @@
 #include <QStatusBar>
 #include <QStyleFactory>
 #include <QStyleOptionMenuItem>
+#include <QTimer>
 #include <QUrl>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -179,10 +181,26 @@ MainWindow::MainWindow(QWidget *parent)
     m_worker = new JobWorker;
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
+    connect(m_worker, &JobWorker::planned, this, [this](const QList<arx::ItemPlan> &plans) {
+        m_estimator.startBatch(plans, m_clock.elapsed());
+    });
     connect(m_worker, &JobWorker::itemStarted, this, &MainWindow::onItemStarted);
+    connect(m_worker, &JobWorker::stageStarted, this, [this](int index, int stage, int pass, int passCount) {
+        m_estimator.stageStarted(index, arx::StageEvent{arx::Stage(stage), pass, passCount},
+                                 m_clock.elapsed());
+        refreshProgress();
+    });
+    connect(m_worker, &JobWorker::stageFraction, this, [this](int index, double fraction) {
+        m_estimator.stageFraction(index, fraction, m_clock.elapsed());
+    });
+    connect(m_worker, &JobWorker::deviceDetected, this, &MainWindow::onDeviceDetected);
     connect(m_worker, &JobWorker::itemFinished, this, &MainWindow::onItemFinished);
     connect(m_worker, &JobWorker::jobFinished, this, &MainWindow::onJobFinished);
     m_thread.start();
+    m_clock.start();
+    m_progressTimer = new QTimer(this);
+    m_progressTimer->setInterval(250);
+    connect(m_progressTimer, &QTimer::timeout, this, &MainWindow::refreshProgress);
 
     connect(ui->addImagesButton, &QPushButton::clicked, this, &MainWindow::browseImages);
     connect(ui->addFolderButton, &QPushButton::clicked, this, &MainWindow::browseFolder);
@@ -845,11 +863,24 @@ void MainWindow::start()
     const arx::JobSpec spec = currentSpec();
     m_jobOutputDir = spec.outputDir;
     m_finishedCount = 0;
-    ui->progressBar->setRange(0, int(files.size()));
+    // While running, both bars show the estimate in 0.1% steps; the batch
+    // bar is weighted by output pixels (refreshProgress).
+    // Measured speeds belong to one GPU. Before the engine has named the GPU
+    // in this session, the last one is assumed but not trusted for the
+    // remaining time (onDeviceDetected confirms or replaces it).
+    m_ratesDevice = m_device.isEmpty() ? m_settings->progressDevice() : m_device;
+    m_estimator.setLearnedRates(m_settings->progressRates(m_ratesDevice));
+    m_estimator.setDeviceConfirmed(!m_device.isEmpty());
+    m_estimator.startBatch({}, m_clock.elapsed());  // the plans follow from the worker
+    ui->progressBar->setRange(0, 1000);
     ui->progressBar->setValue(0);
-    ui->progressBar->setFormat(QStringLiteral("%v / %m"));
+    ui->itemProgressBar->setValue(0);
+    ui->itemProgressBar->setFormat(QString());
+    ui->itemProgressBar->setVisible(true);
     m_status->setText(tr("Starting..."));
     setRunning(true);
+    refreshProgress();
+    m_progressTimer->start();
 
     JobWorker *worker = m_worker;
     QMetaObject::invokeMethod(worker, [worker, files, spec] { worker->process(files, spec); },
@@ -861,12 +892,14 @@ void MainWindow::onItemStarted(int index)
     QTreeWidgetItem *item = m_jobItems.value(index);
     if (!item)
         return;
+    m_estimator.itemStarted(index, m_clock.elapsed());
     setItemState(item, ItemState::Processing);
     ui->fileList->scrollToItem(item);
-    m_status->setText(tr("Processing %1 / %2: %3 (AI upscaling may take a while)")
+    m_status->setText(tr("Processing %1 / %2: %3")
                                  .arg(index + 1)
                                  .arg(m_jobItems.size())
                                  .arg(item->text(ColFile)));
+    refreshProgress();
     if (item == ui->fileList->currentItem())
         updatePreview();
 }
@@ -884,15 +917,102 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
     } else {
         setItemState(item, ItemState::Failed, r.error);
     }
+    m_estimator.itemFinished(index, r.ok, m_clock.elapsed());
     if (!r.canceled)
-        ui->progressBar->setValue(++m_finishedCount);
+        ++m_finishedCount;
+    refreshProgress();
     if (item == ui->fileList->currentItem())
         updatePreview();
 }
 
+void MainWindow::onDeviceDetected(const QString &device)
+{
+    m_device = device;
+    if (device != m_ratesDevice) {
+        // Another GPU than last time: its own measurements, or none yet
+        // ("estimating time left" until this GPU has been measured).
+        m_ratesDevice = device;
+        m_estimator.setLearnedRates(m_settings->progressRates(device));
+    }
+    m_estimator.setDeviceConfirmed(true);
+}
+
+QString MainWindow::stageText(const arx::ProgressSnapshot &snap) const
+{
+    switch (snap.stage) {
+    case arx::Stage::Load:
+        return tr("Reading");
+    case arx::Stage::Inference:
+        if (snap.passCount > 1)
+            return tr("AI processing %1/%2").arg(snap.pass + 1).arg(snap.passCount);
+        return tr("AI processing");
+    case arx::Stage::Encode:
+        return tr("Encoding and saving");
+    }
+    return {};
+}
+
+QString MainWindow::remainingText(double seconds) const
+{
+    if (seconds < 0)
+        return tr("estimating time left");
+    if (seconds < 3)
+        return tr("almost done");
+    if (seconds < 60)
+        return tr("about %1 s left").arg(std::max(5, int(std::lround(seconds / 5.0)) * 5));
+    if (seconds < 3600) {
+        const int s = int(std::lround(seconds / 10.0)) * 10;
+        return tr("about %1 min %2 s left").arg(s / 60).arg(s % 60);
+    }
+    const int m = int(std::lround(seconds / 60.0));
+    return tr("about %1 h %2 min left").arg(m / 60).arg(m % 60);
+}
+
+void MainWindow::refreshProgress()
+{
+    if (!m_running)
+        return;
+    const arx::ProgressSnapshot snap = m_estimator.snapshot(m_clock.elapsed());
+    const int total = int(m_jobItems.size());
+    const auto permille = [](double f) { return int(std::lround(std::clamp(f, 0.0, 1.0) * 1000)); };
+    const auto percent = [](double f) { return int(std::floor(std::clamp(f, 0.0, 1.0) * 100)); };
+
+    // QProgressBar only replaces %v / %m / %p, so the literal "%" is safe here.
+    // The tooltip repeats the text, which a narrow window may cut off.
+    const QString hint = tr("Estimated from the image size and the measured speed of earlier images.");
+    const QString batchText = tr("%1 / %2 · est. %3% · %4")
+                                  .arg(m_finishedCount)
+                                  .arg(total)
+                                  .arg(percent(snap.batchFraction))
+                                  .arg(remainingText(snap.remainingSec));
+    ui->progressBar->setValue(permille(snap.batchFraction));
+    ui->progressBar->setFormat(batchText);
+    ui->progressBar->setToolTip(batchText + QLatin1Char('\n') + hint);
+    if (snap.index >= 0) {
+        const QString itemText = tr("%1 · est. %2%").arg(stageText(snap)).arg(percent(snap.itemFraction));
+        ui->itemProgressBar->setValue(permille(snap.itemFraction));
+        ui->itemProgressBar->setFormat(itemText);
+        ui->itemProgressBar->setToolTip(itemText + QLatin1Char('\n') + hint);
+    }
+}
+
 void MainWindow::onJobFinished(const arx::BatchSummary &summary)
 {
+    m_progressTimer->stop();
     setRunning(false);
+    // Back to the plain count of this job; the estimate is no longer shown.
+    ui->itemProgressBar->setVisible(false);
+    ui->progressBar->setRange(0, std::max(1, int(m_jobItems.size())));
+    ui->progressBar->setValue(m_finishedCount);
+    ui->progressBar->setFormat(QStringLiteral("%1 / %2").arg(m_finishedCount).arg(m_jobItems.size()));
+    ui->progressBar->setToolTip(QString());
+    // Measured speeds make the next estimate (also in later sessions) better;
+    // they are stored only under a GPU the engine actually reported.
+    if (m_estimator.deviceConfirmed() && !m_ratesDevice.isEmpty()) {
+        m_settings->setProgressRates(m_ratesDevice, m_estimator.learnedRates());
+        m_settings->setProgressDevice(m_ratesDevice);
+        saveSettings();
+    }
 
     // Counts come from this job's items in the list, so the dialog matches it.
     arx::BatchSummary shown = summary;

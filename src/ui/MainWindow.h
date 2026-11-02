@@ -2,7 +2,9 @@
 
 #include "core/BatchRunner.h"
 #include "core/JobSpec.h"
+#include "core/Progress.h"
 
+#include <QElapsedTimer>
 #include <QList>
 #include <QMainWindow>
 #include <QSet>
@@ -18,6 +20,7 @@ class JobWorker;
 class QAction;
 class QLabel;
 class QMenu;
+class QTimer;
 class QTreeWidgetItem;
 
 class MainWindow : public QMainWindow {
@@ -78,6 +81,9 @@ private:
     void onItemStarted(int index);
     void onItemFinished(int index, const arx::ItemResult &r);
     void onJobFinished(const arx::BatchSummary &summary);
+    void refreshProgress();  // estimated item / batch progress while running
+    QString stageText(const arx::ProgressSnapshot &snap) const;
+    QString remainingText(double seconds) const;
     void onOutputSpecChanged();
     void updatePreview();
 
@@ -107,6 +113,12 @@ private:
     bool m_scanning = false;
     bool m_closing = false;
     int m_finishedCount = 0;
+    arx::ProgressEstimator m_estimator;
+    QElapsedTimer m_clock;
+    QTimer *m_progressTimer = nullptr;
+    QString m_device;       // GPU reported by the engine in this session
+    QString m_ratesDevice;  // device whose measured speeds the estimator uses
+    void onDeviceDetected(const QString &device);
     QString m_jobOutputDir;
     QList<QTreeWidgetItem *> m_jobItems;  // items of the running job, by job index
     QSet<QString> m_keys;

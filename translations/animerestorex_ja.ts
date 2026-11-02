@@ -405,16 +405,64 @@
         <translation>すべての項目が完了しています。出力設定を変更するか画像を追加すると、再度処理できます。</translation>
     </message>
     <message>
+        <source>Estimated from the image size and the measured speed of earlier images.</source>
+        <translation>画像サイズとこれまでの実測速度から推定しています。</translation>
+    </message>
+    <message>
         <source>Starting...</source>
         <translation>開始しています…</translation>
     </message>
     <message>
-        <source>Processing %1 / %2: %3 (AI upscaling may take a while)</source>
-        <translation>処理中 %1 / %2：%3（AI 拡大には時間がかかる場合があります）</translation>
+        <source>Processing %1 / %2: %3</source>
+        <translation>処理中 %1 / %2：%3</translation>
     </message>
     <message>
         <source>Canceled</source>
         <translation>キャンセル済み</translation>
+    </message>
+    <message>
+        <source>Reading</source>
+        <translation>読み込み</translation>
+    </message>
+    <message>
+        <source>AI processing %1/%2</source>
+        <translation>AI 処理 %1/%2</translation>
+    </message>
+    <message>
+        <source>AI processing</source>
+        <translation>AI 処理</translation>
+    </message>
+    <message>
+        <source>Encoding and saving</source>
+        <translation>エンコード・保存</translation>
+    </message>
+    <message>
+        <source>estimating time left</source>
+        <translation>残り時間を計算中</translation>
+    </message>
+    <message>
+        <source>almost done</source>
+        <translation>まもなく完了</translation>
+    </message>
+    <message>
+        <source>about %1 s left</source>
+        <translation>残り約 %1 秒</translation>
+    </message>
+    <message>
+        <source>about %1 min %2 s left</source>
+        <translation>残り約 %1 分 %2 秒</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>残り約 %1 時間 %2 分</translation>
+    </message>
+    <message>
+        <source>%1 / %2 · est. %3% · %4</source>
+        <translation>%1 / %2 · 推定 %3% · %4</translation>
+    </message>
+    <message>
+        <source>%1 · est. %2%</source>
+        <translation>%1 · 推定 %2%</translation>
     </message>
     <message>
         <source>Stopped: %1</source>

@@ -3,7 +3,9 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QMap>
 #include <QProcess>
+#include <QRegularExpression>
 
 namespace arx {
 
@@ -98,6 +100,19 @@ QString Waifu2xRunner::summarizeStderr(const QByteArray &stderrData)
     return kept.join(QLatin1Char(' ')).left(500);
 }
 
+QString Waifu2xRunner::deviceName(const QByteArray &stderrData)
+{
+    static const QRegularExpression re(QStringLiteral("^\\[(\\d+) ([^\\]]+)\\]"));
+    QMap<int, QString> devices;
+    const QString text = QString::fromLocal8Bit(stderrData);
+    for (const QString &raw : text.split(QLatin1Char('\n'))) {
+        const QRegularExpressionMatch m = re.match(raw.trimmed());
+        if (m.hasMatch())
+            devices.insert(m.captured(1).toInt(), m.captured(2).trimmed());
+    }
+    return QStringList(devices.values()).join(QStringLiteral(" + "));
+}
+
 RunResult Waifu2xRunner::run(const Waifu2xParams &p, const QString &inPng, const QString &outPng,
                              const std::atomic_bool &cancel)
 {
@@ -133,6 +148,7 @@ RunResult Waifu2xRunner::run(const Waifu2xParams &p, const QString &inPng, const
     }
     err += proc.readAllStandardError();
 
+    r.device = deviceName(err);
     const QString detail = summarizeStderr(err);
     if (proc.exitStatus() == QProcess::CrashExit) {
         r.error = tr("The AI engine crashed.");

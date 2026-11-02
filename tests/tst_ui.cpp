@@ -87,6 +87,7 @@ void TestUi::initTestCase()
     qRegisterMetaType<arx::JobSpec>();
     qRegisterMetaType<arx::ItemResult>();
     qRegisterMetaType<arx::BatchSummary>();
+    qRegisterMetaType<QList<arx::ItemPlan>>();
     QVERIFY(m_dir.isValid());
 }
 
@@ -188,18 +189,25 @@ void TestUi::fullBatchThroughMainWindow()
 
     QString summary;
     autoCloseNextModal(&summary);
+    auto *bar = w.findChild<QProgressBar *>(QStringLiteral("progressBar"));
+    auto *itemBar = w.findChild<QProgressBar *>(QStringLiteral("itemProgressBar"));
+    QVERIFY(!itemBar->isVisible());
     w.findChild<QPushButton *>(QStringLiteral("startButton"))->click();
+    // While running: per-image bar and a batch bar marked as an estimate.
+    QVERIFY(itemBar->isVisible());
+    QVERIFY2(bar->text().startsWith(QStringLiteral("0 / 3 · est. ")), qPrintable(bar->text()));
     QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 120000);
 
     QVERIFY2(summary.contains(QStringLiteral("Succeeded: 2")), qPrintable(summary));
     QVERIFY2(summary.contains(QStringLiteral("Failed: 1")), qPrintable(summary));
+    QVERIFY(!itemBar->isVisible());
+    QCOMPARE(bar->text(), QStringLiteral("3 / 3"));
 
     auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
     QCOMPARE(list->topLevelItem(0)->text(1), QStringLiteral("Done"));
     QCOMPARE(list->topLevelItem(1)->text(1), QStringLiteral("Failed"));
     QVERIFY(!list->topLevelItem(1)->text(2).isEmpty());
     QCOMPARE(list->topLevelItem(2)->text(1), QStringLiteral("Done"));
-    auto *bar = w.findChild<QProgressBar *>(QStringLiteral("progressBar"));
     QCOMPARE(bar->value(), 3);
     QVERIFY(QFileInfo::exists(QDir(out).filePath(QStringLiteral("1_2x.png"))));
     QVERIFY(QFileInfo::exists(QDir(out).filePath(QStringLiteral("2_2x.png"))));
@@ -655,7 +663,7 @@ void TestUi::aboutDialogContents()
 {
     AboutDialog dlg;
     const QString text = dlg.bodyText();
-    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral("1.1.1"),
+    for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral(ARX_TEST_VERSION),
                              QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
                              QStringLiteral("waifu2x-ncnn-vulkan"), QStringLiteral("ncnn (Tencent)"),
                              QStringLiteral("nagadomi/waifu2x"), QStringLiteral("Qt 6.12"),
@@ -663,6 +671,14 @@ void TestUi::aboutDialogContents()
         QVERIFY2(text.contains(s), qPrintable(s));
     QVERIFY(dlg.openLicensesButton());
     QVERIFY(dlg.aboutQtButton());
+
+    // THIRD_PARTY_NOTICES.md is generated with the same version (title and exe row).
+    QFile notices(QStringLiteral(ARX_TEST_NOTICES));
+    QVERIFY2(notices.open(QIODevice::ReadOnly), qPrintable(notices.fileName()));
+    const QString n = QString::fromUtf8(notices.readAll());
+    QVERIFY(n.startsWith(QStringLiteral("# AnimeRestoreX " ARX_TEST_VERSION " ")));
+    QVERIFY(n.contains(QStringLiteral("| `AnimeRestoreX.exe` | AnimeRestoreX | " ARX_TEST_VERSION " | MIT |")));
+    QVERIFY(!n.contains(QStringLiteral("@PROJECT_VERSION@")));
 
     // Help menu entry exists in the main window.
     MainWindow w;

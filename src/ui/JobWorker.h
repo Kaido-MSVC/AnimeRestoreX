@@ -2,7 +2,9 @@
 
 #include "core/BatchRunner.h"
 #include "core/JobSpec.h"
+#include "core/Progress.h"
 
+#include <QList>
 #include <QObject>
 #include <QStringList>
 
@@ -22,7 +24,13 @@ public slots:
     void process(const QStringList &files, const arx::JobSpec &spec);
 
 signals:
+    // Emitted first: the expected stages of every item, for progress estimation.
+    void planned(const QList<arx::ItemPlan> &plans);
     void itemStarted(int index);
+    // `stage` is an arx::Stage value.
+    void stageStarted(int index, int stage, int pass, int passCount);
+    void stageFraction(int index, double fraction);
+    void deviceDetected(const QString &device);
     void itemFinished(int index, const arx::ItemResult &result);
     void jobFinished(const arx::BatchSummary &summary);
 

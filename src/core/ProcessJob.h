@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/JobSpec.h"
+#include "core/Progress.h"
 
 #include <QCoreApplication>
 #include <QString>
@@ -19,8 +20,13 @@ public:
     // Processes one source image end to end:
     // load -> temp PNG -> waifu2x -> read back -> encode to temp -> rename.
     // The source file is never modified; only files created here are removed.
+    // `progress` is told when each stage of progressPlan() starts.
     static ItemResult run(const QString &sourcePath, const JobSpec &spec,
-                          const std::atomic_bool &cancel);
+                          const std::atomic_bool &cancel, const ProgressSink &progress = {});
+
+    // The stages run() goes through for this file, with the expected cost of
+    // each (engine adapter for ProgressEstimator). Reads only the image header.
+    static ItemPlan progressPlan(const QString &sourcePath, const JobSpec &spec);
 };
 
 } // namespace arx

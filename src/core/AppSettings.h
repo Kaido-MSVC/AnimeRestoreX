@@ -3,6 +3,7 @@
 #include "core/Language.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QString>
 
 #include <memory>
@@ -42,6 +43,15 @@ public:
     void setWindowGeometry(const QByteArray &state);
     QByteArray splitterState() const;
     void setSplitterState(const QByteArray &state);
+
+    // Measured processing speeds for the progress estimate, kept per device
+    // (GPU name as the engine reports it): rate key -> seconds per megapixel.
+    // Invalid values are dropped.
+    QHash<QString, double> progressRates(const QString &device) const;
+    void setProgressRates(const QString &device, const QHash<QString, double> &rates);
+    // Device of the most recent measurement (a guess until the engine reports it).
+    QString progressDevice() const;
+    void setProgressDevice(const QString &device);
 
     // Flushes to storage; false if the settings could not be saved.
     bool sync();

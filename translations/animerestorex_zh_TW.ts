@@ -405,16 +405,64 @@
         <translation>所有項目都已完成。變更輸出設定或加入圖片後即可再次處理。</translation>
     </message>
     <message>
+        <source>Estimated from the image size and the measured speed of earlier images.</source>
+        <translation>依圖片大小與先前圖片的實測速度推估。</translation>
+    </message>
+    <message>
         <source>Starting...</source>
         <translation>正在開始…</translation>
     </message>
     <message>
-        <source>Processing %1 / %2: %3 (AI upscaling may take a while)</source>
-        <translation>處理中 %1 / %2：%3（AI 放大可能需要一些時間）</translation>
+        <source>Processing %1 / %2: %3</source>
+        <translation>處理中 %1 / %2：%3</translation>
     </message>
     <message>
         <source>Canceled</source>
         <translation>已取消</translation>
+    </message>
+    <message>
+        <source>Reading</source>
+        <translation>讀取</translation>
+    </message>
+    <message>
+        <source>AI processing %1/%2</source>
+        <translation>AI 處理 %1/%2</translation>
+    </message>
+    <message>
+        <source>AI processing</source>
+        <translation>AI 處理</translation>
+    </message>
+    <message>
+        <source>Encoding and saving</source>
+        <translation>編碼儲存</translation>
+    </message>
+    <message>
+        <source>estimating time left</source>
+        <translation>正在估算剩餘時間</translation>
+    </message>
+    <message>
+        <source>almost done</source>
+        <translation>即將完成</translation>
+    </message>
+    <message>
+        <source>about %1 s left</source>
+        <translation>剩餘約 %1 秒</translation>
+    </message>
+    <message>
+        <source>about %1 min %2 s left</source>
+        <translation>剩餘約 %1 分 %2 秒</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>剩餘約 %1 小時 %2 分</translation>
+    </message>
+    <message>
+        <source>%1 / %2 · est. %3% · %4</source>
+        <translation>%1 / %2 · 預估 %3% · %4</translation>
+    </message>
+    <message>
+        <source>%1 · est. %2%</source>
+        <translation>%1 · 預估 %2%</translation>
     </message>
     <message>
         <source>Stopped: %1</source>
