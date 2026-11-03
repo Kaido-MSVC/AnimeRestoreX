@@ -26,6 +26,7 @@ const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
 const QString kTileKey = QStringLiteral("v2/inference/tileSize");
 const QString kDeviceKey = QStringLiteral("v2/inference/device");
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
+const QString kEulaKey = QStringLiteral("v2/eula/acceptedVersion");
 
 // "v2/progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
 // are replaced in the device name.
@@ -65,6 +66,23 @@ void AppSettings::migrate()
             m_s->setValue(kNoiseKey, v1);
     }
     m_s->setValue(kSchemaKey, kSchema);
+}
+
+std::optional<Language> AppSettings::storedManualLanguage()
+{
+    const QSettings s;  // reading never writes
+    return languageFromCode(s.value(kLanguageKey).toString());
+}
+
+QString AppSettings::acceptedEulaVersion()
+{
+    const QSettings s;
+    return s.value(kEulaKey).toString();
+}
+
+void AppSettings::setAcceptedEulaVersion(const QString &version)
+{
+    m_s->setValue(kEulaKey, version);
 }
 
 std::optional<Language> AppSettings::manualLanguage() const

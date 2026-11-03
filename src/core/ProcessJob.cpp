@@ -182,7 +182,9 @@ QString ProcessJob::engineErrorMessage(const core::Status &s)
         return tr("A model file is damaged or was replaced (its checksum does not match "
                   "models/manifest.json). Please reinstall AnimeRestoreX.");
     case core::ErrorKind::ModelNotFound:
-        return tr("A model file is missing. Please reinstall AnimeRestoreX.");
+        return tr("The AI model files are missing from the \"models\" folder next to AnimeRestoreX.exe. "
+                  "This copy of AnimeRestoreX may have been distributed without the models; "
+                  "see README.txt for how to add them.");
     case core::ErrorKind::ContractViolation:
         return tr("The AI model does not match its description in models/manifest.json.");
     case core::ErrorKind::InvalidTileSize:

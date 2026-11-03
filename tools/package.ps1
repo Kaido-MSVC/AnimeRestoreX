@@ -1,50 +1,115 @@
-# Builds the release, assembles dist/AnimeRestoreX-<ver>-win64/, writes MANIFEST.txt,
-# zips it, and places the Qt 6.12.0 source archives and SHA256SUMS.txt next to the zip.
-# Only the components the app actually needs are deployed.
+# Builds AnimeRestoreX from a clean build folder, assembles a fresh staging folder from an
+# explicit allowlist, checks it, writes MANIFEST.txt, zips it and writes SHA256SUMS.
+#
+#   pwsh -File tools/package.ps1 [-Suffix rc1] [-IncludeModels] [-SkipBuild]
+#
+# Nothing is taken from build\ or dist\: the release is configured and built in
+# .package\build (deleted first), the staging folder is .package\stage (deleted first).
+# Sources: the clean build (exe, EULA.txt, THIRD_PARTY_NOTICES.md), the Qt 6.12.0 install
+# (windeployqt), the VS 2026 VC redist folder, the pinned Windows ML package
+# (third_party\windowsml\2.5.96), the hash-checked models (third_party\models, only with
+# -IncludeModels) and files tracked in git (LICENSE, README.txt, models\manifest.json, licenses\).
+#
+# Models: not included by default. -IncludeModels adds the 14 models; while
+# models\manifest.json still says license UNRESOLVED, such a package is INTERNAL: it is
+# written to tools\winml-probe\_work\p5\ (never dist\) and its name says so.
 [CmdletBinding()]
 param(
+    [ValidatePattern('^$|^[a-z0-9]+$')]
+    [string]$Suffix = '',
+    [switch]$IncludeModels,
+    # Reuse .package\build from the previous run of this script (never build\).
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 $Root    = Split-Path -Parent $PSScriptRoot
 $Qt      = 'D:\qt\6.12.0\msvc2022_64'
 $VsRoot  = 'C:\Program Files\Microsoft Visual Studio\18\Community'
+$VcVars  = '14.51'
+$CMake   = 'C:\Program Files\CMake\bin\cmake.exe'
 $CrtDir  = Join-Path $VsRoot 'VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
 $CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
-$W2x     = Join-Path $Root 'third_party\waifu2x'
-$W2xZip  = 'waifu2x-ncnn-vulkan-20250915-windows.zip'
+$WinMl   = Join-Path $Root 'third_party\windowsml\2.5.96'
+$WinMlBin = Join-Path $WinMl 'runtimes\win-x64\native'
+$ModelsSrc = Join-Path $Root 'third_party\models'
 $QtSrc   = Join-Path $Root 'third_party\_download\qt-src'
+$Work    = Join-Path $Root '.package'
+$Build   = Join-Path $Work 'build'
 
-$Version = [regex]::Match((Get-Content (Join-Path $Root 'CMakeLists.txt') -Raw),
-                          'project\(AnimeRestoreX VERSION ([0-9.]+)').Groups[1].Value
-if (-not $Version) { throw 'Cannot read the project version' }
-$Name  = "AnimeRestoreX-$Version-win64"
-$Dist  = Join-Path $Root 'dist'
-$Stage = Join-Path $Dist $Name
+# ---------------------------------------------------------------- version and names
+$cmakeText = Get-Content (Join-Path $Root 'CMakeLists.txt') -Raw
+$Version = [regex]::Match($cmakeText, 'project\(AnimeRestoreX VERSION ([0-9.]+)').Groups[1].Value
+$EulaVersion = [regex]::Match($cmakeText, 'set\(ARX_EULA_VERSION "([^"]+)"\)').Groups[1].Value
+if (-not $Version -or -not $EulaVersion) { throw 'Cannot read the project / EULA version from CMakeLists.txt' }
+
+$ManifestPath = Join-Path $Root 'models\manifest.json'
+$Manifest = Get-Content -Raw -Encoding utf8 $ManifestPath | ConvertFrom-Json
+$ModelLicense = [string]$Manifest.source.license
+$ModelLicenseResolved = $ModelLicense -and $ModelLicense -ne 'UNRESOLVED' -and $Manifest.status -notlike 'DRAFT*'
+$Internal = $IncludeModels -and -not $ModelLicenseResolved
+
+$Name = "AnimeRestoreX-$Version" + $(if ($Suffix) { "-$Suffix" } else { '' }) + '-win64'
+if ($IncludeModels) { $Name += '-with-models' }
+if ($Internal)      { $Name += '-INTERNAL' }
+$OutDir = if ($Internal) { Join-Path $Root 'tools\winml-probe\_work\p5' } else { Join-Path $Root 'dist' }
+$StageRoot = Join-Path $Work 'stage'
+$Stage = Join-Path $StageRoot $Name
+
+Write-Host "Package : $Name"
+Write-Host "Models  : $(if ($IncludeModels) { "included (licence: $ModelLicense)" } else { 'not included' })"
+if ($Internal) {
+    Write-Warning "Model licence is $ModelLicense: INTERNAL test package, written to $OutDir. Do not distribute."
+}
+
+function Get-Sha([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+
+# ---------------------------------------------------------------- clean build
+if (-not $env:VSCMD_VER) {
+    Import-Module (Join-Path $VsRoot 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+    Enter-VsDevShell -VsInstallPath $VsRoot -SkipAutomaticLocation `
+        -DevCmdArguments "-arch=x64 -host_arch=x64 -vcvars_ver=$VcVars" | Out-Null
+}
+$Dumpbin = (Get-Command dumpbin.exe -ErrorAction Stop).Source
 
 if (-not $SkipBuild) {
-    & (Join-Path $Root 'build.ps1') -Preset release
-    if ($LASTEXITCODE) { throw 'release build failed' }
+    & (Join-Path $Root 'tools\fetch-runtime.ps1')
+    if ($LASTEXITCODE) { throw 'fetch-runtime failed' }
+    & (Join-Path $Root 'tools\fetch-models.ps1')
+    if ($LASTEXITCODE) { throw 'fetch-models failed' }
+    if (Test-Path $Build) { Remove-Item -LiteralPath $Build -Recurse -Force }
+    Push-Location $Root
+    try {
+        & $CMake --preset release -B $Build -DARX_BUILD_TESTS=OFF
+        if ($LASTEXITCODE) { throw 'configure failed' }
+        & $CMake --build $Build
+        if ($LASTEXITCODE) { throw 'build failed' }
+    } finally { Pop-Location }
+} elseif (-not (Test-Path (Join-Path $Build 'AnimeRestoreX.exe'))) {
+    throw "-SkipBuild: no previous clean build in $Build"
 }
-& (Join-Path $Root 'tools\fetch-qt-sources.ps1')
+$cache = Get-Content (Join-Path $Build 'CMakeCache.txt') -Raw
+if ($cache -notmatch '(?m)^CMAKE_BUILD_TYPE:STRING=Release\r?$') { throw "$Build is not a Release build" }
+if ($cache -notmatch '(?m)^ARX_BUILD_TESTS:BOOL=OFF\r?$') { throw "$Build was configured with tests" }
 
-if (Test-Path $Stage) { Remove-Item $Stage -Recurse -Force }
+# ---------------------------------------------------------------- fresh staging
+if (Test-Path $StageRoot) { Remove-Item -LiteralPath $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Force $Stage | Out-Null
 
-$manifest = New-Object System.Collections.Generic.List[object]
+$entries = New-Object System.Collections.Generic.List[object]
 function Add-File([string]$src, [string]$rel, [string]$origin) {
+    if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "Missing source file: $src" }
     $dest = Join-Path $Stage $rel
     New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
     Copy-Item -LiteralPath $src -Destination $dest
-    $script:manifest.Add([pscustomobject]@{ Path = $rel; Origin = $origin })
+    $script:entries.Add([pscustomobject]@{ Path = $rel; Origin = $origin; Source = $src })
 }
 
-# 1. Application
-Add-File (Join-Path $Root 'build\release\AnimeRestoreX.exe') 'AnimeRestoreX.exe' 'built from this repository (MSVC 14.51.36231, Qt 6.12.0)'
+# 1. Application (clean build)
+Add-File (Join-Path $Build 'AnimeRestoreX.exe') 'AnimeRestoreX.exe' "built from this repository (clean Release build, MSVC $VcVars, Qt 6.12.0)"
 
 # 2. Qt via windeployqt: Core/Gui/Widgets, qwindows, qjpeg, qwebp, zh_TW/ja.
-#    No style plugin: since 1.2.0 the app uses Fusion, which is built into Qt6Widgets.
 $wdq = @(
     '--release', '--no-compiler-runtime', '--no-opengl-sw', '--no-system-d3d-compiler',
     '--no-system-dxc-compiler', '--no-ffmpeg',
@@ -62,81 +127,205 @@ foreach ($line in $mapping) {
     $src = $m.Groups[1].Value; $rel = $m.Groups[2].Value
     if (-not (Test-Path (Join-Path $Stage $rel))) { continue }  # e.g. qtbase_*.qm merged into qt_*.qm
     $origin = "Qt 6.12.0 official binary: $($src.Replace($Qt + '\', ''))"
+    $source = $src
     if ($rel -like 'translations\qt_*.qm') {
         $lang = [regex]::Match($rel, 'qt_(.+)\.qm').Groups[1].Value
         $origin = "windeployqt merge of Qt 6.12.0 translations\qtbase_$lang.qm"
+        $source = $null  # generated by windeployqt, not a copy
     }
-    $manifest.Add([pscustomobject]@{ Path = $rel; Origin = $origin })
+    $entries.Add([pscustomobject]@{ Path = $rel; Origin = $origin; Source = $source })
 }
 
-# 3. Visual C++ runtime of the build toolset (app-local)
+# 3. Visual C++ runtime (AnimeRestoreX.exe and the Qt DLLs import these), app-local
 foreach ($dll in $CrtDlls) {
     Add-File (Join-Path $CrtDir $dll) $dll 'VS 2026 VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
 }
 
-# 4. waifu2x-ncnn-vulkan 20250915 (unmodified) + the CUnet models used for 1x/2x/4x
-foreach ($f in 'waifu2x-ncnn-vulkan.exe', 'vcomp140.dll', 'LICENSE') {
-    Add-File (Join-Path $W2x $f) "waifu2x\$f" "$W2xZip (unmodified)"
+# 4. Windows ML runtime: only the two DLLs the app loads (ONNX Runtime C API + DirectML).
+#    Microsoft.Windows.AI.MachineLearning.dll (WinML API / EP catalog) is not used.
+foreach ($f in $Manifest.runtime.files) {
+    Add-File (Join-Path $WinMlBin $f.file) $f.file "NuGet Microsoft.Windows.AI.MachineLearning $($Manifest.runtime.package_version) runtimes\win-x64\native (unmodified)"
 }
-foreach ($m in 'noise0_scale2.0x_model', 'noise1_scale2.0x_model', 'noise2_scale2.0x_model',
-               'noise3_scale2.0x_model', 'scale2.0x_model',
-               'noise0_model', 'noise1_model', 'noise2_model', 'noise3_model') {
-    foreach ($ext in '.param', '.bin') {
-        Add-File (Join-Path $W2x "models-cunet\$m$ext") "waifu2x\models-cunet\$m$ext" "$W2xZip (unmodified)"
+
+# 5. Models: manifest always (it documents the models and their licence state); model files only on request
+Add-File $ManifestPath 'models\manifest.json' 'this repository (models\manifest.json)'
+if ($IncludeModels) {
+    foreach ($m in $Manifest.models) {
+        $rel = 'models\' + ($m.file -replace '/', '\')
+        Add-File (Join-Path $ModelsSrc ($m.file -replace '/', '\')) $rel "nunif waifu2x_onnx_models_20250502.zip, Pad->Slice rewrite (tools\fetch-models.ps1); licence $ModelLicense"
     }
 }
 
-# 5. Documents and license texts
+# 6. Documents and licence texts
+Add-File (Join-Path $Build 'EULA.txt') 'EULA.txt' 'this repository (packaging\EULA.txt.in + licenses\WindowsML\license.txt, generated by CMake)'
+Add-File (Join-Path $Build 'THIRD_PARTY_NOTICES.md') 'THIRD_PARTY_NOTICES.md' 'this repository (THIRD_PARTY_NOTICES.md.in, version filled in by CMake)'
 Add-File (Join-Path $Root 'LICENSE') 'LICENSE' 'this repository'
-# Generated by CMake from THIRD_PARTY_NOTICES.md.in with the project version.
-$notices = Join-Path $Root 'build\release\THIRD_PARTY_NOTICES.md'
-$noticesText = Get-Content -LiteralPath $notices -Raw -Encoding utf8
-if ($noticesText -notmatch "(?m)^# AnimeRestoreX $([regex]::Escape($Version)) " -or $noticesText.Contains('@PROJECT_VERSION@')) {
-    throw "$notices does not carry version $Version; run the release build again"
-}
-Add-File $notices 'THIRD_PARTY_NOTICES.md' 'this repository (THIRD_PARTY_NOTICES.md.in, version filled in by CMake)'
-Add-File (Join-Path $Root 'packaging\README.txt') 'README.txt' 'this repository'
-$licRoot = Join-Path $Root 'licenses'
-foreach ($f in Get-ChildItem $licRoot -Recurse -File) {
-    Add-File $f.FullName ('licenses\' + $f.FullName.Substring($licRoot.Length + 1)) 'this repository (tools\collect-licenses.ps1)'
+Add-File (Join-Path $Root 'packaging\README.txt') 'README.txt' 'this repository (packaging\README.txt)'
+$tracked = @(& git -C $Root ls-files -- licenses)
+if ($LASTEXITCODE -or $tracked.Count -eq 0) { throw 'git ls-files licenses failed' }
+$untracked = @(& git -C $Root ls-files --others --exclude-standard -- licenses)
+if ($untracked.Count) { throw "Untracked files in licenses\ (commit or remove them first): $($untracked -join ', ')" }
+$dirty = @(& git -C $Root status --porcelain -- licenses LICENSE packaging models\manifest.json THIRD_PARTY_NOTICES.md.in)
+if ($dirty.Count) { Write-Warning "Uncommitted changes in packaged sources: $($dirty -join '; ')" }
+foreach ($f in $tracked) {
+    $rel = $f -replace '/', '\'
+    if ($rel -eq 'licenses\README.md') { $origin = 'this repository' } else { $origin = 'this repository (tools\collect-licenses.ps1)' }
+    Add-File (Join-Path $Root $rel) $rel $origin
 }
 
-# 6. Guard rails: nothing unexpected may be deployed.
-$forbidden = @('opengl32sw.dll', 'd3dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll', 'Qt6Svg.dll',
-               'Qt6Network.dll', 'qgif.dll', 'qico.dll', 'qsvg.dll', 'qtiff.dll', 'qtga.dll',
-               'qwbmp.dll', 'qicns.dll', 'qpdf.dll', 'qsvgicon.dll', 'qminimal.dll', 'qoffscreen.dll',
-               'qmodernwindowsstyle.dll')
-$all = Get-ChildItem $Stage -Recurse -File
-$bad = $all | Where-Object { $forbidden -contains $_.Name }
-if ($bad) { throw "Unexpected files deployed: $($bad.Name -join ', ')" }
-$listed = $manifest.Path | ForEach-Object { $_.ToLowerInvariant() }
-$unlisted = $all | Where-Object { $listed -notcontains $_.FullName.Substring($Stage.Length + 1).ToLowerInvariant() }
-if ($unlisted) { throw "Files without a recorded origin: $($unlisted.FullName -join ', ')" }
+# ---------------------------------------------------------------- checks
+$problems = New-Object System.Collections.Generic.List[string]
+$all = @(Get-ChildItem -LiteralPath $Stage -Recurse -File)
+$relOf = { param($fi) $fi.FullName.Substring($Stage.Length + 1) }
 
-# 7. MANIFEST.txt (size, SHA256, origin of every file)
+# a) Allowlist: exactly these files, nothing else.
+$allow = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($p in @('AnimeRestoreX.exe', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll',
+                 'platforms\qwindows.dll', 'imageformats\qjpeg.dll', 'imageformats\qwebp.dll',
+                 'translations\qt_zh_TW.qm', 'translations\qt_ja.qm',
+                 'onnxruntime.dll', 'DirectML.dll', 'models\manifest.json',
+                 'EULA.txt', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls) { [void]$allow.Add($p) }
+foreach ($f in $tracked) { [void]$allow.Add($f -replace '/', '\') }
+if ($IncludeModels) { foreach ($m in $Manifest.models) { [void]$allow.Add('models\' + ($m.file -replace '/', '\')) } }
+$present = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($fi in $all) {
+    $rel = & $relOf $fi
+    [void]$present.Add($rel)
+    if (-not $allow.Contains($rel)) { $problems.Add("not in allowlist: $rel") }
+}
+foreach ($p in $allow) { if (-not $present.Contains($p)) { $problems.Add("allowlisted file missing: $p") } }
+$listed = [System.Collections.Generic.HashSet[string]]::new([string[]]$entries.Path, [StringComparer]::OrdinalIgnoreCase)
+foreach ($p in $present) { if (-not $listed.Contains($p)) { $problems.Add("no recorded origin: $p") } }
+
+# b) Old engine and unwanted files, by name (defence in depth).
+$forbiddenName = '(?i)(waifu2x|ncnn|cunet|vcomp1\d\d|\.param$|\.bin$|^Microsoft\.Windows\.AI\.MachineLearning\.dll$|opengl32sw|d3dcompiler|dxcompiler|dxil|Qt6Svg|Qt6Network|vulkan-1)'
+foreach ($fi in $all) {
+    $rel = & $relOf $fi
+    if ($rel -match $forbiddenName -and $rel -notlike 'licenses\*') { $problems.Add("forbidden file: $rel") }
+}
+if (-not $IncludeModels -and ($all | Where-Object Extension -eq '.onnx')) { $problems.Add('model files present without -IncludeModels') }
+# ...and by content of our own text files (licence texts are upstream copies and skipped).
+foreach ($p in 'README.txt', 'THIRD_PARTY_NOTICES.md', 'EULA.txt', 'models\manifest.json') {
+    $t = Get-Content -LiteralPath (Join-Path $Stage $p) -Raw -Encoding utf8
+    foreach ($word in 'ncnn', 'models-cunet', 'vcomp140', 'Vulkan GPU') {
+        if ($t.Contains($word)) { $problems.Add("$p mentions '$word'") }
+    }
+}
+
+# c) Copies are byte-identical to their sources; runtime DLLs and models match models\manifest.json.
+foreach ($e in $entries) {
+    if (-not $e.Source) { continue }
+    if ((Get-Sha (Join-Path $Stage $e.Path)) -ne (Get-Sha $e.Source)) { $problems.Add("differs from its source: $($e.Path)") }
+}
+foreach ($f in $Manifest.runtime.files) {
+    $p = Join-Path $Stage $f.file
+    $ver = (Get-Item -LiteralPath $p).VersionInfo
+    $fileVer = '{0}.{1}.{2}' -f $ver.ProductMajorPart, $ver.ProductMinorPart, $ver.ProductBuildPart
+    if ($fileVer -ne $f.version) { $problems.Add("$($f.file): version $fileVer, manifest says $($f.version)") }
+    if ((Get-Sha $p) -ne $f.sha256) { $problems.Add("$($f.file): SHA-256 differs from models\manifest.json") }
+}
+if ($IncludeModels) {
+    foreach ($m in $Manifest.models) {
+        $p = Join-Path $Stage ('models\' + ($m.file -replace '/', '\'))
+        if ((Get-Sha $p) -ne $m.sha256) { $problems.Add("$($m.id): SHA-256 differs from models\manifest.json") }
+    }
+}
+if ($ModelLicense -eq 'UNRESOLVED' -and $Manifest.status -notlike '*licence unresolved*') {
+    $problems.Add('models\manifest.json: license UNRESOLVED but status does not say so')
+}
+
+# d) Version and generated documents.
+$notices = Get-Content -LiteralPath (Join-Path $Stage 'THIRD_PARTY_NOTICES.md') -Raw -Encoding utf8
+if ($notices -notmatch "(?m)^# AnimeRestoreX $([regex]::Escape($Version)) " -or $notices.Contains('@PROJECT_VERSION@')) {
+    $problems.Add("THIRD_PARTY_NOTICES.md does not carry version $Version")
+}
+$eula = Get-Content -LiteralPath (Join-Path $Stage 'EULA.txt') -Raw -Encoding utf8
+if (-not $eula.StartsWith("AnimeRestoreX $Version - End-User License Agreement") -or
+    -not $eula.Contains("EULA version: $EulaVersion") -or $eula.Contains('@')) {
+    $problems.Add("EULA.txt does not carry version $Version / EULA $EulaVersion")
+}
+$msLicense = (Get-Content -LiteralPath (Join-Path $Stage 'licenses\WindowsML\license.txt') -Raw -Encoding utf8) -replace "`r`n", "`n"
+if (-not $eula.Contains($msLicense.Trim())) { $problems.Add('EULA.txt Appendix A differs from licenses\WindowsML\license.txt') }
+# (The exe embeds the same generated EULA.txt as a Qt resource; tst_ui licenseAgreement checks that.)
+
+# e) Dependencies: every import of every shipped binary is shipped or provided by Windows.
+$shipped = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($fi in $all | Where-Object Extension -in '.exe', '.dll') { [void]$shipped.Add($fi.Name) }
+$depReport = New-Object System.Collections.Generic.List[string]
+foreach ($fi in $all | Where-Object Extension -in '.exe', '.dll') {
+    $deps = & $Dumpbin /nologo /dependents $fi.FullName | Where-Object { $_ -match '^\s+(\S+\.dll)\s*$' } | ForEach-Object { $Matches[1] }
+    foreach ($d in $deps) {
+        if ($shipped.Contains($d)) { continue }
+        if ($d -match '^(api|ext)-ms-win-') { continue }
+        if (Test-Path (Join-Path $env:SystemRoot "System32\$d")) {
+            if ($d -match '(?i)^(msvcp|vcruntime|concrt|vcomp|Qt6|onnxruntime|DirectML)') {
+                $problems.Add("$(& $relOf $fi) imports $d, which would come from System32") }
+            continue
+        }
+        $problems.Add("$(& $relOf $fi) imports $d, which is neither shipped nor in System32")
+    }
+    $depReport.Add("$(& $relOf $fi): $($deps -join ', ')")
+}
+
+if ($problems.Count) {
+    $problems | ForEach-Object { Write-Host "  PROBLEM: $_" -ForegroundColor Red }
+    throw "Package checks failed ($($problems.Count) problems); nothing was zipped."
+}
+Write-Host "Checks  : allowlist, forbidden files, source hashes, runtime/model hashes, versions, EULA, dependencies: OK"
+
+# ---------------------------------------------------------------- MANIFEST.txt
 $lines = New-Object System.Collections.Generic.List[string]
-$lines.Add("AnimeRestoreX $Version - file manifest")
+$lines.Add("AnimeRestoreX $Version$(if ($Suffix) { " ($Suffix)" }) - file manifest$(if ($Internal) { ' - INTERNAL, NOT FOR DISTRIBUTION (model licence unresolved)' })")
 $lines.Add('SHA256  size  path  <- origin')
 $lines.Add('')
-foreach ($e in $manifest | Sort-Object Path) {
+foreach ($e in $entries | Sort-Object Path) {
     $p = Join-Path $Stage $e.Path
-    $hash = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()
-    $lines.Add(('{0}  {1,10}  {2}  <- {3}' -f $hash, (Get-Item -LiteralPath $p).Length, $e.Path, $e.Origin))
+    $lines.Add(('{0}  {1,10}  {2}  <- {3}' -f (Get-Sha $p), (Get-Item -LiteralPath $p).Length, $e.Path, $e.Origin))
 }
 [IO.File]::WriteAllLines((Join-Path $Stage 'MANIFEST.txt'), $lines, (New-Object Text.UTF8Encoding($false)))
 
-# 8. Zip + Qt sources + checksums
-$zip = Join-Path $Dist "$Name.zip"
-if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $Stage -DestinationPath $zip -CompressionLevel Optimal
-$qtNames = 'qtbase-everywhere-src-6.12.0.zip', 'qtimageformats-everywhere-src-6.12.0.zip', 'qttranslations-everywhere-src-6.12.0.zip'
-foreach ($q in $qtNames) { Copy-Item (Join-Path $QtSrc $q) (Join-Path $Dist $q) -Force }
-$sums = foreach ($f in @("$Name.zip") + $qtNames) {
-    '{0}  {1}' -f (Get-FileHash (Join-Path $Dist $f) -Algorithm SHA256).Hash.ToLowerInvariant(), $f
+# ---------------------------------------------------------------- zip and verify it
+New-Item -ItemType Directory -Force $OutDir | Out-Null
+$zip = Join-Path $OutDir "$Name.zip"
+if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+Compress-Archive -LiteralPath $Stage -DestinationPath $zip -CompressionLevel Optimal
+
+$verify = Join-Path $Work 'verify'
+if (Test-Path $verify) { Remove-Item -LiteralPath $verify -Recurse -Force }
+Expand-Archive -LiteralPath $zip -DestinationPath $verify
+$vRoot = Join-Path $verify $Name
+$stageFiles = @(Get-ChildItem -LiteralPath $Stage -Recurse -File)
+$zipFiles = @(Get-ChildItem -LiteralPath $vRoot -Recurse -File)
+if ($zipFiles.Count -ne $stageFiles.Count) { throw "zip holds $($zipFiles.Count) files, staging $($stageFiles.Count)" }
+foreach ($fi in $stageFiles) {
+    $rel = & $relOf $fi
+    $z = Join-Path $vRoot $rel
+    if (-not (Test-Path -LiteralPath $z) -or (Get-Sha $z) -ne (Get-Sha $fi.FullName)) { throw "zip content differs: $rel" }
 }
-[IO.File]::WriteAllLines((Join-Path $Dist 'SHA256SUMS.txt'), [string[]]$sums, (New-Object Text.UTF8Encoding($false)))
+Remove-Item -LiteralPath $verify -Recurse -Force
+Write-Host "Zip     : every file re-extracted and hash-compared with the staging folder: OK"
+
+# ---------------------------------------------------------------- Qt sources and SHA256SUMS
+$qtSources = [ordered]@{
+    'qtbase-everywhere-src-6.12.0.zip'          = '0529901575c413e34ded504eeda177c4a6dfd0dff1e39ed52c811dc5204b43c7'
+    'qtimageformats-everywhere-src-6.12.0.zip'  = '664de2ba60a1e74105da844c061688ff5e6f8f046d5dd98e2d6b6ad3c553b4ca'
+    'qttranslations-everywhere-src-6.12.0.zip'  = '286f0ca3ad669bc2d6fec0e209a797a08049d037c7a167e60eb3b4a640405aa5'
+}
+& (Join-Path $Root 'tools\fetch-qt-sources.ps1')
+foreach ($q in $qtSources.Keys) {
+    $src = Join-Path $QtSrc $q
+    if ((Get-Sha $src) -ne $qtSources[$q]) { throw "$src does not match THIRD_PARTY_NOTICES.md" }
+    $dest = Join-Path $OutDir $q
+    if (-not (Test-Path -LiteralPath $dest) -or (Get-Sha $dest) -ne $qtSources[$q]) { Copy-Item -LiteralPath $src -Destination $dest -Force }
+}
+$sumsName = "SHA256SUMS-$Name.txt"
+$sums = foreach ($f in @("$Name.zip") + [string[]]$qtSources.Keys) { '{0}  {1}' -f (Get-Sha (Join-Path $OutDir $f)), $f }
+[IO.File]::WriteAllLines((Join-Path $OutDir $sumsName), [string[]]$sums, (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllLines((Join-Path $Work "dependencies-$Name.txt"), $depReport, (New-Object Text.UTF8Encoding($false)))
 
 Write-Host ''
 Write-Host "Package : $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
-Write-Host "Files   : $($manifest.Count + 1) (incl. MANIFEST.txt)"
-Write-Host "Publish together: $Name.zip, $($qtNames -join ', '), SHA256SUMS.txt"
+Write-Host "Files   : $($entries.Count + 1) (incl. MANIFEST.txt)"
+Write-Host "Sums    : $(Join-Path $OutDir $sumsName)"
+if ($Internal) { Write-Warning 'INTERNAL package (model licence unresolved): do not distribute.' }
+else { Write-Host "Publish together: $Name.zip, $($qtSources.Keys -join ', '), $sumsName" }

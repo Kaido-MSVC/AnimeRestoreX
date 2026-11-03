@@ -3,6 +3,8 @@
 AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026 Kaido-MSVC）。
 **MIT 只涵蓋 AnimeRestoreX 自身**；本發行包內的第三方元件、模型與執行階段各自適用原授權。授權與版權原文放在 `licenses/`，本文件中的摘要不能取代原文。
 
+使用本程式前須同意 `EULA.txt`（含 Microsoft Windows ML Runtime 授權條款全文，見 §3）。
+
 每個檔案的大小與 SHA256 列在發行包內的 `MANIFEST.txt`。
 
 ## 1. 發行包內容與來源
@@ -15,16 +17,16 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `imageformats/qjpeg.dll` | Qt JPEG 外掛（內含 libjpeg-turbo） | 6.12.0 | LGPL-3.0-only；libjpeg-turbo：IJG AND BSD-3-Clause | 同上 |
 | `imageformats/qwebp.dll` | Qt WebP 外掛（內含 libwebp 1.6.0） | 6.12.0 | LGPL-3.0-only；libwebp：BSD-3-Clause | 同上 |
 | `translations/qt_zh_TW.qm`、`translations/qt_ja.qm` | Qt 內建字串翻譯 | 6.12.0 | LGPL-3.0-only | windeployqt 由 Qt 6.12.0 的 `qtbase_zh_TW.qm`／`qtbase_ja.qm` 合併產生（qttranslations） |
+| `onnxruntime.dll` | ONNX Runtime（Microsoft Windows ML Runtime 內附） | 1.28.3 | Microsoft Software License Terms – Microsoft Windows ML Runtime（見 §3） | NuGet `Microsoft.Windows.AI.MachineLearning` 2.5.96 `runtimes/win-x64/native/`，未修改 |
+| `DirectML.dll` | DirectML（同上） | 1.15.4 | 同上 | 同上 |
 | `msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` | Microsoft Visual C++ 執行階段 | 14.51.36247.0 | Microsoft Visual Studio「Distributable Code」條款（見 §5） | VS 2026 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`（與建置工具集 14.51 相同；app-local） |
-| `waifu2x/waifu2x-ncnn-vulkan.exe` | waifu2x-ncnn-vulkan（靜態連入 ncnn、glslang、libwebp 等，見 §3） | 20250915 | MIT（及 §3 所列） | 上游預編譯版 `waifu2x-ncnn-vulkan-20250915-windows.zip`，未修改 |
-| `waifu2x/vcomp140.dll` | Microsoft OpenMP 執行階段 | 14.44.35211.0 | Microsoft Visual Studio「Distributable Code」條款 | 原樣取自上述上游 zip（上游建置時隨附） |
-| `waifu2x/LICENSE` | waifu2x-ncnn-vulkan 授權 | 20250915 | MIT | 原樣取自上述上游 zip |
-| `waifu2x/models-cunet/*` | waifu2x CUnet 模型（ncnn 格式） | 見 §4 | MIT（依儲存庫授權推論，見 §4） | 原樣取自上述上游 zip |
-| `LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案 |
+| `models/manifest.json` | 模型清單（來源、雜湊、I/O 契約） | — | 本專案 | 本專案 `models/manifest.json` |
+| `models/swin_unet/art/*.onnx` | waifu2x swin_unet/art 模型（14 個，Pad→Slice 改寫版） | nunif 20250502 | **待確認**（見 §4） | **只在以 `-IncludeModels` 建立的封裝中**；預設封裝不含模型 |
+| `EULA.txt`、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案（`EULA.txt` 附錄 A 為 Microsoft 條款原文） |
 
-不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組、其他 waifu2x 模型（upconv_7 系列）。
+不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組；Windows ML 套件中的 `Microsoft.Windows.AI.MachineLearning.dll`（Windows ML API／EP catalog，本程式只使用 ONNX Runtime C API，不載入它）；廠商執行提供者（EP）。
 
-不散布、由系統提供：Vulkan loader（`vulkan-1.dll`，隨 GPU 驅動安裝）、Universal CRT（`api-ms-win-crt-*`）、ICU（`icuuc.dll`）、Direct3D、DirectWrite 等 Windows 元件。
+不散布、由系統提供：Universal CRT（`api-ms-win-crt-*`）、Direct3D 12（`d3d12.dll`）、DXGI（`dxgi.dll`）、ICU（`icuuc.dll`）、DirectWrite 等 Windows 元件。
 
 ## 2. Qt 6.12.0（LGPLv3）
 
@@ -76,64 +78,30 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
   | xserverhelper、xsvg | X Server helper、XSVG | — | X11 AND HPND、HPND-sell-variant |
   | zlib | zlib | 1.3.2 | Zlib |
 
-## 3. waifu2x-ncnn-vulkan 20250915 與其靜態連入的元件
+## 3. Microsoft Windows ML Runtime 2.5.96（ONNX Runtime 1.28.3、DirectML 1.15.4）
 
-上游：<https://github.com/nihui/waifu2x-ncnn-vulkan>，tag `20250915`（commit `a86cfb043e6482b5f08778a114df9b5faf6e73b7`）。發行檔 `waifu2x-ncnn-vulkan-20250915-windows.zip` 的 SHA256 為 `7425be94b94e4c8f37a1e433ac0e0100c43790e2c37418f4b65d8235adfbdc87`，與 GitHub 提供的 asset digest 一致。EXE 原樣散布，未修改。
+- 來源：NuGet 套件 `Microsoft.Windows.AI.MachineLearning` 2.5.96（<https://www.nuget.org/packages/Microsoft.Windows.AI.MachineLearning/2.5.96>），`.nupkg` SHA256 `35d6e84feb4142e8cecaf36704fa3ab0fc8251d892850fb80e8341f7d09653a3`（`tools/fetch-runtime.ps1` 固定並檢查）。散布的是套件 `runtimes/win-x64/native/` 中的 `onnxruntime.dll` 與 `DirectML.dll`，**未修改**。
+- 授權：Microsoft Software License Terms – Microsoft Windows ML Runtime，原文在 `licenses/WindowsML/license.txt`，並以附錄 A 全文收錄在 `EULA.txt`。這兩個檔案依該條款 §3「Distributable Code」隨本程式散布；第一次啟動時須在程式中同意 `EULA.txt` 才能使用。
+- 第三方通知：`licenses/WindowsML/ThirdPartyNotices.txt`（套件原檔，涵蓋 ONNX Runtime 及其相依元件）。
+- 限制（摘自條款，以原文為準）：不得單獨散布這兩個 DLL 或作為獨立產品提供（§4(e)）；不得移除 Microsoft 或其供應商的通知（§4(c)）；該軟體可能收集資料並傳送給 Microsoft（§2(a)）。
+- 本程式只使用 ONNX Runtime C API、DirectML 與 CPU 執行提供者；不使用 Windows ML 的 EP catalog，也不下載廠商執行提供者。DLL 只從程式資料夾載入，啟動時檢查 ONNX Runtime 版本必須是 1.28.3。
+- 「Microsoft」、「Windows」、「DirectML」為 Microsoft 的商標；本程式與 Microsoft 沒有隸屬關係，也未獲其背書。
 
-依該 tag 的 `src/CMakeLists.txt`、`deps_ncnn.cmake`、`deps_codec.cmake`、`main.cpp` 與 release workflow（Windows：`cmake -A x64`，預設選項，CRT 靜態連結 `/MT`），並在 EXE 內搜尋各函式庫的特徵字串，判定如下：
+## 4. waifu2x swin_unet/art 模型（nagadomi/nunif）— 授權待確認
 
-| 元件 | 子模組 commit | 是否連入 EXE | 依據 | 授權原文 |
-|---|---|---|---|---|
-| waifu2x-ncnn-vulkan | a86cfb0 | 是（本體） | — | `licenses/waifu2x-ncnn-vulkan/LICENSE`（MIT, Copyright (c) 2019 nihui） |
-| ncnn | `c4193aad`（tag 20250916） | 是 | 建置連結 `ncnn`；EXE 內有大量 `ncnn` 字串 | `licenses/ncnn/LICENSE.txt`（BSD-3-Clause，含其第三方條款） |
-| glslang（nihui fork） | `8cd77a80`（ncnn 子模組） | 是 | ncnn 以 Vulkan 模式建置時內建；EXE 內有 GLSL 擴充名稱與 SPIR-V 字串 | `licenses/glslang/LICENSE.txt`（BSD-3-Clause、BSD-2-Clause、MIT、Apache-2.0 等） |
-| libwebp（含 sharpyuv） | `4fa21912` | 是 | 建置連結 `libwebp` 等；main.cpp 在 Windows 仍以 libwebp 處理 WebP；EXE 內有 `VP8L`／`VP8X`／`ALPH` | `licenses/libwebp/COPYING`、`PATENTS`（BSD-3-Clause＋Google 專利授權） |
-| dirent（`win32dirent.h`） | 隨 waifu2x 原始碼 | 是（標頭檔） | Windows 版以此提供目錄列舉 | `licenses/dirent/LICENSE`（MIT, Copyright (C) 1998-2019 Toni Ronkko） |
-| libjpeg-turbo | `4e151a4a` | **判定未連入** | 雖列在連結清單，但 `main.cpp` 在 `_WIN32` 下改用 Windows WIC 讀寫 JPEG／PNG，不引用其符號；EXE 內找不到任何 libjpeg 特徵字串（如 `Corrupt JPEG data`、`Bogus marker length`） | 為保險仍附：`licenses/libjpeg-turbo/LICENSE.md`、`README.ijg` |
-| libpng | `2b978915` | **判定未連入** | 同上；EXE 內找不到 `libpng version`、`Not a PNG file` 等字串 | 為保險仍附：`licenses/libpng/LICENSE` |
-| zlib-ng | `42543906` | **判定未連入** | 只供 libpng 使用；EXE 內找不到 `incorrect header check` 等 zlib 字串 | 為保險仍附：`licenses/zlib-ng/LICENSE.md` |
-| Microsoft C/C++ 執行階段（靜態） | — | 是 | `CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded` | Microsoft Visual Studio 授權條款 |
-| Microsoft OpenMP（`vcomp140.dll`） | — | 動態 | EXE 匯入 `VCOMP140.DLL` | 見 §5 |
-
-關於 glslang：該 commit 仍含由 GNU Bison 3.8.2 產生的 `glslang/MachineIndependent/glslang_tab.cpp`，授權為 GPL-3.0-or-later WITH Bison-exception-2.2。依 Bison 例外條款，包含 Bison 骨架的較大作品可依任意條款散布，因此不構成 GPL 散布義務；相關條文保留在 `licenses/glslang/LICENSE.txt`。
-
-「判定未連入」是依原始碼與二進位字串檢查得出的結論，並非上游明確聲明。
-
-## 4. waifu2x CUnet 模型（`waifu2x/models-cunet`）
-
-來源鏈：
-
-1. **nagadomi/waifu2x**（原始模型與訓練）：<https://github.com/nagadomi/waifu2x>，MIT License，Copyright (C) 2015 nagadomi（`licenses/waifu2x-models/nagadomi-waifu2x/LICENSE`，取自 commit `f2f5c882`）。
-2. **lltcggie/waifu2x-caffe**（轉為 Caffe 格式）：<https://github.com/lltcggie/waifu2x-caffe>，MIT License，Copyright (c) 2015 lltcggie（`licenses/waifu2x-models/waifu2x-caffe/LICENSE`，取自 commit `b272b6fe`）。
-3. **nihui/waifu2x-ncnn-vulkan**（轉為 ncnn `.param`／`.bin`）：儲存庫 `models/models-cunet`（最後變更 commit `a19cf5d3`），MIT License；上游 README 將上述兩者列為「Original waifu2x Project」。
-
-**權重授權係依儲存庫授權推論**：上述儲存庫並未對權重檔另行宣告授權，此處依其儲存庫的 MIT 授權推定權重可再散布。
-
-散布的檔案（取自上游 20250915 Windows zip，未修改；雜湊為 zip 內檔案本身，換行為 CRLF）：
-
-| 檔案 | 用途 | SHA256 |
-|---|---|---|
-| `noise0_scale2.0x_model.bin` | 降噪 0＋2× | `5329a9375c9cfb64a60a2903fd8ae6e2851d9b069556bf025dbab9d0216fb27c` |
-| `noise1_scale2.0x_model.bin` | 降噪 1＋2× | `862c0e40f3df956ff57bd4d168c85dea5d375b614077fdddd3ac8cfdb9a686da` |
-| `noise2_scale2.0x_model.bin` | 降噪 2＋2× | `5c836e6ae022636cdd5590fbb66dbca2a5fc20bbf8e628884c3612ef72d51858` |
-| `noise3_scale2.0x_model.bin` | 降噪 3＋2× | `f42c18610fecb14a40f75cca9b9276a6889689d5937a4f75f0c2b21bde7e49ed` |
-| `scale2.0x_model.bin` | 只放大 2×（不降噪時；以及 4× 的第二階段） | `d82ed30207fd07e1c16726a9ca838ce44e6e25a105b0278c7ca681516ee0e18e` |
-| `noise0_scale2.0x_model.param` … `noise3_scale2.0x_model.param`、`scale2.0x_model.param` | 網路結構（5 檔內容相同） | `9b06073e039ca93d5bd79f6bb42016cd98d5bdefa0e9761df6b22b844c39965f` |
-| `noise0_model.bin` | 降噪 0，不放大（1×） | `b15c356a36bcbf6fb8c2f1404ca016fd917d4e45426bcf41f7a3867022fdd7b0` |
-| `noise1_model.bin` | 降噪 1，不放大（1×） | `3407cb87c2503cbd69f8a6703b31bc4949a72080a3e1b1e536dba8bdbfad934f` |
-| `noise2_model.bin` | 降噪 2，不放大（1×） | `b45d5febeb56166b7aff055cb0fbb87647dae528968f97d838dfd7ce0b7117f4` |
-| `noise3_model.bin` | 降噪 3，不放大（1×） | `cd3d2440673d28d7a20aa6428a2a79e1c5e733f21de0a66785958f98d6994926` |
-| `noise0_model.param` … `noise3_model.param` | 1× 網路結構（4 檔內容相同） | `8fda717f004e75f02e4eaf9901bd37301fa51b1f5cd80d53a466a274406595d3` |
-
-AnimeRestoreX 的 4× 分兩次呼叫 waifu2x-ncnn-vulkan：先用 `noiseN_scale2.0x_model` 降噪並放大 2×，再用 `scale2.0x_model` 只放大 2×（降噪只執行一次），所以 4× 也需要 `scale2.0x_model`。v1.1 起的「不放大（1×）」只做降噪，呼叫一次 `-s 1` 並使用 `noiseN_model`；1× 必須搭配降噪強度 0～3。
+- 來源：<https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_onnx_models_20250502.zip>（SHA256 `4d531e299884f8895df82947939f85c5ff6fca15236b9b72f1aa8ea476132e08`）中的 `onnx_models/swin_unet/art/`，由 nunif commit `31c0137` 匯出。
+- 修改：為了讓 DirectML 正確執行，負值 `Pad` 以 `tools/winml-probe/scripts/rewrite_pad.py` 改寫成等價的 `Slice`，權重未變。每個檔案的原始與改寫後 SHA256、改寫工具版本與 I/O 契約記錄在 `models/manifest.json`。
+- **授權：待確認。** nunif 倉庫的程式碼採 MIT（`licenses/nunif/LICENSE`，Copyright (C) 2019-2023 nagadomi；另附 `licenses/nunif/NOTICE`），但上游沒有明確說明這批權重檔的授權（GitHub 倉庫標示 MIT，Hugging Face 上的 nunif/waifu2x 標示 agpl-3.0），已向上游詢問。`models/manifest.json` 的 `license` 欄為 `UNRESOLVED`。
+- **預設的發行包不含模型檔**；只有以 `tools/package.ps1 -IncludeModels` 建立的內部測試封裝會放入模型。授權釐清之前，含模型的封裝不得對外散布。
+- 「waifu2x」等名稱屬於各自作者；本程式與上述專案沒有隸屬關係。
 
 ## 5. Microsoft Visual C++ 執行階段
 
-`msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`（14.51.36247.0）取自 Visual Studio 2026 Community 18.11 的 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`，對應建置 AnimeRestoreX 所用的 MSVC 工具集 14.51；以 app-local 方式放在程式資料夾。`waifu2x/vcomp140.dll`（14.44.35211.0）為上游 waifu2x-ncnn-vulkan 隨附的 OpenMP 執行階段，原樣保留。
+`msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`（14.51.36247.0）取自 Visual Studio 2026 Community 的 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`，對應建置 AnimeRestoreX 所用的 MSVC 工具集 14.51；以 app-local 方式放在程式資料夾。`AnimeRestoreX.exe` 與 Qt DLL 依賴這些檔案（`onnxruntime.dll` 與 `DirectML.dll` 不依賴）。
 
 這些檔案屬於 Microsoft Visual Studio 授權條款中允許隨應用程式再散布的「Distributable Code」，清單見 <https://aka.ms/vs/18/redistribution>。版權屬 Microsoft Corporation。
 
 ## 6. 其他
 
-- Vulkan：本程式與 waifu2x-ncnn-vulkan 都不散布 Vulkan loader 或 SDK，執行時使用 GPU 驅動提供的 `vulkan-1.dll`。
-- 名稱「waifu2x」等屬於各自作者；本程式與上述專案沒有隸屬關係。
+- 本程式自 2.0 起不再包含或呼叫任何舊版推論引擎與其模型。
+- Qt 內含的 Vulkan 相關程式碼（`vulkan-xml-spec`、`vulkanmemoryallocator`）仍編入 Qt 二進位檔，其通知保留在 §2；本程式本身不使用 Vulkan。

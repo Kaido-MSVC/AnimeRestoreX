@@ -75,15 +75,28 @@ Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
 ## Release package
 
 ```powershell
-pwsh -File tools/package.ps1     # release build -> dist/AnimeRestoreX-<ver>-win64.zip
+pwsh -File tools/package.ps1 -Suffix rc1                 # dist/AnimeRestoreX-<ver>-rc1-win64.zip (no models)
+pwsh -File tools/package.ps1 -Suffix rc1 -IncludeModels  # + the 14 models; INTERNAL while their licence is unresolved
 ```
 
-Publish together: the zip, the three Qt 6.12.0 source archives copied to `dist/`
-(LGPLv3 corresponding source), and `dist/SHA256SUMS.txt`.
+The script configures and builds a clean Release in `.package/build` (tests off),
+assembles a fresh staging folder from an explicit allowlist (nothing is taken from
+`build/` or `dist/`), and refuses to zip if any file is not on the allowlist, an
+old-engine file appears, a copy differs from its source, `onnxruntime.dll` /
+`DirectML.dll` do not match the version and SHA-256 in `models/manifest.json`, or a
+shipped binary imports a DLL that is neither shipped nor part of Windows. The zip is
+re-extracted and compared file by file. While `models/manifest.json` says the model
+licence is `UNRESOLVED`, a package with models is written to
+`tools/winml-probe/_work/p5/` with `-INTERNAL` in its name, never to `dist/`.
+
+Publish together: the zip, the three Qt 6.12.0 source archives copied next to it
+(LGPLv3 corresponding source), and `SHA256SUMS-<package name>.txt`.
 License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md.in`, `licenses/`
 (regenerate with `tools/collect-licenses.ps1`). The build writes
-`THIRD_PARTY_NOTICES.md` next to the executable with `@PROJECT_VERSION@`
-replaced by the version in `CMakeLists.txt`; the package ships that file.
+`THIRD_PARTY_NOTICES.md` and `EULA.txt` (from `packaging/EULA.txt.in`, Appendix A =
+`licenses/WindowsML/license.txt`) next to the executable; the package ships them.
+The app asks for the EULA on the first start and whenever `ARX_EULA_VERSION`
+(CMakeLists.txt) changes; the accepted version is stored as `v2/eula/acceptedVersion`.
 
 Icons: `resources/icons/app.svg` is the source; the committed `app.ico` and
 `app_<size>.png` are regenerated with `pwsh -File tools/make-icons.ps1`

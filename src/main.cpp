@@ -5,6 +5,7 @@
 #include "core/ProcessJob.h"
 #include "core/inference/EngineHost.h"
 #include "ui/AppIcon.h"
+#include "ui/EulaDialog.h"
 #include "ui/LanguageManager.h"
 #include "ui/MainWindow.h"
 #include "ui/Theme.h"
@@ -49,10 +50,21 @@ int main(int argc, char *argv[])
 
     // Language: manual setting first, otherwise the Windows UI language rule.
     // The automatic result is never written back as a manual choice.
-    {
-        const arx::AppSettings settings;
-        LanguageManager::instance().apply(
-            arx::effectiveLanguage(settings.manualLanguage(), arx::windowsPrimaryUiLanguage()));
+    // Read-only here: nothing is written before the licence agreement is accepted.
+    LanguageManager::instance().apply(
+        arx::effectiveLanguage(arx::AppSettings::storedManualLanguage(), arx::windowsPrimaryUiLanguage()));
+
+    // Licence agreement (EULA.txt, includes the Microsoft Windows ML Runtime terms): asked on
+    // the first start and whenever its version changes, before any setting is written and
+    // before onnxruntime.dll / DirectML.dll are loaded. Declining ends the program.
+    if (!EulaDialog::isAccepted(arx::AppSettings::acceptedEulaVersion())) {
+        EulaDialog eula(EulaDialog::Mode::Consent);
+        if (eula.exec() != QDialog::Accepted)
+            return 0;
+        arx::AppSettings settings;  // first write (also runs the schema migration)
+        settings.setAcceptedEulaVersion(EulaDialog::currentVersion());
+        if (!settings.sync())
+            QMessageBox::warning(nullptr, QStringLiteral("AnimeRestoreX"), EulaDialog::saveFailedMessage());
     }
 
     // AI runtime: onnxruntime.dll / DirectML.dll from the program folder only (never

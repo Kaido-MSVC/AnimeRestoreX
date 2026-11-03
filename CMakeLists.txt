@@ -1,7 +1,7 @@
 # 3.26: cmake -E copy_directory_if_different (model files next to the app).
 cmake_minimum_required(VERSION 3.26)
 
-project(AnimeRestoreX VERSION 1.2.0 LANGUAGES CXX)
+project(AnimeRestoreX VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +31,18 @@ message(STATUS "Windows ML package ${WINML_VERSION}: ${WINML_BINARY_DIR}")
 # Rewritten nunif models checked against models/manifest.json; see tools/fetch-models.ps1.
 set(ARX_MODELS_DIR "${CMAKE_SOURCE_DIR}/third_party/models"
     CACHE PATH "Folder holding the models listed in models/manifest.json")
+
+# End-user licence agreement (first-run consent; shipped as EULA.txt and embedded in the app).
+# Appendix A is the Microsoft Windows ML Runtime licence, copied from licenses/WindowsML/license.txt
+# (byte-identical to the pinned package, see tools/collect-licenses.ps1); the generated file
+# uses LF line endings throughout (the licence's CRLF are normalized).
+# Raise ARX_EULA_VERSION whenever the agreement text changes: users are then asked again.
+set(ARX_EULA_VERSION "2.0.0-1")
+set(ARX_WINML_LICENSE_FILE "${CMAKE_SOURCE_DIR}/licenses/WindowsML/license.txt")
+file(READ "${ARX_WINML_LICENSE_FILE}" ARX_WINML_LICENSE_TEXT)
+string(REPLACE "\r\n" "\n" ARX_WINML_LICENSE_TEXT "${ARX_WINML_LICENSE_TEXT}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ARX_WINML_LICENSE_FILE}")
+configure_file(packaging/EULA.txt.in "${CMAKE_BINARY_DIR}/EULA.txt" @ONLY NEWLINE_STYLE LF)
 
 add_subdirectory(src)
 

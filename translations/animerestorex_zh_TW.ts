@@ -60,6 +60,10 @@
         <translation>處理裝置：%1</translation>
     </message>
     <message>
+        <source>License Agreement</source>
+        <translation>授權合約</translation>
+    </message>
+    <message>
         <source>Open License Files</source>
         <translation>開啟授權檔案</translation>
     </message>
@@ -160,6 +164,39 @@
     <message>
         <source>Copy</source>
         <translation>複製</translation>
+    </message>
+</context>
+<context>
+    <name>EulaDialog</name>
+    <message>
+        <source>Your acceptance of the license agreement could not be saved. You will be asked again the next time AnimeRestoreX starts.</source>
+        <translation>無法儲存您對授權合約的同意。下次啟動 AnimeRestoreX 時會再次詢問。</translation>
+    </message>
+    <message>
+        <source>AnimeRestoreX License Agreement</source>
+        <translation>AnimeRestoreX 授權合約</translation>
+    </message>
+    <message>
+        <source>Before you use AnimeRestoreX, please read the license agreement below. It includes the Microsoft license terms for the Windows ML Runtime files (onnxruntime.dll, DirectML.dll) that come with AnimeRestoreX. The agreement is shown in its original English.
+If you do not agree, AnimeRestoreX will close.</source>
+        <translation>使用 AnimeRestoreX 之前，請閱讀下方的授權合約。其中包含 AnimeRestoreX 隨附的 Windows ML Runtime 檔案（onnxruntime.dll、DirectML.dll）的 Microsoft 授權條款。合約以英文原文顯示。
+如果不同意，AnimeRestoreX 將會關閉。</translation>
+    </message>
+    <message>
+        <source>I have read and accept the license agreement (version %1).</source>
+        <translation>我已閱讀並接受授權合約（版本 %1）。</translation>
+    </message>
+    <message>
+        <source>I Agree</source>
+        <translation>我同意</translation>
+    </message>
+    <message>
+        <source>I Do Not Agree</source>
+        <translation>我不同意</translation>
+    </message>
+    <message>
+        <source>License agreement version %1 (original English text).</source>
+        <translation>授權合約版本 %1（英文原文）。</translation>
     </message>
 </context>
 <context>
@@ -702,8 +739,8 @@
         <translation>模型檔已損壞或被替換（檢查碼與 models/manifest.json 不符）。請重新安裝 AnimeRestoreX。</translation>
     </message>
     <message>
-        <source>A model file is missing. Please reinstall AnimeRestoreX.</source>
-        <translation>缺少模型檔。請重新安裝 AnimeRestoreX。</translation>
+        <source>The AI model files are missing from the &quot;models&quot; folder next to AnimeRestoreX.exe. This copy of AnimeRestoreX may have been distributed without the models; see README.txt for how to add them.</source>
+        <translation>AnimeRestoreX.exe 旁的「models」資料夾中缺少 AI 模型檔。這份 AnimeRestoreX 可能是以不含模型的形式散布；新增模型的方法請見 README.txt。</translation>
     </message>
     <message>
         <source>The AI model does not match its description in models/manifest.json.</source>

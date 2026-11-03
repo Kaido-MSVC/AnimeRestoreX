@@ -17,6 +17,26 @@
     "numpy": "2.5.4",
     "reason": "DirectML EP (Windows ML 2.5.96 / ORT 1.28.3 / DirectML 1.15.4) returns zeros for Pad with negative pads; negative static Pad -> equivalent Slice, weights unchanged"
   },
+  "runtime": {
+    "comment": "The runtime these models were rewritten for and verified with (P1-P4). tools/package.ps1 requires the shipped DLLs to match exactly; the app checks the ONNX Runtime version at start-up.",
+    "package": "Microsoft.Windows.AI.MachineLearning",
+    "package_version": "2.5.96",
+    "nupkg_sha256": "35d6e84feb4142e8cecaf36704fa3ab0fc8251d892850fb80e8341f7d09653a3",
+    "files": [
+      {
+        "file": "onnxruntime.dll",
+        "product": "ONNX Runtime",
+        "version": "1.28.3",
+        "sha256": "f4904f839c48216fa98c83847a9eb8ded25e3258105630cad98916329a0538ef"
+      },
+      {
+        "file": "DirectML.dll",
+        "product": "DirectML",
+        "version": "1.15.4",
+        "sha256": "82c6e345cc62a9d1e06874aac4e3e1f990432a2baeae5888477933e26b2c0894"
+      }
+    ]
+  },
   "io_contract": {
     "input": {
       "name": "x",

@@ -1,5 +1,6 @@
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
+#include "ui/EulaDialog.h"
 
 #include "core/inference/EngineHost.h"
 
@@ -97,12 +98,17 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     root->addWidget(m_body);
 
     auto *buttons = new QDialogButtonBox(this);
+    m_eula = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
     m_openLicenses = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
     m_aboutQt = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
     m_close = buttons->addButton(QDialogButtonBox::Close);
     m_close->setDefault(true);
     connect(m_openLicenses, &QPushButton::clicked, this,
             [this] { openLicenseFolder(this, QCoreApplication::applicationDirPath()); });
+    connect(m_eula, &QPushButton::clicked, this, [this] {
+        EulaDialog dlg(EulaDialog::Mode::View, this);
+        dlg.exec();
+    });
     connect(m_aboutQt, &QPushButton::clicked, this, [this] { QMessageBox::aboutQt(this); });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(buttons);
@@ -159,6 +165,7 @@ void AboutDialog::retranslate()
         html += QStringLiteral("<p style='margin:0'><small>%1</small></p>").arg(line.toHtmlEscaped());
     m_body->setText(html);
 
+    m_eula->setText(tr("License Agreement"));
     m_openLicenses->setText(tr("Open License Files"));
     m_aboutQt->setText(tr("About Qt"));
 }

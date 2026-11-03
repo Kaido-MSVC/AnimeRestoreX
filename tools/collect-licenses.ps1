@@ -28,25 +28,44 @@ function Resolve-ZipPath([string]$path) {
     return ($parts -join '/')
 }
 
-# ---- waifu2x-ncnn-vulkan 20250915 and the components linked into its EXE
+# Folders of components that are no longer shipped (v1.x: waifu2x-ncnn-vulkan, ncnn and
+# the libraries linked into its EXE, CUnet model provenance). Removed so that a re-run
+# cannot leave stale notices behind. Qt/ is rebuilt below.
+foreach ($old in 'waifu2x-ncnn-vulkan', 'ncnn', 'glslang', 'libwebp', 'libjpeg-turbo', 'libpng',
+                 'zlib-ng', 'dirent', 'waifu2x-models') {
+    $p = Join-Path $Out $old
+    if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Host "  removed licenses\$old" }
+}
+
+# ---- nunif (the project the swin_unet/art models come from), at the commit the
+# ONNX models were exported with (models/manifest.json source.exported_with_commit).
+# The licence of the model weights themselves is UNRESOLVED (docs/v2.0-P0-P1報告.md §5).
 $upstream = @(
-    @{ repo = 'nihui/waifu2x-ncnn-vulkan';   sha = 'a86cfb043e6482b5f08778a114df9b5faf6e73b7'; files = @('LICENSE');                 dir = 'waifu2x-ncnn-vulkan' }
-    @{ repo = 'Tencent/ncnn';                sha = 'c4193aadbbb56582aa87b1850dd3d98fb8fd936d'; files = @('LICENSE.txt');             dir = 'ncnn' }
-    @{ repo = 'nihui/glslang';               sha = '8cd77a808d0bffa442ae9462d5e3a8141892ba5a'; files = @('LICENSE.txt');             dir = 'glslang' }
-    @{ repo = 'webmproject/libwebp';         sha = '4fa21912338357f89e4fd51cf2368325b59e9bd9'; files = @('COPYING', 'PATENTS');      dir = 'libwebp' }
-    @{ repo = 'libjpeg-turbo/libjpeg-turbo'; sha = '4e151a4ad91001b3aa8c2ece2205c15f487ce320'; files = @('LICENSE.md', 'README.ijg'); dir = 'libjpeg-turbo' }
-    @{ repo = 'pnggroup/libpng';             sha = '2b978915d82377df13fcbb1fb56660195ded868a'; files = @('LICENSE');                 dir = 'libpng' }
-    @{ repo = 'zlib-ng/zlib-ng';             sha = '425439062b114a0f6cf625022c41d929c7e879f9'; files = @('LICENSE.md');              dir = 'zlib-ng' }
-    @{ repo = 'tronkko/dirent';              sha = 'ee812d43cff8d3aeab3b0200298954b782eb1c47'; files = @('LICENSE');                 dir = 'dirent' }
-    # models-cunet provenance
-    @{ repo = 'nagadomi/waifu2x';            sha = 'f2f5c882eb3ebe735061f8113b184db58bd2972c'; files = @('LICENSE');                 dir = 'waifu2x-models\nagadomi-waifu2x' }
-    @{ repo = 'lltcggie/waifu2x-caffe';      sha = 'b272b6fec0dfa27fc204ceda1f2e2e9d263c97ed'; files = @('LICENSE');                 dir = 'waifu2x-models\waifu2x-caffe' }
+    @{ repo = 'nagadomi/nunif'; sha = '31c0137dc949807e382d918dc325c65fd6703092'; files = @('LICENSE', 'NOTICE'); dir = 'nunif' }
 )
 foreach ($u in $upstream) {
     foreach ($f in $u.files) {
         Get-Raw $u.repo $u.sha $f (Join-Path $Out (Join-Path $u.dir $f))
         Write-Host "  $($u.repo)@$($u.sha.Substring(0,7)) $f"
     }
+}
+
+# ---- Microsoft Windows ML Runtime 2.5.96 (onnxruntime.dll, DirectML.dll): the licence
+# terms and third-party notices from the pinned, hash-checked NuGet package
+# (tools/fetch-runtime.ps1), copied byte for byte.
+$winml = Join-Path $Root 'third_party\windowsml\2.5.96'
+$winmlFiles = @{
+    'license.txt'           = '66395f8cb219087fae2bd025010bd9076b736c14f03b48f20295471c0c376814'
+    'ThirdPartyNotices.txt' = 'fb0af774b4d7cffc5b9d046f2aaeade2f37df2f80abf8033c95dfffcc77a8866'
+}
+New-Item -ItemType Directory -Force (Join-Path $Out 'WindowsML') | Out-Null
+foreach ($f in $winmlFiles.Keys) {
+    $src = Join-Path $winml $f
+    if (-not (Test-Path $src)) { throw "Missing $src; run tools/fetch-runtime.ps1" }
+    $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($h -ne $winmlFiles[$f]) { throw "SHA256 mismatch for $src ($h)" }
+    Copy-Item $src (Join-Path $Out "WindowsML\$f") -Force
+    Write-Host "  Windows ML 2.5.96 $f"
 }
 
 # ---- Qt 6.12.0 (LGPLv3) and third-party code built into the shipped Qt binaries

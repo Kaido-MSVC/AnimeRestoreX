@@ -31,6 +31,13 @@ public:
     AppSettings();
     ~AppSettings();
 
+    // Read-only access before the licence agreement is accepted: these do not create an
+    // AppSettings object, so nothing (not even the schema migration) is written.
+    static std::optional<Language> storedManualLanguage();
+    static QString acceptedEulaVersion();   // "v2/eula/acceptedVersion"; empty if never accepted
+    // Recorded only after the user accepted the agreement of that version.
+    void setAcceptedEulaVersion(const QString &version);
+
     // Only a valid, explicitly chosen language is returned.
     std::optional<Language> manualLanguage() const;
     void setManualLanguage(Language lang);
