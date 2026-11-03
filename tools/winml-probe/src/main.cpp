@@ -66,7 +66,7 @@ std::string jsonEscape(const std::string& s) {
 }
 
 struct Args {
-    fs::path model, input, output, log, json, profile;
+    fs::path model, input, output, log, json, profile, dumpDir;
     std::string ep = "dml";
     int device = 0;
     int tile = 256;
@@ -76,6 +76,7 @@ struct Args {
     bool verbose = false;
     int cancelDelayMs = -1;
     std::string opt = "all";  // graph optimization level: disable|basic|extended|all
+    std::vector<std::pair<std::string, std::string>> config;  // --config key=value (AddConfigEntry)
 };
 
 [[noreturn]] void usage() {
@@ -83,7 +84,9 @@ struct Args {
         "usage: winml_probe --model M.onnx --input in.bin --ep dml|cpu --scale S --offset O\n"
         "                   [--tile 256] [--device 0] [--warm 3] [--output out.bin]\n"
         "                   [--verbose --log file] [--profile prefix] [--cancel-delay-ms D]\n"
-        "                   [--opt disable|basic|extended|all] [--json results.jsonl]\n", stderr);
+        "                   [--opt disable|basic|extended|all] [--json results.jsonl]\n"
+        "                   [--dump-dir D]  (run once, write every float graph output to D)\n"
+        "                   [--config key=value]...  (session config entry, e.g. ep.dml.disable_graph_fusion=1)\n", stderr);
     std::exit(64);
 }
 
@@ -106,6 +109,13 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--warm") a.warm = std::stoi(next());
         else if (k == L"--cancel-delay-ms") a.cancelDelayMs = std::stoi(next());
         else if (k == L"--opt") a.opt = narrow(next());
+        else if (k == L"--dump-dir") a.dumpDir = next();
+        else if (k == L"--config") {
+            std::string kv = narrow(next());
+            auto eq = kv.find('=');
+            if (eq == std::string::npos) usage();
+            a.config.emplace_back(kv.substr(0, eq), kv.substr(eq + 1));
+        }
         else if (k == L"--verbose") a.verbose = true;
         else usage();
     }
@@ -328,6 +338,11 @@ int wmain(int argc, wchar_t** argv) {
         else throw std::runtime_error("bad --opt " + a.opt);
         std::printf("graph opt level : %s\n", a.opt.c_str());
         js << ",\"opt\":\"" << a.opt << "\"";
+        for (auto& [k, v] : a.config) {
+            so.AddConfigEntry(k.c_str(), v.c_str());
+            std::printf("config entry    : %s=%s\n", k.c_str(), v.c_str());
+            js << ",\"config_" << jsonEscape(k) << "\":\"" << jsonEscape(v) << "\"";
+        }
         if (a.verbose) so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
         if (!a.profile.empty()) so.EnableProfiling(a.profile.c_str());
         if (a.ep == "dml") {
@@ -348,6 +363,30 @@ int wmain(int argc, wchar_t** argv) {
         Ort::Value x = Ort::Value::CreateTensor<float>(mem, in.data(), in.size(), inShape.data(), inShape.size());
         const char* inNames[] = {"x"};
         const char* outNames[] = {"y"};
+
+        // Node-by-node check: one Run fetching every graph output (the caller adds
+        // intermediate tensors as outputs). Writes <i>.bin and index.txt "i<TAB>name<TAB>shape".
+        if (!a.dumpDir.empty()) {
+            fs::create_directories(a.dumpDir);
+            Ort::Session session(env, a.model.c_str(), so);
+            Ort::AllocatorWithDefaultOptions alloc;
+            const size_t n = session.GetOutputCount();
+            std::vector<std::string> names;
+            for (size_t i = 0; i < n; ++i) names.emplace_back(session.GetOutputNameAllocated(i, alloc).get());
+            std::vector<const char*> cnames;
+            for (auto& s : names) cnames.push_back(s.c_str());
+            Ort::RunOptions ro;
+            auto outs = session.Run(ro, inNames, &x, 1, cnames.data(), cnames.size());
+            std::ofstream idx(a.dumpDir / "index.txt");
+            for (size_t i = 0; i < n; ++i) {
+                auto info = outs[i].GetTensorTypeAndShapeInfo();
+                if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) continue;
+                writeFloats(a.dumpDir / (std::to_string(i) + ".bin"), outs[i].GetTensorData<float>(), info.GetElementCount());
+                idx << i << "\t" << names[i] << "\t" << shapeStr(info.GetShape()) << "\n";
+            }
+            std::printf("dumped %zu outputs to %s\n", n, narrow(a.dumpDir.wstring()).c_str());
+            return 0;
+        }
 
         VramSampler vram(ad.a3.Get());
 
