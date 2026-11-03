@@ -2,3 +2,6 @@
 licenses/** -text
 *.ico binary
 *.png binary
+# Dev scripts whose SHA-256 is recorded in models/manifest.json: keep LF on every
+# checkout so the recorded hash stays valid with core.autocrlf=true.
+tools/winml-probe/scripts/*.py text eol=lf
