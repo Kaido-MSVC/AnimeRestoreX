@@ -11,6 +11,18 @@ target_include_directories(arxinfer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(arxinfer PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(arxinfer PUBLIC bcrypt)
 
+# ONNX Runtime (Windows ML package) engine. ORT_API_MANUAL_INIT everywhere: Ort::InitApi()
+# runs only after the DLL path was pinned (initOrtRuntime). onnxruntime.dll is delay-loaded,
+# because Windows 11 ships an older onnxruntime.dll in System32.
+add_library(arxort STATIC
+    core/inference/OrtTileEngine.h core/inference/OrtTileEngine.cpp
+)
+target_compile_definitions(arxort PUBLIC ORT_API_MANUAL_INIT
+    PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_include_directories(arxort PUBLIC "${WINML_INCLUDE_DIR}")
+target_link_libraries(arxort PUBLIC arxinfer WindowsML::OnnxRuntime dxgi delayimp)
+target_link_options(arxort INTERFACE /DELAYLOAD:onnxruntime.dll)
+
 qt_add_library(arxcore STATIC
     core/ImageLimits.h core/ImageLimits.cpp
     core/ImageLoader.h core/ImageLoader.cpp
@@ -93,6 +105,25 @@ qt_add_executable(AnimeRestoreX WIN32
 )
 target_link_libraries(AnimeRestoreX PRIVATE arxui)
 target_compile_definitions(AnimeRestoreX PRIVATE PROJECT_VERSION_STRING="${PROJECT_VERSION}")
+
+# Runtime DLLs and the verified models next to the app (models/manifest.json + model files).
+# The app checks the ORT version and every model hash again before use.
+add_custom_command(TARGET AnimeRestoreX POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}"
+        "$<TARGET_FILE_DIR:AnimeRestoreX>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AnimeRestoreX>/models"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/models/manifest.json" "$<TARGET_FILE_DIR:AnimeRestoreX>/models"
+    VERBATIM)
+if(EXISTS "${ARX_MODELS_DIR}")
+    add_custom_command(TARGET AnimeRestoreX POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            "${ARX_MODELS_DIR}" "$<TARGET_FILE_DIR:AnimeRestoreX>/models"
+        VERBATIM)
+else()
+    message(WARNING "models not found in ${ARX_MODELS_DIR}; run tools/fetch-models.ps1")
+endif()
 
 # Copy the pinned waifu2x binary and the cunet models next to the app.
 if(EXISTS "${ARX_WAIFU2X_DIR}/waifu2x-ncnn-vulkan.exe")

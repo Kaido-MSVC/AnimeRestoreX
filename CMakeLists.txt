@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.21)
+# 3.26: cmake -E copy_directory_if_different (model files next to the app).
+cmake_minimum_required(VERSION 3.26)
 
 project(AnimeRestoreX VERSION 1.2.0 LANGUAGES CXX)
 
@@ -19,6 +20,20 @@ endif()
 
 set(ARX_WAIFU2X_DIR "${CMAKE_SOURCE_DIR}/third_party/waifu2x"
     CACHE PATH "Directory holding waifu2x-ncnn-vulkan.exe and models-cunet")
+
+# Windows ML package (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
+# Only its own build/cmake config is used, nothing from the system.
+set(ARX_WINML_DIR "${CMAKE_SOURCE_DIR}/third_party/windowsml/2.5.96"
+    CACHE PATH "Extracted Microsoft.Windows.AI.MachineLearning package")
+set(ARX_ORT_VERSION "1.28.3"
+    CACHE STRING "ONNX Runtime version the app requires from the loaded onnxruntime.dll")
+find_package(microsoft.windows.ai.machinelearning CONFIG REQUIRED
+    PATHS "${ARX_WINML_DIR}/build/cmake" NO_DEFAULT_PATH)
+message(STATUS "Windows ML package ${WINML_VERSION}: ${WINML_BINARY_DIR}")
+
+# Rewritten nunif models checked against models/manifest.json; see tools/fetch-models.ps1.
+set(ARX_MODELS_DIR "${CMAKE_SOURCE_DIR}/third_party/models"
+    CACHE PATH "Folder holding the models listed in models/manifest.json")
 
 add_subdirectory(src)
 

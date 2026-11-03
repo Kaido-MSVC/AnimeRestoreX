@@ -18,6 +18,11 @@ $Root     = $PSScriptRoot
 if (-not (Test-Path (Join-Path $Root 'third_party\waifu2x\waifu2x-ncnn-vulkan.exe'))) {
     & (Join-Path $Root 'tools\fetch-waifu2x.ps1')
 }
+# Pinned Windows ML runtime and the hash-checked models (both skip work when already present).
+& (Join-Path $Root 'tools\fetch-runtime.ps1')
+if ($LASTEXITCODE) { throw "fetch-runtime failed" }
+& (Join-Path $Root 'tools\fetch-models.ps1')
+if ($LASTEXITCODE) { throw "fetch-models failed" }
 
 if (-not $env:VSCMD_VER) {
     Import-Module (Join-Path $VsRoot 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
