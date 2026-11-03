@@ -15,6 +15,10 @@ inline constexpr int kAutoTile = 256;
 inline constexpr int kFallbackTile = 160;
 inline constexpr uint64_t kVramMarginMiB = 256;
 
+// Tile sizes a job may request: 0 (Auto), 160, 256, 400. Everything else is refused before
+// the engine is touched, even if the model's alignment rule would accept it (e.g. 64, 640).
+inline constexpr bool isOfferedTile(int tile) { return tile == 0 || tile == 160 || tile == 256 || tile == 400; }
+
 // Measured peak VRAM of one DML session (GTX 1060 6GB, P1 §12.7 and P2 §9), in MiB.
 // 1x and 2x models need the same; 0 = not measured.
 uint64_t sessionVramMiB(int scale, int tile);

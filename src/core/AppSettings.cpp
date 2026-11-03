@@ -1,5 +1,6 @@
 #include "core/AppSettings.h"
 #include "core/Progress.h"
+#include "core/inference/TilePolicy.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -86,7 +87,8 @@ bool AppSettings::isValidTile(int tile)
 {
     // Auto, or a legal swin_unet tile ((T-16) % 48 == 0) that was validated on the
     // GTX 1060 6GB (docs/v2.0-P0-P1報告.md §12, v2.0-P2報告.md §9). 640+ is not offered.
-    return tile == 0 || tile == 160 || tile == 256 || tile == 400;
+    // Same list as the engine-side check (ProcessJob::checkOptions).
+    return core::isOfferedTile(tile);
 }
 
 int AppSettings::tileSize() const

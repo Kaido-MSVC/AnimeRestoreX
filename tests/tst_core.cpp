@@ -549,11 +549,21 @@ void TestCore::modelIdAndOptions()
         o.tile = t;
         QVERIFY2(ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
     }
-    for (int t : {100, 200, 300}) {
+    // Refused even if the settings file was edited by hand: sizes that break the model's
+    // tile rule (100, 200, 300 run silently with wrong results, 250 fails in the model),
+    // legal sizes that are not offered (64, 112, 640, 1024), and nonsense values.
+    for (int t : {100, 200, 250, 300, 64, 112, 640, 1024, 16, 1, -1, -256, std::numeric_limits<int>::max()}) {
         o.tile = t;
         QVERIFY2(!ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
         QVERIFY(ProcessJob::modelId(o).isEmpty());
+        JobSpec js;
+        js.outputDir = m_dir.path();
+        js.inference = o;
+        QVERIFY(!ProcessJob::checkPreconditions(js).isEmpty());  // the batch never starts
+        QVERIFY(!AppSettings::isValidTile(t));                    // same list as the settings
     }
+    for (int t : {0, 160, 256, 400})
+        QVERIFY(AppSettings::isValidTile(t));
     QCOMPARE(limits::check({10, 10}, 1, OutputFormat::Png), limits::SizeCheck::Ok);
 
     // Defaults.

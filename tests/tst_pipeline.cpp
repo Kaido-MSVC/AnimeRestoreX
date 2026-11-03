@@ -590,6 +590,17 @@ void TestPipeline::batchPreconditionStops()
     QVERIFY(!r.fatalError.isEmpty());
     QCOMPARE(calls, 0);
     QCOMPARE(b.beginJobs, 0);
+
+    // A hand-edited tile (legal for the model, but not offered) never reaches the engine.
+    for (int tile : {640, 112, 200}) {
+        s = spec(OutputFormat::Png, 2);
+        s.inference.tile = tile;
+        const BatchSummary t = runBatch({m_opaque}, s, b, cancel, cb);
+        QCOMPARE(t.notProcessed, 1);
+        QVERIFY2(t.fatalError.contains(QString::number(tile)), qPrintable(t.fatalError));
+    }
+    QCOMPARE(b.beginJobs, 0);
+    QCOMPARE(b.script.calls, 0);
 }
 
 void TestPipeline::batchCanceledBeforeStart()

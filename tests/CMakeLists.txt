@@ -28,6 +28,10 @@ add_test(NAME tst_inference_core COMMAND tst_inference_core
 set(ARX_TEST_ARGS_tst_pipeline -o -,txt -o "${CMAKE_CURRENT_BINARY_DIR}/tst_pipeline-last.txt,txt")
 arx_add_test(tst_pipeline arxcore)
 set_tests_properties(tst_pipeline PROPERTIES TIMEOUT 600)
+# P3 verification tool (real runtime and models next to the exe); run by hand, not by ctest.
+qt_add_executable(arx_verify arx_verify.cpp)
+target_link_libraries(arx_verify PRIVATE arxcore psapi)
+
 arx_add_test(tst_ui arxui)
 set_tests_properties(tst_ui PROPERTIES TIMEOUT 600
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

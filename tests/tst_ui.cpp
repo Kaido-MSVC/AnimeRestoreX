@@ -64,6 +64,7 @@ private slots:
     void openMissingFolderWarns();
     void addFilesSkipsDuplicates();
     void fullBatchThroughMainWindow();
+    void cancelThroughMainWindow();
     void listElidesAndShowsFullReason();
     void folderMemoryRestoresIndependently();
     void autoLanguageIsNotSavedAsManual();
@@ -199,6 +200,66 @@ void TestUi::addFilesSkipsDuplicates()
     MainWindow w;
     QCOMPARE(w.addFiles({a, a, a.toUpper(), m_dir.filePath(QStringLiteral("x.bmp"))}), 1);
     QCOMPARE(w.findChild<QTreeWidget *>(QStringLiteral("fileList"))->topLevelItemCount(), 1);
+}
+
+void TestUi::cancelThroughMainWindow()
+{
+    // Real engine: cancel a 4x image during inference. The UI keeps responding the whole
+    // time, the batch ends within a few seconds, and nothing is left in the output folder.
+    if (!engineDeployed())
+        QSKIP("onnxruntime.dll / models are not deployed next to the test executable");
+    const QString src = m_dir.filePath(QStringLiteral("取消 入力"));
+    const QString out = m_dir.filePath(QStringLiteral("取消 出力"));
+    QVERIFY(QDir().mkpath(src));
+    QVERIFY(QDir().mkpath(out));
+    const QString big = QDir(src).filePath(QStringLiteral("big.png"));
+    const QString small = QDir(src).filePath(QStringLiteral("small.png"));
+    QVERIFY(testimg::make(2000, 1500, false).save(big, "png"));  // 3 MP -> 48 MP at 4x
+    QVERIFY(testimg::make(64, 48, false).save(small, "png"));
+
+    MainWindow w;
+    w.show();
+    QCOMPARE(w.addFiles({big, small}), 2);
+    w.findChild<QLineEdit *>(QStringLiteral("outputDirEdit"))->setText(QDir::toNativeSeparators(out));
+    auto *scale = w.findChild<QComboBox *>(QStringLiteral("scaleCombo"));
+    scale->setCurrentIndex(scale->findData(4));
+    auto *itemLabel = w.findChild<ElidedLabel *>(QStringLiteral("itemProgressLabel"));
+    auto *cancel = w.findChild<QPushButton *>(QStringLiteral("cancelButton"));
+
+    // Largest gap between two 10 ms ticks of the GUI event loop.
+    QElapsedTimer tick;
+    qint64 maxGap = 0;
+    QTimer probe;
+    probe.setInterval(10);
+    connect(&probe, &QTimer::timeout, this, [&] {
+        maxGap = qMax(maxGap, tick.restart());
+    });
+
+    QString summary;
+    autoCloseNextModal(&summary);
+    tick.start();
+    probe.start();
+    w.findChild<QPushButton *>(QStringLiteral("startButton"))->click();
+    QTRY_VERIFY_WITH_TIMEOUT(itemLabel->text().startsWith(QStringLiteral("AI processing")), 30000);
+    // Session creation (a few seconds) happens at the start of the stage; cancel after it,
+    // while tiles are running (the 4x image needs well over 10 s on a GTX 1060).
+    QTest::qWait(6000);
+    QVERIFY2(summary.isEmpty(), "the image finished before the cancel; use a larger image");
+    QElapsedTimer sinceCancel;
+    sinceCancel.start();
+    cancel->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 30000);
+    const qint64 cancelMs = sinceCancel.elapsed();
+    probe.stop();
+    qInfo() << "cancel -> summary ms:" << cancelMs << "max GUI gap ms:" << maxGap;
+
+    QVERIFY2(summary.contains(QStringLiteral("Not processed: 2")), qPrintable(summary));
+    QVERIFY(cancelMs < 5000);
+    QVERIFY2(maxGap < 500, qPrintable(QString::number(maxGap)));
+    QCOMPARE(QDir(out).entryList(QDir::Files | QDir::Hidden).size(), 0);  // no output, no .tmp
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QVERIFY(list->topLevelItem(0)->text(1) != QStringLiteral("Done"));
+    QVERIFY(w.findChild<QPushButton *>(QStringLiteral("startButton"))->isEnabled());
 }
 
 void TestUi::fullBatchThroughMainWindow()

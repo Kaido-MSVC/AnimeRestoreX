@@ -124,7 +124,9 @@ QString ProcessJob::checkOptions(const InferenceOptions &o)
         return tr("Unsupported denoise level: %1.").arg(o.noise);
     if (o.scale == 1 && o.noise < 0)
         return tr("\"No upscaling (1x)\" only denoises: choose a denoise level.");
-    if (o.tile != 0 && !core::ModelContract::isValidTile(o.tile))
+    // Defence in depth: the settings file may have been edited by hand, so the job itself
+    // accepts only Auto / 160 / 256 / 400 (all of them legal for the model's tile rule).
+    if (!core::isOfferedTile(o.tile) || (o.tile != 0 && !core::ModelContract::isValidTile(o.tile)))
         return tr("Tile size %1 is not valid for this model.").arg(o.tile);
     return {};
 }
