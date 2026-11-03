@@ -37,3 +37,36 @@ add_custom_command(TARGET winml_probe POST_BUILD
         "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}"
         $<TARGET_FILE_DIR:winml_probe>
     VERBATIM)
+
+# ---- P2: core module (future src/core/ candidate), its tests and the validation runner ----
+set(ARX_WARN /W4 /permissive- /utf-8 /EHsc)
+set(ARX_DEFS UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+# Pure core: no ORT, no Qt.
+add_library(arx_core STATIC core/Json.cpp core/Sha256.cpp core/ModelContract.cpp core/TileProcessor.cpp)
+target_compile_definitions(arx_core PUBLIC ${ARX_DEFS})
+target_compile_options(arx_core PRIVATE ${ARX_WARN})
+target_link_libraries(arx_core PUBLIC bcrypt)
+
+# ORT engine (Windows ML package). ORT_API_MANUAL_INIT everywhere: Ort::InitApi() is
+# called only after the DLL path has been pinned.
+add_library(arx_ort STATIC core/OrtTileEngine.cpp)
+target_compile_definitions(arx_ort PUBLIC ORT_API_MANUAL_INIT)
+target_compile_options(arx_ort PRIVATE ${ARX_WARN})
+target_include_directories(arx_ort PUBLIC "${WINML_INCLUDE_DIR}")
+target_link_libraries(arx_ort PUBLIC arx_core WindowsML::OnnxRuntime)
+
+add_executable(core_tests tests/core_tests.cpp)
+target_compile_options(core_tests PRIVATE ${ARX_WARN})
+target_link_libraries(core_tests PRIVATE arx_core)
+
+add_executable(tile_runner runner/tile_runner.cpp)
+target_compile_definitions(tile_runner PRIVATE WINML_EXPECTED_ORT_VERSION="${WINML_EXPECTED_ORT_VERSION}")
+target_compile_options(tile_runner PRIVATE ${ARX_WARN})
+target_link_libraries(tile_runner PRIVATE arx_ort dxgi delayimp)
+target_link_options(tile_runner PRIVATE /DELAYLOAD:onnxruntime.dll)
+add_custom_command(TARGET tile_runner POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}"
+        $<TARGET_FILE_DIR:tile_runner>
+    VERBATIM)
