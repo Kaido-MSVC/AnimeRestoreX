@@ -9,7 +9,7 @@
 #include "core/OutputNaming.h"
 #include "core/ProcessJob.h"
 #include "core/Progress.h"
-#include "core/Waifu2xRunner.h"
+#include "core/inference/TilePolicy.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -48,13 +48,13 @@ private slots:
     void settingsSeparateKeysAndValidation();
     void settingsMigrateFromSchema1();
     void folderFallbackPerItem();
-    void waifu2xPasses();
-    void progressPlanFollowsPasses();
+    void modelIdAndOptions();
+    void tilePolicy();
+    void progressPlanFollowsStages();
     void estimatorStageProgressAndCalibration();
     void estimatorBatchWeightAndRemaining();
     void estimatorUsesEngineFraction();
     void progressRatesPersist();
-    void deviceNameFromStderr();
     void estimatorWaitsForDevice();
 
 private:
@@ -518,88 +518,126 @@ void TestCore::folderFallbackPerItem()
     QVERIFY(QFileInfo(defaultImageFolder()).isDir());
 }
 
-void TestCore::waifu2xPasses()
+void TestCore::modelIdAndOptions()
 {
-    Waifu2xParams p;
-    p.noise = 1;
-    p.tile = 200;
+    InferenceOptions o;
+    o.noise = 1;
+    o.scale = 2;
+    QVERIFY(ProcessJob::checkOptions(o).isEmpty());
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise1_scale2x"));
+    o.scale = 4;
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise1_scale4x"));
+    o.noise = -1;  // upscale only: one model, denoise never runs twice
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/scale4x"));
+    o.noise = 3;
+    o.scale = 1;   // 1x = denoise-only model
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise3"));
 
-    p.scale = 2;
-    QList<Waifu2xParams> ps = Waifu2xRunner::passes(p);
-    QCOMPARE(ps.size(), 1);
-    QCOMPARE(ps[0].scale, 2);
-    QCOMPARE(ps[0].noise, 1);
-    QCOMPARE(ps[0].tile, 200);
-
-    // 4x: denoise + 2x, then upscale-only 2x (denoise runs once).
-    p.scale = 4;
-    ps = Waifu2xRunner::passes(p);
-    QCOMPARE(ps.size(), 2);
-    QCOMPARE(ps[0].scale, 2);
-    QCOMPARE(ps[0].noise, 1);
-    QCOMPARE(ps[1].scale, 2);
-    QCOMPARE(ps[1].noise, -1);
-    QCOMPARE(ps[1].tile, 200);
-    const QStringList args = Waifu2xRunner::arguments(ps[1], QStringLiteral("a.png"), QStringLiteral("b.png"));
-    QCOMPARE(args.at(args.indexOf(QStringLiteral("-n")) + 1), QStringLiteral("-1"));
-    QCOMPARE(args.at(args.indexOf(QStringLiteral("-s")) + 1), QStringLiteral("2"));
-
-    // No denoise at all: both passes upscale only.
-    p.noise = -1;
-    ps = Waifu2xRunner::passes(p);
-    QCOMPARE(ps.size(), 2);
-    QCOMPARE(ps[0].noise, -1);
-    QCOMPARE(ps[1].noise, -1);
-
-    // 1x (v1.1): one denoise-only pass with the noiseN_model.
-    p.noise = 2;
-    p.scale = 1;
-    ps = Waifu2xRunner::passes(p);
-    QCOMPARE(ps.size(), 1);
-    QCOMPARE(ps[0].scale, 1);
-    QCOMPARE(ps[0].noise, 2);
-    QCOMPARE(Waifu2xRunner::modelBaseName(ps[0]), QStringLiteral("noise2_model"));
-    const QStringList args1 = Waifu2xRunner::arguments(ps[0], QStringLiteral("a.png"), QStringLiteral("b.png"));
-    QCOMPARE(args1.at(args1.indexOf(QStringLiteral("-s")) + 1), QStringLiteral("1"));
-    // 1x without denoise does nothing and is rejected before any file check.
-    p.noise = -1;
-    QVERIFY(Waifu2xRunner::checkInstall(p).contains(QStringLiteral("1x")));
+    // 1x without denoise does nothing and is rejected before the engine is touched.
+    o.noise = -1;
+    QVERIFY(ProcessJob::checkOptions(o).contains(QStringLiteral("1x")));
+    QVERIFY(ProcessJob::modelId(o).isEmpty());
+    o = InferenceOptions{};
+    o.scale = 3;
+    QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
+    o = InferenceOptions{};
+    o.noise = 4;
+    QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
+    // Tiles: Auto and the offered sizes pass; anything the model cannot take is refused.
+    o = InferenceOptions{};
+    for (int t : {0, 160, 256, 400}) {
+        o.tile = t;
+        QVERIFY2(ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
+    }
+    for (int t : {100, 200, 300}) {
+        o.tile = t;
+        QVERIFY2(!ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
+        QVERIFY(ProcessJob::modelId(o).isEmpty());
+    }
     QCOMPARE(limits::check({10, 10}, 1, OutputFormat::Png), limits::SizeCheck::Ok);
 
-    // Defaults decided after A9.
+    // Defaults.
     QCOMPARE(AppSettings::kDefaultNoise, 1);
     QCOMPARE(AppSettings::kDefaultTile, 0);
+
+    // A wrong runtime names the reason instead of failing silently.
+    const QString msg = ProcessJob::runtimeErrorMessage(
+        core::Status::fail(core::ErrorKind::EngineFailure, "ORT version 1.22.0 != expected 1.28.3"));
+    QVERIFY(msg.contains(QStringLiteral("1.22.0")));
+    QVERIFY(ProcessJob::runtimeErrorMessage(core::Status::fail(core::ErrorKind::ModelNotFound, "missing"))
+                .contains(QStringLiteral("onnxruntime.dll")));
 }
 
-void TestCore::progressPlanFollowsPasses()
+void TestCore::tilePolicy()
+{
+    using core::TileReason;
+    // Auto with plenty of GPU memory: 256, one OOM retry at 160, RGB and alpha together.
+    core::TileDecision d = core::chooseTile(0, 2, false, 6000);
+    QCOMPARE(d.tile, 256);
+    QVERIFY(d.allowOomRetry);
+    QCOMPARE(d.fallbackTile, 160);
+    QVERIFY(d.alphaTogether);
+    QCOMPARE(d.reason, TileReason::Auto);
+
+    // Budget just below 256's need + margin: 160, no retry (nothing smaller).
+    d = core::chooseTile(0, 4, false, 920 + 256 - 1);
+    QCOMPARE(d.tile, 160);
+    QVERIFY(!d.allowOomRetry);
+    QCOMPARE(d.reason, TileReason::AutoVram);
+    d = core::chooseTile(0, 4, false, 920 + 256);
+    QCOMPARE(d.tile, 256);
+    QVERIFY(!d.alphaTogether);  // 2 x 920 + 256 does not fit
+
+    // Unknown budget: keep 256, but schedule the alpha session after the RGB one.
+    d = core::chooseTile(0, 2, false, 0);
+    QCOMPARE(d.tile, 256);
+    QVERIFY(!d.alphaTogether);
+
+    // Manual sizes are used as is and never retried, even when the budget looks short.
+    d = core::chooseTile(400, 4, false, 1000);
+    QCOMPARE(d.tile, 400);
+    QVERIFY(!d.allowOomRetry);
+    QCOMPARE(d.reason, TileReason::Manual);
+
+    // CPU: no GPU budget.
+    d = core::chooseTile(0, 4, true, 0);
+    QCOMPARE(d.tile, 256);
+    QVERIFY(d.alphaTogether);
+    QCOMPARE(d.reason, TileReason::Cpu);
+    d = core::chooseTile(160, 2, true, 0);
+    QCOMPARE(d.tile, 160);
+    QVERIFY(!d.allowOomRetry);
+}
+
+void TestCore::progressPlanFollowsStages()
 {
     const QString img = m_dir.filePath(QStringLiteral("plan 計画.png"));
     QVERIFY(testimg::make(200, 100, false).save(img, "png"));  // 0.02 MP
     JobSpec spec;
-    spec.waifu2x.noise = 1;
-    spec.waifu2x.scale = 4;
+    spec.inference.noise = 1;
+    spec.inference.scale = 4;
     spec.encode.format = OutputFormat::WebP;
     spec.encode.webpLossless = true;
 
+    // One model runs the whole scale: load, inference, encode.
     ItemPlan plan = ProcessJob::progressPlan(img, spec);
-    QCOMPARE(plan.stages.size(), 4);  // load, two inference passes, encode
+    QCOMPARE(plan.stages.size(), 3);
     QCOMPARE(plan.stages[0].stage, Stage::Load);
     QCOMPARE(plan.stages[0].megapixels, 0.02);
     QCOMPARE(plan.stages[1].stage, Stage::Inference);
     QCOMPARE(plan.stages[1].pass, 0);
-    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("waifu2x/noise1_scale2.0x_model"));
-    QCOMPARE(plan.stages[1].megapixels, 0.08);   // 2x output
-    QCOMPARE(plan.stages[2].pass, 1);
-    QCOMPARE(plan.stages[2].rateKey, QStringLiteral("waifu2x/scale2.0x_model"));
-    QCOMPARE(plan.stages[2].megapixels, 0.32);   // 4x output
-    QCOMPARE(plan.stages[3].stage, Stage::Encode);
-    QCOMPARE(plan.stages[3].rateKey, QStringLiteral("encode/webp-lossless"));
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1_scale4x/dml/auto"));
+    QCOMPARE(plan.stages[1].megapixels, 0.32);   // 4x output
+    QCOMPARE(plan.stages[2].stage, Stage::Encode);
+    QCOMPARE(plan.stages[2].rateKey, QStringLiteral("encode/webp-lossless"));
     QCOMPARE(plan.weight, 0.32);
 
-    spec.waifu2x.scale = 1;
+    spec.inference.scale = 1;
+    spec.inference.tile = 160;
+    spec.inference.device = ComputeDevice::Cpu;
     plan = ProcessJob::progressPlan(img, spec);
     QCOMPARE(plan.stages.size(), 3);
-    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("waifu2x/noise1_model"));
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1/cpu/t160"));
     QCOMPARE(plan.weight, 0.02);
 
     // Unreadable header: size unknown, the estimator uses an average weight.
@@ -747,23 +785,6 @@ void TestCore::progressRatesPersist()
     QCOMPARE(s.progressRates(other).value(QStringLiteral("waifu2x/noise1_scale2.0x_model")), 0.2);
     QCOMPARE(s.progressRates(other).size(), 1);
     QVERIFY(s.progressRates(QStringLiteral("Intel Arc A770")).isEmpty());
-}
-
-void TestCore::deviceNameFromStderr()
-{
-    // Lines as printed by waifu2x-ncnn-vulkan 20250915 on the GTX 1060 (one line per property).
-    const QByteArray one =
-        "[0 NVIDIA GeForce GTX 1060 6GB]  queueC=2[8]  queueT=1[2]\r\n"
-        "[0 NVIDIA GeForce GTX 1060 6GB]  fp16-p/s/u/a=1/1/1/0  int8-p/s/u/a=1/1/1/1\r\n"
-        "[0 NVIDIA GeForce GTX 1060 6GB]  subgroup=32(32~32)  ops=1/1/1/1/1/1/1/1/1/1\r\n"
-        "decode image x failed\r\n";
-    QCOMPARE(Waifu2xRunner::deviceName(one), QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
-    const QByteArray two =
-        "[1 AMD Radeon(TM) Graphics]  queueC=1[2]\n"
-        "[0 NVIDIA GeForce RTX 4060]  queueC=2[8]\n";
-    QCOMPARE(Waifu2xRunner::deviceName(two),
-             QStringLiteral("NVIDIA GeForce RTX 4060 + AMD Radeon(TM) Graphics"));
-    QVERIFY(Waifu2xRunner::deviceName("invalid gpu device\n").isEmpty());
 }
 
 void TestCore::estimatorWaitsForDevice()

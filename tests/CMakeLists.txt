@@ -6,7 +6,7 @@ function(arx_add_test name)
     qt_add_executable(${name} ${name}.cpp TestImages.h)
     target_link_libraries(${name} PRIVATE ${ARGN} Qt6::Test)
     target_compile_definitions(${name} PRIVATE
-        ARX_WAIFU2X_DIR="${ARX_WAIFU2X_DIR}"
+        ARX_TEST_MANIFEST="${CMAKE_SOURCE_DIR}/models/manifest.json"
         ARX_TEST_VERSION="${PROJECT_VERSION}"
         ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
     add_test(NAME ${name} COMMAND ${name} ${ARX_TEST_ARGS_${name}})
@@ -22,8 +22,8 @@ add_executable(tst_inference_core tst_inference_core.cpp)
 target_link_libraries(tst_inference_core PRIVATE arxinfer)
 add_test(NAME tst_inference_core COMMAND tst_inference_core
     "${CMAKE_SOURCE_DIR}/models/manifest.json" "${CMAKE_CURRENT_BINARY_DIR}/tst_inference_core-scratch")
-# The GPU pipeline test also writes its full log (failure reasons, failing
-# step, engine stderr) to tests/tst_pipeline-last.txt in the build folder,
+# The pipeline test (fake backend, plus one real-runtime test when the DLLs and models are
+# deployed) also writes its full log to tests/tst_pipeline-last.txt in the build folder,
 # so a one-off failure can be traced even if the console output is lost.
 set(ARX_TEST_ARGS_tst_pipeline -o -,txt -o "${CMAKE_CURRENT_BINARY_DIR}/tst_pipeline-last.txt,txt")
 arx_add_test(tst_pipeline arxcore)

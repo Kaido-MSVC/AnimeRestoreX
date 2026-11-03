@@ -1,15 +1,18 @@
 #include "core/AppSettings.h"
 #include "core/BatchRunner.h"
-#include "core/ChildProcessGuard.h"
 #include "core/JobSpec.h"
 #include "core/Language.h"
+#include "core/ProcessJob.h"
+#include "core/inference/EngineHost.h"
 #include "ui/AppIcon.h"
 #include "ui/LanguageManager.h"
 #include "ui/MainWindow.h"
 #include "ui/Theme.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QImageReader>
+#include <QMessageBox>
 #include <QMetaType>
 
 int main(int argc, char *argv[])
@@ -31,9 +34,6 @@ int main(int argc, char *argv[])
     qRegisterMetaType<arx::BatchSummary>();
     qRegisterMetaType<QList<arx::ItemPlan>>();
 
-    // Create the kill-on-close job object up front.
-    arx::ChildProcessGuard::instance();
-
     // Language: manual setting first, otherwise the Windows UI language rule.
     // The automatic result is never written back as a manual choice.
     {
@@ -42,7 +42,16 @@ int main(int argc, char *argv[])
             arx::effectiveLanguage(settings.manualLanguage(), arx::windowsPrimaryUiLanguage()));
     }
 
+    // AI runtime: onnxruntime.dll / DirectML.dll from the program folder only (never
+    // System32 or the working directory), with the exact ORT version. A failure is shown
+    // in words; the window still opens (settings, file list) but processing will not start.
+    const arx::core::RuntimeInfo &runtime = arx::core::EngineHost::initRuntime(
+        QDir::toNativeSeparators(QCoreApplication::applicationDirPath()).toStdWString(), ARX_ORT_VERSION);
+
     MainWindow w;
     w.show();
+    if (!runtime.status.ok())
+        QMessageBox::critical(&w, QCoreApplication::translate("main", "AnimeRestoreX"),
+                              arx::ProcessJob::runtimeErrorMessage(runtime.status));
     return app.exec();
 }

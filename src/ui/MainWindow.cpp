@@ -3,7 +3,7 @@
 
 #include "core/AppSettings.h"
 #include "core/FolderScanner.h"
-#include "core/Waifu2xRunner.h"
+#include "core/ProcessJob.h"
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
 #include "ui/CompletionDialog.h"
@@ -50,11 +50,6 @@ constexpr int kRoleDetail = Qt::UserRole + 2;
 constexpr int kRoleOutput = Qt::UserRole + 3;
 
 enum Column { ColFile = 0, ColStatus = 1, ColDetail = 2 };
-
-QString waifu2xDir()
-{
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("waifu2x"));
-}
 
 // Accent frame drawn over the file list while files are dragged over the window.
 class DropOverlay : public QWidget {
@@ -214,6 +209,14 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_worker, &JobWorker::stageFraction, this, [this](int index, double fraction) {
         m_estimator.stageFraction(index, fraction, m_clock.elapsed());
+    });
+    connect(m_worker, &JobWorker::retrying, this, [this](int index, int tile) {
+        m_estimator.stageRestarted(index, m_clock.elapsed());
+        if (QTreeWidgetItem *item = m_jobItems.value(index))
+            m_status->setText(tr("Not enough GPU memory: processing %1 again with tile size %2...")
+                                  .arg(item->text(ColFile))
+                                  .arg(tile));
+        refreshProgress();
     });
     connect(m_worker, &JobWorker::deviceDetected, this, &MainWindow::onDeviceDetected);
     connect(m_worker, &JobWorker::itemFinished, this, &MainWindow::onItemFinished);
@@ -421,10 +424,10 @@ void MainWindow::applySettings(int tile, int device, bool languageChanged, int l
 
 QString MainWindow::processingProblem() const
 {
-    arx::Waifu2xParams p;
-    p.scale = ui->scaleCombo->currentData().toInt();
-    p.noise = ui->noiseCombo->currentData().toInt();
-    return arx::Waifu2xRunner::checkParams(p);
+    arx::InferenceOptions o;
+    o.scale = ui->scaleCombo->currentData().toInt();
+    o.noise = ui->noiseCombo->currentData().toInt();
+    return arx::ProcessJob::checkOptions(o);
 }
 
 void MainWindow::onProcessingChanged()
@@ -638,11 +641,10 @@ arx::JobSpec MainWindow::currentSpec() const
 {
     arx::JobSpec spec;
     spec.outputDir = QDir::fromNativeSeparators(ui->outputDirEdit->text());
-    spec.waifu2x.exePath = QDir(waifu2xDir()).filePath(QStringLiteral("waifu2x-ncnn-vulkan.exe"));
-    spec.waifu2x.modelDir = QDir(waifu2xDir()).filePath(QStringLiteral("models-cunet"));
-    spec.waifu2x.noise = ui->noiseCombo->currentData().toInt();
-    spec.waifu2x.tile = m_settings->tileSize();
-    spec.waifu2x.scale = ui->scaleCombo->currentData().toInt();
+    spec.inference.noise = ui->noiseCombo->currentData().toInt();
+    spec.inference.tile = m_settings->tileSize();
+    spec.inference.device = m_settings->computeDevice();
+    spec.inference.scale = ui->scaleCombo->currentData().toInt();
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
     spec.encode.webpLossless = ui->webpModeCombo->currentData().toBool();
     spec.encode.quality = ui->qualitySpin->value();
@@ -1021,7 +1023,13 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
         return;
     if (r.ok) {
         item->setData(ColFile, kRoleOutput, r.outputPath);
-        setItemState(item, ItemState::Done, QFileInfo(r.outputPath).fileName());
+        QString detail = QFileInfo(r.outputPath).fileName();
+        // The tile size changes the result slightly: say when Auto had to use a smaller one.
+        if (r.tileChoice == arx::TileChoice::SmallerForVram)
+            detail += tr(" (tile %1: not enough GPU memory for 256)").arg(r.tileUsed);
+        else if (r.tileChoice == arx::TileChoice::OomRetry)
+            detail += tr(" (tile %1: redone after running out of GPU memory)").arg(r.tileUsed);
+        setItemState(item, ItemState::Done, detail);
     } else if (r.canceled) {
         setItemState(item, ItemState::NotProcessed, tr("Canceled"));
     } else {
@@ -1176,7 +1184,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
             event->ignore();
             return;
         }
-        // Kill the inference child and let the worker remove its temp files.
+        // Ask the worker to stop (before the next tile, or at once on the CPU) and wait
+        // until it has removed its temporary file; the thread is never terminated.
         m_closing = true;
         m_worker->requestCancel();
         m_thread.quit();

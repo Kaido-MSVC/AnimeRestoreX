@@ -4,14 +4,13 @@
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
 #include "core/OutputNaming.h"
-#include "core/Waifu2xRunner.h"
+#include "core/inference/TileProcessor.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QImageWriter>
-#include <QTemporaryDir>
 
 namespace arx {
 
@@ -49,6 +48,54 @@ private:
     QFile *m_file;
 };
 
+// Gets the session from the backend on every Run: the session is created on first use,
+// and with one session slot (not enough GPU memory for RGB + alpha together) the alpha
+// session replaces the RGB session only after the RGB pass is complete.
+class BackendEngine final : public core::ITileEngine {
+public:
+    BackendEngine(core::Backend &backend, const core::ModelInfo &model) : m_backend(backend), m_model(model) {}
+    core::Status run(const float *input, int tile, int outSide, std::vector<float> &output) override
+    {
+        core::ITileEngine *engine = nullptr;
+        core::Status s = m_backend.acquire(m_model, engine);
+        if (!s.ok())
+            return s;
+        return engine->run(input, tile, outSide, output);
+    }
+
+private:
+    core::Backend &m_backend;
+    const core::ModelInfo &m_model;
+};
+
+QString hex(quint32 v)
+{
+    return QStringLiteral("0x") + QString::number(v, 16).toUpper().rightJustified(8, QLatin1Char('0'));
+}
+
+QString statusDiagnostics(const core::Status &s)
+{
+    QString d = QString::fromLatin1(core::errorKindName(s.kind));
+    if (s.hresult)
+        d += QLatin1Char(' ') + hex(s.hresult);
+    if (!s.message.empty())
+        d += QStringLiteral(": ") + QString::fromStdString(s.message);
+    return d;
+}
+
+TileChoice tileChoice(const core::TileDecision &d, int attempts)
+{
+    if (attempts > 1)
+        return TileChoice::OomRetry;
+    switch (d.reason) {
+    case core::TileReason::Manual: return TileChoice::Manual;
+    case core::TileReason::AutoVram: return TileChoice::SmallerForVram;
+    case core::TileReason::Auto:
+    case core::TileReason::Cpu: break;
+    }
+    return TileChoice::Default;
+}
+
 } // namespace
 
 QString ProcessJob::checkOutputDir(const QString &dir)
@@ -69,12 +116,36 @@ QString ProcessJob::checkOutputDir(const QString &dir)
     return {};
 }
 
+QString ProcessJob::checkOptions(const InferenceOptions &o)
+{
+    if (o.scale != 1 && o.scale != 2 && o.scale != 4)
+        return tr("Unsupported scale: %1x.").arg(o.scale);
+    if (o.noise < -1 || o.noise > 3)
+        return tr("Unsupported denoise level: %1.").arg(o.noise);
+    if (o.scale == 1 && o.noise < 0)
+        return tr("\"No upscaling (1x)\" only denoises: choose a denoise level.");
+    if (o.tile != 0 && !core::ModelContract::isValidTile(o.tile))
+        return tr("Tile size %1 is not valid for this model.").arg(o.tile);
+    return {};
+}
+
+QString ProcessJob::modelId(const InferenceOptions &o)
+{
+    if (!checkOptions(o).isEmpty())
+        return {};
+    const QString base = QStringLiteral("swin_unet/art/");
+    if (o.scale == 1)
+        return base + QStringLiteral("noise%1").arg(o.noise);
+    const QString scale = QStringLiteral("scale%1x").arg(o.scale);
+    return o.noise < 0 ? base + scale : base + QStringLiteral("noise%1_").arg(o.noise) + scale;
+}
+
 QString ProcessJob::checkPreconditions(const JobSpec &spec)
 {
     QString err = checkOutputDir(spec.outputDir);
     if (!err.isEmpty())
         return err;
-    err = Waifu2xRunner::checkInstall(spec.waifu2x);
+    err = checkOptions(spec.inference);
     if (!err.isEmpty())
         return err;
     const QByteArray fmt = ImageEncoder::formatName(spec.encode.format);
@@ -83,79 +154,180 @@ QString ProcessJob::checkPreconditions(const JobSpec &spec)
     return {};
 }
 
+QString ProcessJob::runtimeErrorMessage(const core::Status &s)
+{
+    if (s.kind == core::ErrorKind::ModelNotFound)
+        return tr("The AI runtime files (onnxruntime.dll, DirectML.dll) are missing from the program "
+                  "folder. Please reinstall AnimeRestoreX.");
+    return tr("The AI runtime in the program folder cannot be used (wrong version or damaged). "
+              "Please reinstall AnimeRestoreX. Details: %1")
+        .arg(QString::fromStdString(s.message));
+}
+
+QString ProcessJob::engineErrorMessage(const core::Status &s)
+{
+    switch (s.kind) {
+    case core::ErrorKind::None:
+        return {};
+    case core::ErrorKind::OutOfMemory:
+        return tr("Not enough GPU memory to process this image.");
+    case core::ErrorKind::DeviceLost:
+        return tr("The GPU stopped responding (device error %1). Processing was stopped and the GPU "
+                  "engine was reset. Close other programs that use the GPU or update the graphics "
+                  "driver, then try again.")
+            .arg(hex(s.hresult));
+    case core::ErrorKind::HashMismatch:
+        return tr("A model file is damaged or was replaced (its checksum does not match "
+                  "models/manifest.json). Please reinstall AnimeRestoreX.");
+    case core::ErrorKind::ModelNotFound:
+        return tr("A model file is missing. Please reinstall AnimeRestoreX.");
+    case core::ErrorKind::ContractViolation:
+        return tr("The AI model does not match its description in models/manifest.json.");
+    case core::ErrorKind::InvalidTileSize:
+        return tr("The tile size is not valid for this model.");
+    case core::ErrorKind::SizeOverflow:
+        return tr("The image is too large to process with the available memory.");
+    case core::ErrorKind::InvalidArgument:
+        return tr("The image cannot be processed in this format.");
+    case core::ErrorKind::Cancelled:
+        return tr("Canceled.");
+    case core::ErrorKind::EngineFailure:
+        break;
+    }
+    return tr("The AI engine reported an error (%1).").arg(QString::fromStdString(s.message).left(300));
+}
+
+QString ProcessJob::prepare(const JobSpec &spec, core::Backend &backend, PreparedJob &job, QString *diagnostics)
+{
+    job = PreparedJob{};
+    auto fail = [&](const QString &msg, const core::Status &s) {
+        if (diagnostics)
+            *diagnostics = statusDiagnostics(s);
+        return msg;
+    };
+    core::Status s = backend.runtimeReady();
+    if (!s.ok())
+        return fail(runtimeErrorMessage(s), s);
+    s = backend.ready();
+    if (!s.ok())
+        return fail(tr("The model list (models/manifest.json) is missing or invalid. Please reinstall "
+                       "AnimeRestoreX."),
+                    s);
+
+    const InferenceOptions &o = spec.inference;
+    const QString id = modelId(o);
+    if (id.isEmpty())
+        return checkOptions(o);
+    const core::ModelContract &contract = backend.contract();
+    job.rgbModel = contract.find(id.toStdString());
+    if (!job.rgbModel)
+        return fail(tr("The model %1 is not listed in models/manifest.json.").arg(id),
+                    core::Status::fail(core::ErrorKind::ModelNotFound, id.toStdString()));
+    if (o.scale > 1) {
+        const std::string aid = contract.alphaModelFor(o.scale);
+        job.alphaModel = contract.find(aid);
+        if (!job.alphaModel)
+            return fail(tr("The model %1 is not listed in models/manifest.json.").arg(QString::fromStdString(aid)),
+                        core::Status::fail(core::ErrorKind::ModelNotFound, aid));
+    }
+    // Hash check before the first image: a damaged model stops the job, no other model is used.
+    for (const core::ModelInfo *m : {job.rgbModel, job.alphaModel}) {
+        if (!m)
+            continue;
+        s = backend.verify(*m);
+        if (!s.ok())
+            return fail(engineErrorMessage(s), s);
+    }
+
+    const bool cpu = o.device == ComputeDevice::Cpu;
+    job.device = cpu ? core::ExecutionDevice::Cpu : core::ExecutionDevice::Dml;
+    job.vramMiB = cpu ? 0 : backend.availableVramMiB();
+    job.tile = core::chooseTile(o.tile, o.scale, cpu, job.vramMiB);
+    if (!core::ModelContract::isValidTile(job.tile.tile) ||
+        (job.tile.allowOomRetry && !core::ModelContract::isValidTile(job.tile.fallbackTile)))
+        return fail(tr("Tile size %1 is not valid for this model.").arg(job.tile.tile),
+                    core::Status::fail(core::ErrorKind::InvalidTileSize, std::to_string(job.tile.tile)));
+    s = backend.beginJob(job.device, job.tile.alphaTogether ? 2 : 1);
+    if (!s.ok())
+        return fail(engineErrorMessage(s), s);
+    job.deviceName = QString::fromStdString(backend.deviceName(job.device));
+    return {};
+}
+
 ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec)
 {
-    // Default speeds in seconds per output megapixel. Rough values from the
-    // A9 measurements (GTX 1060 6GB); they are replaced by measured speeds
-    // after the first image, so they only shape the very first estimate.
-    constexpr double kLoadRate = 0.10;        // decode + temporary PNG, per input MP
-    constexpr double kUpscaleRate = 0.37;     // cunet 2x, per output MP
-    constexpr double kDenoiseOnlyRate = 1.0;  // cunet 1x (noiseN_model), per output MP
-    constexpr double kEngineStartSec = 1.0;   // process start, Vulkan init, model load
-
+    // Default speeds in seconds per output megapixel, from the P2 tile 256 measurements
+    // on the GTX 1060 6GB (input MP/s: 1x 0.284, 2x 0.303, 4x 0.234). They only shape the
+    // first estimate; measured speeds replace them. CPU: rough factor, not measured yet.
+    constexpr double kLoadRate = 0.05;  // decode + conversion, per input MP
     const QSize in = QImageReader(sourcePath).size();  // header only; invalid if unreadable
     const double inMp = in.isValid() ? double(in.width()) * in.height() / 1e6 : 0.0;
-    const int scale = spec.waifu2x.scale;
+    const InferenceOptions &o = spec.inference;
+    const int scale = o.scale;
+    const bool cpu = o.device == ComputeDevice::Cpu;
+
+    double rate = scale == 1 ? 3.52 : scale == 2 ? 0.825 : 0.267;
+    if (cpu)
+        rate *= 20.0;
 
     ItemPlan plan;
     plan.weight = inMp * scale * scale;
     plan.stages << StagePlan{Stage::Load, 0, QStringLiteral("load"), inMp, kLoadRate, 0.0};
+    const QString key = QStringLiteral("nunif/%1/%2/%3")
+                            .arg(modelId(o), cpu ? QStringLiteral("cpu") : QStringLiteral("dml"),
+                                 o.tile ? QStringLiteral("t%1").arg(o.tile) : QStringLiteral("auto"));
+    plan.stages << StagePlan{Stage::Inference, 0, key, plan.weight, rate, 0.0};
 
-    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
-    double mp = inMp;
-    for (int i = 0; i < passes.size(); ++i) {
-        const Waifu2xParams &pass = passes.at(i);
-        mp *= double(pass.scale) * pass.scale;
-        plan.stages << StagePlan{Stage::Inference, i,
-                                 QStringLiteral("waifu2x/") + Waifu2xRunner::modelBaseName(pass), mp,
-                                 pass.scale == 1 ? kDenoiseOnlyRate : kUpscaleRate, kEngineStartSec};
-    }
-
-    // Read back, convert and encode, per output MP.
-    QString key;
-    double rate = 0;
+    QString encKey;
+    double encRate = 0;
     switch (spec.encode.format) {
-    case OutputFormat::Png:  key = QStringLiteral("encode/png");  rate = 0.15; break;
-    case OutputFormat::Jpeg: key = QStringLiteral("encode/jpeg"); rate = 0.05; break;
+    case OutputFormat::Png:  encKey = QStringLiteral("encode/png");  encRate = 0.15; break;
+    case OutputFormat::Jpeg: encKey = QStringLiteral("encode/jpeg"); encRate = 0.05; break;
     case OutputFormat::WebP:
-        key = spec.encode.webpLossless ? QStringLiteral("encode/webp-lossless")
-                                       : QStringLiteral("encode/webp");
-        rate = spec.encode.webpLossless ? 1.0 : 0.15;
+        encKey = spec.encode.webpLossless ? QStringLiteral("encode/webp-lossless")
+                                          : QStringLiteral("encode/webp");
+        encRate = spec.encode.webpLossless ? 1.0 : 0.15;
         break;
     }
-    plan.stages << StagePlan{Stage::Encode, 0, key, plan.weight, rate, 0.0};
+    plan.stages << StagePlan{Stage::Encode, 0, encKey, plan.weight, encRate, 0.0};
     return plan;
 }
 
-ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
-                           const std::atomic_bool &cancel, const ProgressSink &progress)
+ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core::Backend &backend,
+                           const PreparedJob &job, const std::atomic_bool &cancel, const ProgressSink &progress)
 {
-    const QList<Waifu2xParams> passes = Waifu2xRunner::passes(spec.waifu2x);
-    auto report = [&](Stage stage, int pass) {
+    auto report = [&](Stage stage) {
         if (progress.stageStarted)
-            progress.stageStarted(StageEvent{stage, pass, int(passes.size())});
+            progress.stageStarted(StageEvent{stage, 0, 1});
     };
 
-    // Failures carry the step and the last engine stderr as diagnostics
-    // (for tests and troubleshooting; the UI shows only `error`).
+    // Failures carry the step, model, device and tile as diagnostics (for tests and
+    // troubleshooting; the UI shows only `error`).
     QString step;
-    QString engineStderr;
+    QString engineDetail;
+    int tileUsed = 0;
     auto fail = [&](const QString &msg) {
         ItemResult r = failure(msg);
-        r.diagnostics = QStringLiteral("step: %1").arg(step);
-        if (!engineStderr.isEmpty())
-            r.diagnostics += QStringLiteral("\nengine stderr:\n") + engineStderr;
+        r.diagnostics = QStringLiteral("step: %1\nmodel: %2\ndevice: %3\ntile: %4")
+                            .arg(step,
+                                 job.rgbModel ? QString::fromStdString(job.rgbModel->id) : QString(),
+                                 job.deviceName)
+                            .arg(tileUsed ? tileUsed : job.tile.tile);
+        if (!engineDetail.isEmpty())
+            r.diagnostics += QStringLiteral("\nengine: ") + engineDetail;
         return r;
     };
+    if (!job.rgbModel)
+        return fail(tr("The job was not prepared."));
 
     // 1. Load and validate.
     step = QStringLiteral("load");
-    report(Stage::Load, 0);
+    report(Stage::Load);
     LoadResult loaded = ImageLoader::load(sourcePath);
     if (!loaded.ok)
         return fail(loaded.error);
 
-    const int scale = spec.waifu2x.scale;
+    const int scale = spec.inference.scale;
     const QSize inSize = loaded.image.size();
     const limits::SizeCheck sizeCheck = limits::check(inSize, scale, spec.encode.format);
     if (sizeCheck != limits::SizeCheck::Ok)
@@ -163,91 +335,94 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     if (cancel.load())
         return canceled();
 
-    // 2. Write the normalised 8-bit image as a temporary PNG.
-    step = QStringLiteral("write temporary PNG");
-    QTemporaryDir work(QDir(QDir::tempPath()).filePath(QStringLiteral("AnimeRestoreX-XXXXXX")));
-    if (!work.isValid())
-        return fail(tr("Cannot create a temporary folder: %1").arg(work.errorString()));
-    const QString inPng = work.filePath(QStringLiteral("in.png"));
-    const QString outPng = work.filePath(QStringLiteral("out.png"));
-    {
-        QImageWriter w(inPng, "png");
-        if (!w.write(loaded.image))
-            return fail(tr("Cannot write the temporary file: %1").arg(w.errorString()));
-    }
-    const bool hasAlpha = loaded.hasAlpha;
-    loaded.image = QImage();  // free memory before inference
+    // 2. Tiled inference on straight (non-premultiplied) 8-bit RGB / RGBA, byte order R,G,B[,A].
+    step = QStringLiteral("inference");
+    QImage input = loaded.hasAlpha ? loaded.image.convertToFormat(QImage::Format_RGBA8888)
+                                   : loaded.image.convertToFormat(QImage::Format_RGB888);
+    loaded.image = QImage();  // one input copy only
+    if (input.isNull())
+        return fail(tr("Out of memory while converting the image."));
+    report(Stage::Inference);
 
-    // 3. Inference: one pass for 1x (denoise only) and 2x, or for 4x a
-    //    denoise+2x pass followed by an upscale-only 2x pass. waifu2x exits
-    //    with 0 on decode errors, so each pass is verified by its output file
-    //    and exact size. waifu2x-ncnn-vulkan has no progress output, so
-    //    progress.stageFraction is not used here (an engine that reports real
-    //    progress would forward it during the pass).
-    QString passInput = inPng;
-    QSize passSize = inSize;
-    for (int i = 0; i < passes.size(); ++i) {
-        const QString passOutput = (i == passes.size() - 1)
-            ? outPng
-            : work.filePath(QStringLiteral("pass%1.png").arg(i + 1));
-        step = QStringLiteral("inference pass %1/%2 (%3, -n %4 -s %5)")
-                   .arg(i + 1).arg(passes.size())
-                   .arg(Waifu2xRunner::modelBaseName(passes.at(i)))
-                   .arg(passes.at(i).noise).arg(passes.at(i).scale);
-        report(Stage::Inference, i);
-        const RunResult run = Waifu2xRunner::run(passes.at(i), passInput, passOutput, cancel);
-        engineStderr = run.stderrText;
-        if (!run.device.isEmpty() && progress.deviceDetected)
-            progress.deviceDetected(run.device);
-        if (run.canceled)
-            return canceled();
-        if (!run.ok) {
-            ItemResult r = fail(run.error);
-            r.fatal = run.fatal;
-            return r;
-        }
-        if (!QFileInfo::exists(passOutput)) {
-            QString msg = tr("The AI engine did not produce an output image.");
-            if (!run.error.isEmpty())
-                msg += QLatin1Char(' ') + run.error;
-            return fail(msg);
-        }
-        const int passScale = passes.at(i).scale;
-        const QSize expected(passSize.width() * passScale, passSize.height() * passScale);
-        const QSize got = QImageReader(passOutput, "png").size();
-        if (got != expected)
-            return fail(tr("The AI output has an unexpected size (%1 x %2, expected %3 x %4).")
-                            .arg(got.width()).arg(got.height())
-                            .arg(expected.width()).arg(expected.height()));
-        if (passInput != inPng)
-            QFile::remove(passInput);  // intermediate 2x image is no longer needed
-        passInput = passOutput;
-        passSize = expected;
-        if (cancel.load())
-            return canceled();
-    }
+    BackendEngine rgbEngine(backend, *job.rgbModel);
+    BackendEngine alphaEngine(backend, job.alphaModel ? *job.alphaModel : *job.rgbModel);
+    const core::TileParams rgbParams = core::ModelContract::tileParams(*job.rgbModel);
+    const core::TileParams alphaParams =
+        job.alphaModel ? core::ModelContract::tileParams(*job.alphaModel) : rgbParams;
 
-    // 4. Read back the final result.
-    step = QStringLiteral("read back AI output");
-    report(Stage::Encode, 0);
-    QImageReader reader(outPng, "png");
-    QImage result = reader.read();
-    if (result.isNull())
-        return fail(tr("Cannot read the AI output: %1").arg(reader.errorString()));
+    core::ProcessOptions opt;
+    opt.tile = job.tile.tile;
+    opt.allowOomRetry = job.tile.allowOomRetry;
+    opt.fallbackTile = job.tile.fallbackTile;
+    opt.maxOutputPixels = quint64(limits::kMaxOutputPixels);
+    opt.cancel = &cancel;
+    int lastAttempt = 1;
+    opt.progress = [&](const core::Progress &p) {
+        if (p.attempt != lastAttempt) {
+            lastAttempt = p.attempt;
+            if (progress.retrying)
+                progress.retrying(job.tile.fallbackTile);
+        }
+        if (progress.stageFraction && p.totalPixels > 0)
+            progress.stageFraction(double(p.donePixels) / double(p.totalPixels));
+    };
+
+    const core::ImageView view{input.constBits(), input.width(), input.height(), loaded.hasAlpha ? 4 : 3,
+                               std::ptrdiff_t(input.bytesPerLine())};
+    core::Image8 out;
+    core::ProcessStats stats;
+    const core::Status s = core::upscaleImage(view, rgbParams, rgbEngine,
+                                              job.alphaModel ? &alphaParams : nullptr,
+                                              job.alphaModel ? &alphaEngine : nullptr, opt, out, &stats);
+    input = QImage();
+    tileUsed = stats.tileUsed ? stats.tileUsed : (stats.attempts > 1 ? job.tile.fallbackTile : job.tile.tile);
+    if (!s.ok()) {
+        // A CPU Run aborted by SetTerminate fails with an engine error: it is a cancel.
+        if (s.kind == core::ErrorKind::Cancelled || cancel.load())
+            return canceled();
+        engineDetail = statusDiagnostics(s);
+        if (stats.firstAttemptError.kind != core::ErrorKind::None)
+            engineDetail += QStringLiteral(" (after ") + statusDiagnostics(stats.firstAttemptError) +
+                            QStringLiteral(" at tile %1)").arg(job.tile.tile);
+        ItemResult r;
+        switch (s.kind) {
+        case core::ErrorKind::OutOfMemory:
+            r = fail(job.tile.allowOomRetry
+                         ? tr("Not enough GPU memory to process this image, even with the smaller tile size %1.")
+                               .arg(tileUsed)
+                         : tr("Not enough GPU memory to process this image with tile size %1. Choose a "
+                              "smaller tile size or Auto in the settings.")
+                               .arg(tileUsed));
+            r.resetEngine = true;  // release the sessions before the next image
+            break;
+        case core::ErrorKind::SizeOverflow:
+        case core::ErrorKind::InvalidArgument:
+            r = fail(engineErrorMessage(s));
+            break;
+        default:
+            // Device lost, model / contract errors, unknown runtime errors: the engine is
+            // not trusted any more; stop the batch and release everything.
+            r = fail(engineErrorMessage(s));
+            r.fatal = true;
+            r.resetEngine = true;
+            break;
+        }
+        r.tileUsed = 0;
+        return r;
+    }
     const QSize expected(inSize.width() * scale, inSize.height() * scale);
-    if (result.size() != expected)
+    if (QSize(out.width, out.height) != expected)
         return fail(tr("The AI output has an unexpected size (%1 x %2, expected %3 x %4).")
-                        .arg(result.width()).arg(result.height())
-                        .arg(expected.width()).arg(expected.height()));
-    result = result.convertToFormat(hasAlpha ? QImage::Format_ARGB32 : QImage::Format_RGB888);
-    if (result.isNull())
-        return fail(tr("Out of memory while converting the AI output."));
-    QFile::remove(outPng);
+                        .arg(out.width).arg(out.height).arg(expected.width()).arg(expected.height()));
     if (cancel.load())
         return canceled();
 
-    // 5. Encode into a temporary file inside the output folder.
+    // 3. Encode into a temporary file inside the output folder. The QImage wraps the
+    //    result buffer (no copy); `out` outlives it.
     step = QStringLiteral("encode");
+    report(Stage::Encode);
+    const QImage result(out.pixels.data(), out.width, out.height, qsizetype(out.width) * out.channels,
+                        out.channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888);
     const QString stem = OutputNaming::stem(sourcePath, scale);
     const QString ext = ImageEncoder::extension(spec.encode.format);
     const QString tmpPath = OutputNaming::tempPath(spec.outputDir, stem);
@@ -268,7 +443,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     if (cancel.load())
         return canceled();
 
-    // 6. Commit under the final, non-overwriting name.
+    // 4. Commit under the final, non-overwriting name. After this point the item is a
+    //    success even if a cancel arrives (the commit is the completion boundary).
     step = QStringLiteral("commit output file");
     QString commitError;
     const QString finalPath = OutputNaming::commit(tmpPath, spec.outputDir, stem, ext, &commitError);
@@ -279,6 +455,13 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec,
     ItemResult ok;
     ok.ok = true;
     ok.outputPath = finalPath;
+    ok.tileUsed = tileUsed;
+    ok.tileChoice = tileChoice(job.tile, stats.attempts);
+    ok.diagnostics = QStringLiteral("model: %1\ndevice: %2\ntile: %3 (attempts %4%5)")
+                         .arg(QString::fromStdString(job.rgbModel->id), job.deviceName)
+                         .arg(tileUsed)
+                         .arg(stats.attempts)
+                         .arg(stats.alphaPassed ? QStringLiteral(", alpha model") : QString());
     return ok;
 }
 

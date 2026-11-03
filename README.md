@@ -60,14 +60,16 @@ Requirements: Qt 6.12.0 msvc2022_64 at `D:\qt\6.12.0\msvc2022_64`,
 Visual Studio 2026 with MSVC 14.51, CMake, Ninja (paths in `CMakePresets.json`).
 
 ```powershell
-pwsh -File build.ps1 -Preset release        # fetches waifu2x on first run
-pwsh -File build.ps1 -Preset debug -Test    # with developer tests (uses the GPU)
+pwsh -File build.ps1 -Preset release        # fetches the runtime and models on first run
+pwsh -File build.ps1 -Preset debug -Test    # with developer tests (some use the GPU)
 ```
 
 `tst_ui_layout` runs the window size / layout checks on the real `windows`
 platform (windows flash briefly); the other UI tests run offscreen.
 
-The pinned waifu2x-ncnn-vulkan 20250915 release is fetched and SHA256-checked by
-`tools/fetch-waifu2x.ps1`; it is not stored in git.
+The pinned Windows ML 2.5.96 package (ONNX Runtime + DirectML) is fetched and
+SHA-256-checked by `tools/fetch-runtime.ps1`; the nunif swin_unet/art models are
+fetched, rewritten and checked against `models/manifest.json` by
+`tools/fetch-models.ps1`. Neither is stored in git.
 
 Specification: `設計規劃.md`, `docs/可行性評估.md`; build/decision log: `docs/開發記錄.md`.

@@ -12,8 +12,9 @@ namespace arx {
 // inference engine: the engine adapter (ProcessJob::progressPlan) describes
 // the stages of an item, the job reports when each stage starts, and an
 // engine that can report real progress passes it through stageFraction.
-// waifu2x-ncnn-vulkan 20250915 reports nothing per tile, even with -v
-// (measured 2026-11-02), so its progress is always estimated.
+// The tiled ONNX engine reports the share of output pixels whose tiles are
+// finished and blended (RGB and alpha passes together); that is completed
+// work, not a time fraction.
 
 enum class Stage { Load = 0, Inference = 1, Encode = 2 };
 
@@ -31,6 +32,9 @@ struct ProgressSink {
     // The processing device as the engine names it (e.g. the GPU). Measured
     // speeds are only valid for the device they were measured on.
     std::function<void(const QString &device)> deviceDetected;
+    // Out of GPU memory: the current image starts again with a smaller tile,
+    // so its inference progress goes back to 0.
+    std::function<void(int tile)> retrying;
 };
 
 // One stage of an item as the engine adapter predicts it:
@@ -77,6 +81,9 @@ public:
     void itemStarted(int index, qint64 nowMs);
     void stageStarted(int index, const StageEvent &e, qint64 nowMs);
     void stageFraction(int index, double fraction, qint64 nowMs);
+    // The current stage starts over (OOM retry with a smaller tile): its
+    // reported fraction may go back.
+    void stageRestarted(int index, qint64 nowMs);
     // `ok`: the item completed, so its last stage is a valid measurement.
     void itemFinished(int index, bool ok, qint64 nowMs);
 

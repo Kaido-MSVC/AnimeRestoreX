@@ -18,9 +18,6 @@ if(MSVC)
     add_compile_options(/W4 /permissive- /utf-8)
 endif()
 
-set(ARX_WAIFU2X_DIR "${CMAKE_SOURCE_DIR}/third_party/waifu2x"
-    CACHE PATH "Directory holding waifu2x-ncnn-vulkan.exe and models-cunet")
-
 # Windows ML package (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
 # Only its own build/cmake config is used, nothing from the system.
 set(ARX_WINML_DIR "${CMAKE_SOURCE_DIR}/third_party/windowsml/2.5.96"

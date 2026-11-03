@@ -67,11 +67,17 @@ Status initOrtRuntime(const fs::path& dllDir, const std::string& expectedVersion
             return Status::fail(ErrorKind::EngineFailure, narrow(n) + " did not resolve to " + want.string());
         info += narrow(n) + "=" + want.string() + "; ";
     }
-    Ort::InitApi();
+    // Version first, through OrtApiBase only: an older onnxruntime.dll may not provide
+    // ORT_API_VERSION, and GetApi() would then return nullptr.
     const std::string ver = Ort::GetVersionString();
     info += "ORT " + ver;
     if (ver != expectedVersion)
         return Status::fail(ErrorKind::EngineFailure, "ORT version " + ver + " != expected " + expectedVersion);
+    const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    if (!api)
+        return Status::fail(ErrorKind::EngineFailure, "ORT " + ver + " does not provide API version " +
+                                                          std::to_string(ORT_API_VERSION));
+    Ort::InitApi(api);
     return Status::success();
 }
 
@@ -92,7 +98,8 @@ Status classifyOrtError(int ortCode, const std::string& message) {
 }
 
 Status OrtTileEngine::create(Ort::Env& env, const fs::path& model, Ep ep, int device, const std::string& inputName,
-                             const std::string& outputName, std::unique_ptr<OrtTileEngine>& out) {
+                             const std::string& outputName, std::unique_ptr<OrtTileEngine>& out,
+                             Ort::RunOptions* sharedRunOptions) {
     try {
         Ort::SessionOptions so;
         // DirectML EP requirements: no memory pattern, sequential execution (ORT DirectML EP docs).
@@ -111,6 +118,7 @@ Status OrtTileEngine::create(Ort::Env& env, const fs::path& model, Ep ep, int de
             s.GetInputNameAllocated(0, alloc).get() != inputName || s.GetOutputNameAllocated(0, alloc).get() != outputName)
             return Status::fail(ErrorKind::ContractViolation, "model I/O names differ from the manifest");
         out.reset(new OrtTileEngine(std::move(s), ep, inputName, outputName));
+        out->shared_ = sharedRunOptions;
         return Status::success();
     } catch (const Ort::Exception& e) {
         return classifyOrtError((int)e.GetOrtErrorCode(), e.what());
@@ -119,13 +127,16 @@ Status OrtTileEngine::create(Ort::Env& env, const fs::path& model, Ep ep, int de
 
 Status OrtTileEngine::run(const float* input, int tile, int outSide, std::vector<float>& output) {
     try {
-        runOptions_.UnsetTerminate();
+        // A shared RunOptions keeps a terminate request until its owner resets it (so a
+        // cancel between the caller's check and this Run is not lost).
+        Ort::RunOptions& ro = shared_ ? *shared_ : runOptions_;
+        if (!shared_) runOptions_.UnsetTerminate();
         const int64_t shape[4] = {1, 3, tile, tile};
         auto mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         Ort::Value x = Ort::Value::CreateTensor<float>(mem, const_cast<float*>(input), (size_t)3 * tile * tile, shape, 4);
         const char* in[] = {in_.c_str()};
         const char* out[] = {out_.c_str()};
-        auto y = session_.Run(runOptions_, in, &x, 1, out, 1);
+        auto y = session_.Run(ro, in, &x, 1, out, 1);
         auto info = y[0].GetTensorTypeAndShapeInfo();
         const auto s = info.GetShape();
         if (s.size() != 4 || s[0] != 1 || s[1] != 3 || s[2] != outSide || s[3] != outSide)

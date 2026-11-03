@@ -1,5 +1,6 @@
 // Widget-level tests (run with QT_QPA_PLATFORM=offscreen). The full-batch test
-// drives the real main window and uses the waifu2x copy next to the test exe.
+// drives the real main window and uses the Windows ML runtime and models deployed
+// next to the test exe by the app build.
 #include "TestImages.h"
 
 #include "ui/AboutDialog.h"
@@ -40,6 +41,19 @@
 #include <QTimer>
 #include <QTreeWidget>
 #include <QtTest>
+
+namespace {
+
+// The app build copies the runtime DLLs and the models next to the test executables.
+bool engineDeployed()
+{
+    const QDir app(QCoreApplication::applicationDirPath());
+    return QFileInfo::exists(app.filePath(QStringLiteral("onnxruntime.dll"))) &&
+           QFileInfo::exists(app.filePath(QStringLiteral("DirectML.dll"))) &&
+           QFileInfo::exists(app.filePath(QStringLiteral("models/manifest.json")));
+}
+
+} // namespace
 
 class TestUi : public QObject {
     Q_OBJECT
@@ -189,10 +203,8 @@ void TestUi::addFilesSkipsDuplicates()
 
 void TestUi::fullBatchThroughMainWindow()
 {
-    const QString w2x = QDir(QCoreApplication::applicationDirPath())
-                            .filePath(QStringLiteral("waifu2x/waifu2x-ncnn-vulkan.exe"));
-    if (!QFileInfo::exists(w2x))
-        QSKIP("waifu2x is not deployed next to the test executable");
+    if (!engineDeployed())
+        QSKIP("onnxruntime.dll / models are not deployed next to the test executable");
 
     const QString src = m_dir.filePath(QStringLiteral("批次 入力"));
     const QString out = m_dir.filePath(QStringLiteral("批次 出力"));
@@ -314,10 +326,8 @@ void TestUi::listElidesAndShowsFullReason()
     w.addFiles({path});
     w.findChild<QLineEdit *>(QStringLiteral("outputDirEdit"))->setText(QDir::toNativeSeparators(m_dir.path()));
 
-    const QString w2x = QDir(QCoreApplication::applicationDirPath())
-                            .filePath(QStringLiteral("waifu2x/waifu2x-ncnn-vulkan.exe"));
-    if (!QFileInfo::exists(w2x))
-        QSKIP("waifu2x is not deployed next to the test executable");
+    if (!engineDeployed())
+        QSKIP("onnxruntime.dll / models are not deployed next to the test executable");
     QString summary;
     autoCloseNextModal(&summary);
     w.findChild<QPushButton *>(QStringLiteral("startButton"))->click();
@@ -706,8 +716,8 @@ void TestUi::aboutDialogContents()
     const QString text = dlg.bodyText();
     for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral(ARX_TEST_VERSION),
                              QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
-                             QStringLiteral("waifu2x-ncnn-vulkan"), QStringLiteral("ncnn (Tencent)"),
-                             QStringLiteral("nagadomi/waifu2x"), QStringLiteral("Qt 6.12"),
+                             QStringLiteral("Windows ML 2.5.96"), QStringLiteral("ONNX Runtime " ARX_ORT_VERSION),
+                             QStringLiteral("DirectML"), QStringLiteral("nagadomi/nunif"), QStringLiteral("Qt 6.12"),
                              QStringLiteral("LGPL")})
         QVERIFY2(text.contains(s), qPrintable(s));
     QVERIFY(dlg.openLicensesButton());

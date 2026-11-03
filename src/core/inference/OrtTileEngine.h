@@ -25,15 +25,17 @@ class OrtTileEngine final : public ITileEngine {
 public:
     enum class Ep { Dml, Cpu };
 
+    // `sharedRunOptions` (optional, must outlive the engine): every Run uses it and never
+    // clears its terminate flag, so one SetTerminate() reaches all sessions of a host.
     static Status create(Ort::Env& env, const std::filesystem::path& model, Ep ep, int device,
                          const std::string& inputName, const std::string& outputName,
-                         std::unique_ptr<OrtTileEngine>& out);
+                         std::unique_ptr<OrtTileEngine>& out, Ort::RunOptions* sharedRunOptions = nullptr);
 
     Status run(const float* input, int tile, int outSide, std::vector<float>& output) override;
 
     // CPU path: aborts the Run in progress (RunOptions::SetTerminate). The DML EP does not
     // honour it (P1 §6.6), so for DML cancel takes effect between tiles only.
-    void requestTerminate() { runOptions_.SetTerminate(); }
+    void requestTerminate() { (shared_ ? *shared_ : runOptions_).SetTerminate(); }
     Ep ep() const { return ep_; }
 
 private:
@@ -41,6 +43,7 @@ private:
         : session_(std::move(s)), ep_(ep), in_(std::move(in)), out_(std::move(out)) {}
     Ort::Session session_;
     Ort::RunOptions runOptions_;
+    Ort::RunOptions* shared_ = nullptr;
     Ep ep_;
     std::string in_, out_;
 };

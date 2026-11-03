@@ -179,6 +179,13 @@ void ProgressEstimator::stageFraction(int index, double fraction, qint64)
     m_engineFraction = std::max(m_engineFraction, std::clamp(fraction, 0.0, 1.0));
 }
 
+void ProgressEstimator::stageRestarted(int index, qint64)
+{
+    if (index != m_index || m_stage < 0)
+        return;
+    m_engineFraction = 0;
+}
+
 void ProgressEstimator::itemFinished(int index, bool ok, qint64 nowMs)
 {
     if (index != m_index || m_index < 0)

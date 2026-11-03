@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/JobSpec.h"
 #include "core/Language.h"
 
 #include <QByteArray>
@@ -12,10 +13,6 @@
 class QSettings;
 
 namespace arx {
-
-// Where inference runs. CPU is only used when the user picks it; a GPU failure never
-// switches a job to the CPU on its own.
-enum class ComputeDevice { Gpu = 0, Cpu = 1 };
 
 // User-scope persistent settings (QSettings, organisation "Kaido-MSVC",
 // application "AnimeRestoreX"). Source and output folders use separate keys.

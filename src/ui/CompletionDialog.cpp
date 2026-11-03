@@ -23,6 +23,8 @@ CompletionDialog::CompletionDialog(const arx::BatchSummary &s, const QString &ou
     lines << tr("Succeeded: %1").arg(s.succeeded) << tr("Failed: %1").arg(s.failed);
     if (s.notProcessed > 0)
         lines << tr("Not processed: %1").arg(s.notProcessed);
+    if (s.smallerTile > 0)
+        lines << tr("Made with the smaller tile size 160 (GPU memory): %1").arg(s.smallerTile);
     m_summary = new QLabel(lines.join(QLatin1Char('\n')), this);
     QFont f = m_summary->font();
     f.setPointSizeF(f.pointSizeF() * 1.2);

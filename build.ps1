@@ -15,9 +15,6 @@ $CMake    = 'C:\Program Files\CMake\bin\cmake.exe'
 $CTest    = 'C:\Program Files\CMake\bin\ctest.exe'
 $Root     = $PSScriptRoot
 
-if (-not (Test-Path (Join-Path $Root 'third_party\waifu2x\waifu2x-ncnn-vulkan.exe'))) {
-    & (Join-Path $Root 'tools\fetch-waifu2x.ps1')
-}
 # Pinned Windows ML runtime and the hash-checked models (both skip work when already present).
 & (Join-Path $Root 'tools\fetch-runtime.ps1')
 if ($LASTEXITCODE) { throw "fetch-runtime failed" }

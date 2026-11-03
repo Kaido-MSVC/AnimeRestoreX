@@ -1,6 +1,8 @@
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
 
+#include "core/inference/EngineHost.h"
+
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -65,16 +67,24 @@ void AboutDialog::retranslate()
            "The MIT License covers only AnimeRestoreX itself; the third-party components "
            "below remain under their own licenses.").toHtmlEscaped());
     html += QStringLiteral("<p><b>%1</b></p><ul style='margin-top:0'>").arg(tr("Third-party components").toHtmlEscaped());
-    html += item(QStringLiteral("waifu2x-ncnn-vulkan (nihui)"),
-                 tr("AI inference engine that performs the denoising and upscaling (MIT License)."));
-    html += item(QStringLiteral("ncnn (Tencent)"),
-                 tr("Neural network inference framework with Vulkan GPU acceleration, built into waifu2x-ncnn-vulkan (BSD 3-Clause License)."));
-    html += item(QStringLiteral("waifu2x CUnet models (nagadomi/waifu2x)"),
-                 tr("Trained models for anime-style illustrations (MIT License)."));
+    html += item(QStringLiteral("Windows ML 2.5.96: ONNX Runtime %1 + DirectML 1.15.4 (Microsoft)")
+                     .arg(QStringLiteral(ARX_ORT_VERSION)),
+                 tr("AI inference runtime; runs the models on the GPU through DirectML, or on the CPU "
+                    "(Microsoft license terms, see the licenses folder)."));
+    html += item(QStringLiteral("waifu2x swin_unet/art models (nagadomi/nunif)"),
+                 tr("Trained models for anime-style illustrations, converted for DirectML "
+                    "(license being verified)."));
     html += item(QStringLiteral("Qt 6.12 (The Qt Company)"),
                  tr("User interface and image reading and writing (GNU LGPL v3)."));
     html += QStringLiteral("</ul><p>%1</p>").arg(
         tr("See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.").toHtmlEscaped());
+    // Runtime actually loaded in this process (checked at start-up).
+    if (const arx::core::RuntimeInfo *rt = arx::core::EngineHost::runtime()) {
+        const QString state = rt->status.ok()
+                                  ? tr("AI runtime: %1").arg(QString::fromStdString(rt->details))
+                                  : tr("AI runtime not available: %1").arg(QString::fromStdString(rt->status.message));
+        html += QStringLiteral("<p><small>%1</small></p>").arg(state.toHtmlEscaped());
+    }
     m_body->setText(html);
 
     m_openLicenses->setText(tr("Open License Files"));

@@ -4,17 +4,38 @@
 
 namespace arx {
 
-BatchSummary runBatch(const QStringList &files, const JobSpec &spec,
+namespace {
+
+// Sessions (and the runtime's GPU device) are released whenever the batch ends.
+struct ReleaseOnExit {
+    core::Backend &backend;
+    ~ReleaseOnExit() { backend.releaseAll(); }
+};
+
+} // namespace
+
+BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backend &backend,
                       const std::atomic_bool &cancel, const BatchCallbacks &cb)
 {
     BatchSummary s;
     const int total = int(files.size());
 
     s.fatalError = ProcessJob::checkPreconditions(spec);
+    if (s.fatalError.isEmpty() && cancel.load()) {
+        s.canceled = true;
+        s.notProcessed = total;
+        return s;
+    }
+    ReleaseOnExit release{backend};
+    PreparedJob job;
+    if (s.fatalError.isEmpty())
+        s.fatalError = ProcessJob::prepare(spec, backend, job);
     if (!s.fatalError.isEmpty()) {
         s.notProcessed = total;
         return s;
     }
+    if (cb.deviceDetected)
+        cb.deviceDetected(job.deviceName);
 
     for (int i = 0; i < total; ++i) {
         if (cancel.load()) {
@@ -29,8 +50,11 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec,
             sink.stageStarted = [&cb, i](const StageEvent &e) { cb.stageStarted(i, e); };
         if (cb.stageFraction)
             sink.stageFraction = [&cb, i](double f) { cb.stageFraction(i, f); };
-        sink.deviceDetected = cb.deviceDetected;
-        const ItemResult r = ProcessJob::run(files.at(i), spec, cancel, sink);
+        if (cb.retrying)
+            sink.retrying = [&cb, i](int tile) { cb.retrying(i, tile); };
+        const ItemResult r = ProcessJob::run(files.at(i), spec, backend, job, cancel, sink);
+        if (r.resetEngine)
+            backend.releaseAll();  // the next item starts with fresh sessions
         if (cb.itemFinished)
             cb.itemFinished(i, r);
 
@@ -41,6 +65,8 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec,
         }
         if (r.ok) {
             ++s.succeeded;
+            if (r.tileChoice == TileChoice::SmallerForVram || r.tileChoice == TileChoice::OomRetry)
+                ++s.smallerTile;
             continue;
         }
         ++s.failed;
