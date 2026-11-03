@@ -39,6 +39,20 @@ tools\winml-probe\build\winml_probe.exe --model tools\winml-probe\_work\run\pad_
     --input tools\winml-probe\_work\run\input_256.bin --ep dml --scale 1 --offset 0 --warm 0 --output out.bin
 ```
 
+## P1 修正：負值 Pad → Slice（`docs/v2.0-P0-P1報告.md` §12）
+
+```powershell
+pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage rewrite   # 改寫 14 個模型到 _work\rewritten
+& $py -I tools\winml-probe\scripts\test_rewrite_pad.py tools\winml-probe\_work\run\rewrite_selftest
+& $py -I tools\winml-probe\scripts\make_manifest.py tools\winml-probe\_work\rewritten models\manifest.json
+pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage run       # tile 256：14 個模型 × dml／cpu＋比較
+pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage nodes     # 逐節點比對（DML vs CPU）
+pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage speed -Only scale2x,noise3_scale4x,noise3 -Tiles 256,400 -Repeat 2
+```
+
+`run` 需要先把 `input_256.bin`、`input_core.png` 放到 `_work\p1fix\t256`，並用
+`verify_rewrite.py cpu-bitwise` 產生參考值。不要用 640 以上的 tile（6 GB 卡上 4× 模型會 887A0006）。
+
 ## probe 的行為
 
 - `onnxruntime.dll` 用 `/DELAYLOAD`，`main` 先呼叫 `SetDefaultDllDirectories`，再以 exe 目錄的
@@ -53,5 +67,8 @@ tools\winml-probe\build\winml_probe.exe --model tools\winml-probe\_work\run\pad_
 - 記錄：Session 建立／首次 Run／暖機 Run 時間、Run 間差異、峰值 working set 與 private bytes、
   DXGI `QueryVideoMemoryInfo` 每 10 ms 取樣的本行程 local VRAM 峰值；`--verbose` 擷取節點分配；
   `--profile` 輸出 ORT profiling JSON；`--cancel-delay-ms` 從另一條執行緒呼叫 `SetTerminate()`。
+
+- 診斷用：`--dump-dir D` 跑一次並把每個 float 輸出寫成 `D\<i>.bin`＋`index.txt`；
+  `--config key=value` 呼叫 `AddConfigEntry`（例如未公開的 `ep.dml.disable_graph_fusion=1`，正式程式不使用）。
 
 exit code：0 成功；2 ORT 或其他錯誤；3 DLL／版本檢查失敗；4 輸出 shape 不符；64 參數錯誤。
