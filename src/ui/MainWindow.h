@@ -38,7 +38,8 @@ public:
     QString sourceFolder() const { return m_sourceDir; }
 
     // Applies values from the settings dialog (also used by tests).
-    void applySettings(int tile, bool languageChanged, int language);
+    // `device` is an arx::ComputeDevice value.
+    void applySettings(int tile, int device, bool languageChanged, int language);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

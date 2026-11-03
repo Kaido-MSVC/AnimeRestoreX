@@ -309,10 +309,11 @@ void MainWindow::saveSettings()
 
 void MainWindow::openSettings()
 {
-    SettingsDialog dlg(m_settings->tileSize(), LanguageManager::instance().current(), this);
+    SettingsDialog dlg(m_settings->tileSize(), m_settings->computeDevice(),
+                       LanguageManager::instance().current(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    applySettings(dlg.tileSize(), dlg.languageChanged(), int(dlg.language()));
+    applySettings(dlg.tileSize(), int(dlg.computeDevice()), dlg.languageChanged(), int(dlg.language()));
 }
 
 void MainWindow::openAbout()
@@ -405,9 +406,10 @@ void MainWindow::requestThumbnail(const QString &path)
     });
 }
 
-void MainWindow::applySettings(int tile, bool languageChanged, int language)
+void MainWindow::applySettings(int tile, int device, bool languageChanged, int language)
 {
     m_settings->setTileSize(tile);
+    m_settings->setComputeDevice(arx::ComputeDevice(device));
     if (languageChanged) {
         // Only an explicit choice is stored as a manual override.
         const auto lang = arx::Language(language);

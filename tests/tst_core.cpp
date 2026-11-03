@@ -46,6 +46,7 @@ private slots:
     void languageFromUiTag();
     void languagePriority();
     void settingsSeparateKeysAndValidation();
+    void settingsMigrateFromSchema1();
     void folderFallbackPerItem();
     void waifu2xPasses();
     void progressPlanFollowsPasses();
@@ -428,7 +429,8 @@ void TestCore::settingsSeparateKeysAndValidation()
         s.setSourceDir(a);
         s.setOutputDir(b);
         s.setNoiseLevel(3);
-        s.setTileSize(200);
+        s.setTileSize(160);
+        s.setComputeDevice(ComputeDevice::Cpu);
         s.setManualLanguage(Language::Japanese);
         QVERIFY(s.sync());
     }
@@ -437,9 +439,12 @@ void TestCore::settingsSeparateKeysAndValidation()
         QCOMPARE(s.sourceDir(), a);
         QCOMPARE(s.outputDir(), b);
         QCOMPARE(s.noiseLevel(), 3);
-        QCOMPARE(s.tileSize(), 200);
+        QCOMPARE(s.tileSize(), 160);
+        QCOMPARE(s.computeDevice(), ComputeDevice::Cpu);
         QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
     }
+    for (int t : {100, 200, 640, 300})  // old engine values, 640+, illegal tiles
+        QVERIFY(!AppSettings::isValidTile(t));
     QSettings raw;
     QVERIFY(raw.contains(QStringLiteral("paths/sourceDir")));
     QVERIFY(raw.contains(QStringLiteral("paths/outputDir")));
@@ -447,13 +452,56 @@ void TestCore::settingsSeparateKeysAndValidation()
 
     // Corrupt values fall back to safe defaults.
     raw.setValue(QStringLiteral("model/noiseLevel"), 9);
-    raw.setValue(QStringLiteral("model/tileSize"), QStringLiteral("abc"));
+    raw.setValue(QStringLiteral("inference/tileSize"), QStringLiteral("abc"));
+    raw.setValue(QStringLiteral("inference/device"), QStringLiteral("npu"));
     raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
     raw.sync();
     AppSettings s;
     QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
     QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
+    QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);
     QVERIFY(!s.manualLanguage().has_value());
+    raw.clear();
+}
+
+void TestCore::settingsMigrateFromSchema1()
+{
+    // v1.2 settings: waifu2x tile 200 and measured waifu2x speeds; no schema key.
+    const QString dir = m_dir.filePath(QStringLiteral("遷移"));
+    QVERIFY(QDir().mkpath(dir));
+    {
+        QSettings raw;
+        raw.clear();
+        raw.setValue(QStringLiteral("ui/language"), QStringLiteral("ja"));
+        raw.setValue(QStringLiteral("paths/sourceDir"), dir);
+        raw.setValue(QStringLiteral("paths/outputDir"), dir);
+        raw.setValue(QStringLiteral("model/noiseLevel"), 2);
+        raw.setValue(QStringLiteral("model/tileSize"), 200);
+        raw.setValue(QStringLiteral("window/geometry"), QByteArray("geom"));
+        raw.setValue(QStringLiteral("window/splitter"), QByteArray("split"));
+        raw.setValue(QStringLiteral("progress/lastDevice"), QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
+        raw.setValue(QStringLiteral("progress/rates/NVIDIA GeForce GTX 1060 6GB/waifu2x/noise1_scale2.0x_model"), 0.4);
+        raw.sync();
+    }
+    {
+        AppSettings s;
+        QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
+        QCOMPARE(s.sourceDir(), dir);
+        QCOMPARE(s.outputDir(), dir);
+        QCOMPARE(s.noiseLevel(), 2);
+        QCOMPARE(s.windowGeometry(), QByteArray("geom"));
+        QCOMPARE(s.splitterState(), QByteArray("split"));
+        QCOMPARE(s.tileSize(), 0);                     // reset to Auto
+        QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);
+        QVERIFY(s.progressDevice().isEmpty());          // old speeds removed
+        QVERIFY(s.progressRates(QStringLiteral("NVIDIA GeForce GTX 1060 6GB")).isEmpty());
+        s.setTileSize(256);
+        QVERIFY(s.sync());
+    }
+    QSettings raw;
+    QVERIFY(!raw.contains(QStringLiteral("model/tileSize")));
+    QCOMPARE(raw.value(QStringLiteral("settings/schema")).toInt(), AppSettings::kSchema);
+    QCOMPARE(AppSettings().tileSize(), 256);  // migration runs only once
     raw.clear();
 }
 

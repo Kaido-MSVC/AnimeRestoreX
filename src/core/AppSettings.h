@@ -13,13 +13,22 @@ class QSettings;
 
 namespace arx {
 
+// Where inference runs. CPU is only used when the user picks it; a GPU failure never
+// switches a job to the CPU on its own.
+enum class ComputeDevice { Gpu = 0, Cpu = 1 };
+
 // User-scope persistent settings (QSettings, organisation "Kaido-MSVC",
 // application "AnimeRestoreX"). Source and output folders use separate keys.
+//
+// Schema 2 (v2.0, nunif ONNX on Windows ML): the old engine's tile value
+// ("model/tileSize": 0/400/200/100) is dropped and the tile starts at Auto again;
+// the measured speeds of the old engine ("progress/...") are removed. Language,
+// folders, window state and the denoise level (-1..3, same meaning) are kept.
 class AppSettings {
 public:
-    // Decided after the A9 measurements on the GTX 1060 6GB (2026-11-01).
+    static constexpr int kSchema = 2;
     static constexpr int kDefaultNoise = 1;
-    static constexpr int kDefaultTile = 0;   // auto
+    static constexpr int kDefaultTile = 0;   // auto: 256, 160 when VRAM is short or after OOM
 
     AppSettings();
     ~AppSettings();
@@ -35,8 +44,10 @@ public:
 
     int noiseLevel() const;      // -1..3, invalid -> default
     void setNoiseLevel(int level);
-    int tileSize() const;        // 0 (auto), 400, 200, 100; invalid -> default
+    int tileSize() const;        // 0 (auto), 160, 256, 400; invalid -> default
     void setTileSize(int tile);
+    ComputeDevice computeDevice() const;  // invalid -> Gpu
+    void setComputeDevice(ComputeDevice device);
 
     // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
     QByteArray windowGeometry() const;
@@ -57,6 +68,9 @@ public:
     bool sync();
 
     static bool isValidTile(int tile);
+
+    // Applies the schema migration once (called by the constructor; idempotent).
+    void migrate();
 
 private:
     std::unique_ptr<QSettings> m_s;

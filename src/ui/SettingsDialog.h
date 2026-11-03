@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/AppSettings.h"
 #include "core/Language.h"
 
 #include <QDialog>
@@ -9,14 +10,16 @@ class QLabel;
 class QGroupBox;
 class QDialogButtonBox;
 
-// "Settings" window: advanced AI model parameter (tile size) and language.
-// The denoise level lives in the main window since v1.1.
+// "Settings" window: advanced AI model parameters (tile size, processing device) and
+// language. The denoise level lives in the main window since v1.1.
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
-    SettingsDialog(int tile, arx::Language language, QWidget *parent = nullptr);
+    SettingsDialog(int tile, arx::ComputeDevice device, arx::Language language,
+                   QWidget *parent = nullptr);
 
     int tileSize() const;
+    arx::ComputeDevice computeDevice() const;
     arx::Language language() const;
     // True only if the user picked a different language than the one shown at open.
     bool languageChanged() const { return language() != m_initialLanguage; }
@@ -33,8 +36,11 @@ private:
     QLabel *m_modelName = nullptr;
     QLabel *m_tileLabel = nullptr;
     QLabel *m_tileHint = nullptr;
+    QLabel *m_deviceLabel = nullptr;
+    QLabel *m_deviceHint = nullptr;
     QLabel *m_langLabel = nullptr;
     QComboBox *m_tile = nullptr;
+    QComboBox *m_device = nullptr;
     QComboBox *m_lang = nullptr;
     QDialogButtonBox *m_buttons = nullptr;
     arx::Language m_initialLanguage;

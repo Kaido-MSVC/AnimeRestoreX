@@ -8,7 +8,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-SettingsDialog::SettingsDialog(int tile, arx::Language language, QWidget *parent)
+SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Language language,
+                               QWidget *parent)
     : QDialog(parent), m_initialLanguage(language)
 {
     auto *root = new QVBoxLayout(this);
@@ -16,16 +17,25 @@ SettingsDialog::SettingsDialog(int tile, arx::Language language, QWidget *parent
     m_modelGroup = new QGroupBox(this);
     auto *model = new QFormLayout(m_modelGroup);
     m_modelLabel = new QLabel(this);
-    m_modelName = new QLabel(QStringLiteral("waifu2x CUnet (models-cunet)"), this);
+    m_modelName = new QLabel(QStringLiteral("waifu2x swin_unet/art (nunif)"), this);
     model->addRow(m_modelLabel, m_modelName);
     m_tileLabel = new QLabel(this);
     m_tile = new QComboBox(this);
-    for (int t : {0, 400, 200, 100})
+    // Only tiles validated on the target GPU; 640 and larger are not offered.
+    for (int t : {0, 160, 256, 400})
         m_tile->addItem(QString(), t);
     model->addRow(m_tileLabel, m_tile);
     m_tileHint = new QLabel(this);
     m_tileHint->setWordWrap(true);
     model->addRow(QString(), m_tileHint);
+    m_deviceLabel = new QLabel(this);
+    m_device = new QComboBox(this);
+    m_device->addItem(QString(), int(arx::ComputeDevice::Gpu));
+    m_device->addItem(QString(), int(arx::ComputeDevice::Cpu));
+    model->addRow(m_deviceLabel, m_device);
+    m_deviceHint = new QLabel(this);
+    m_deviceHint->setWordWrap(true);
+    model->addRow(QString(), m_deviceHint);
     root->addWidget(m_modelGroup);
 
     m_langGroup = new QGroupBox(this);
@@ -43,6 +53,7 @@ SettingsDialog::SettingsDialog(int tile, arx::Language language, QWidget *parent
     root->addWidget(m_buttons);
 
     m_tile->setCurrentIndex(std::max(0, m_tile->findData(tile)));
+    m_device->setCurrentIndex(std::max(0, m_device->findData(int(device))));
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
     retranslate();
 }
@@ -54,11 +65,17 @@ void SettingsDialog::retranslate()
     m_modelLabel->setText(tr("Model:"));
     m_tileLabel->setText(tr("Tile size:"));
     m_tile->setItemText(0, tr("Auto"));
-    m_tile->setItemText(1, QStringLiteral("400"));
-    m_tile->setItemText(2, QStringLiteral("200"));
-    m_tile->setItemText(3, QStringLiteral("100"));
-    m_tileHint->setText(tr("Smaller tiles use less GPU memory but are slower. "
-                           "Try a smaller size if processing fails with large images."));
+    m_tile->setItemText(1, QStringLiteral("160"));
+    m_tile->setItemText(2, QStringLiteral("256"));
+    m_tile->setItemText(3, QStringLiteral("400"));
+    m_tileHint->setText(tr("Auto uses 256, or 160 when GPU memory is short or runs out. "
+                           "Smaller tiles use less GPU memory but are slower; 400 needs about "
+                           "3 GB of GPU memory at 4x. The tile size slightly changes the result."));
+    m_deviceLabel->setText(tr("Processing device:"));
+    m_device->setItemText(0, tr("GPU (DirectML)"));
+    m_device->setItemText(1, tr("CPU (very slow)"));
+    m_deviceHint->setText(tr("If the GPU fails, processing stops; it does not switch to the CPU "
+                             "on its own."));
     m_langGroup->setTitle(tr("Language"));
     m_langLabel->setText(tr("Interface language:"));
 }
@@ -71,4 +88,8 @@ void SettingsDialog::changeEvent(QEvent *event)
 }
 
 int SettingsDialog::tileSize() const { return m_tile->currentData().toInt(); }
+arx::ComputeDevice SettingsDialog::computeDevice() const
+{
+    return arx::ComputeDevice(m_device->currentData().toInt());
+}
 arx::Language SettingsDialog::language() const { return arx::Language(m_lang->currentData().toInt()); }

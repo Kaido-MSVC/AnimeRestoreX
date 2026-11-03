@@ -13,7 +13,11 @@ const QString kLanguageKey = QStringLiteral("ui/language");
 const QString kSourceKey = QStringLiteral("paths/sourceDir");
 const QString kOutputKey = QStringLiteral("paths/outputDir");
 const QString kNoiseKey = QStringLiteral("model/noiseLevel");
-const QString kTileKey = QStringLiteral("model/tileSize");
+const QString kSchemaKey = QStringLiteral("settings/schema");
+const QString kTileKey = QStringLiteral("inference/tileSize");
+const QString kDeviceKey = QStringLiteral("inference/device");
+const QString kOldTileKey = QStringLiteral("model/tileSize");      // schema 1 (waifu2x-ncnn-vulkan)
+const QString kProgressGroup = QStringLiteral("progress");         // speeds of the schema 1 engine
 const QString kGeometryKey = QStringLiteral("window/geometry");
 const QString kSplitterKey = QStringLiteral("window/splitter");
 const QString kProgressDeviceKey = QStringLiteral("progress/lastDevice");
@@ -37,8 +41,22 @@ bool isExistingDir(const QString &dir)
 }
 } // namespace
 
-AppSettings::AppSettings() : m_s(std::make_unique<QSettings>()) {}
+AppSettings::AppSettings() : m_s(std::make_unique<QSettings>()) { migrate(); }
 AppSettings::~AppSettings() = default;
+
+void AppSettings::migrate()
+{
+    bool ok = false;
+    const int schema = m_s->value(kSchemaKey, 1).toInt(&ok);
+    if (ok && schema >= kSchema)
+        return;
+    // Old tile sizes (400/200/100) are not valid swin_unet tiles: back to Auto.
+    m_s->remove(kOldTileKey);
+    m_s->remove(kTileKey);
+    // Speeds measured with waifu2x-ncnn-vulkan do not apply to the new engine.
+    m_s->remove(kProgressGroup);
+    m_s->setValue(kSchemaKey, kSchema);
+}
 
 std::optional<Language> AppSettings::manualLanguage() const
 {
@@ -66,7 +84,9 @@ void AppSettings::setNoiseLevel(int level) { m_s->setValue(kNoiseKey, level); }
 
 bool AppSettings::isValidTile(int tile)
 {
-    return tile == 0 || tile == 400 || tile == 200 || tile == 100;
+    // Auto, or a legal swin_unet tile ((T-16) % 48 == 0) that was validated on the
+    // GTX 1060 6GB (docs/v2.0-P0-P1報告.md §12, v2.0-P2報告.md §9). 640+ is not offered.
+    return tile == 0 || tile == 160 || tile == 256 || tile == 400;
 }
 
 int AppSettings::tileSize() const
@@ -77,6 +97,18 @@ int AppSettings::tileSize() const
 }
 
 void AppSettings::setTileSize(int tile) { m_s->setValue(kTileKey, tile); }
+
+ComputeDevice AppSettings::computeDevice() const
+{
+    return m_s->value(kDeviceKey).toString() == QLatin1String("cpu") ? ComputeDevice::Cpu
+                                                                     : ComputeDevice::Gpu;
+}
+
+void AppSettings::setComputeDevice(ComputeDevice device)
+{
+    m_s->setValue(kDeviceKey, device == ComputeDevice::Cpu ? QStringLiteral("cpu")
+                                                           : QStringLiteral("gpu"));
+}
 
 QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey).toByteArray(); }
 void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }

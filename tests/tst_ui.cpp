@@ -381,10 +381,14 @@ void TestUi::autoLanguageIsNotSavedAsManual()
     QSettings().remove(QStringLiteral("ui/language"));
     MainWindow w;
     // Settings dialog accepted without changing the language.
-    w.applySettings(200, false, int(arx::Language::TraditionalChinese));
+    w.applySettings(160, int(arx::ComputeDevice::Cpu), false, int(arx::Language::TraditionalChinese));
     arx::AppSettings s;
     QVERIFY(!s.manualLanguage().has_value());
-    QCOMPARE(s.tileSize(), 200);
+    QCOMPARE(s.tileSize(), 160);
+    QCOMPARE(s.computeDevice(), arx::ComputeDevice::Cpu);
+    s.setTileSize(arx::AppSettings::kDefaultTile);
+    s.setComputeDevice(arx::ComputeDevice::Gpu);
+    QVERIFY(s.sync());
 }
 
 void TestUi::denoiseOnMainWindow()
@@ -410,8 +414,14 @@ void TestUi::denoiseOnMainWindow()
     QCOMPARE(list->topLevelItem(0)->text(1), QStringLiteral("Pending"));
 
     // The settings dialog has no denoise control any more.
-    SettingsDialog sd(0, arx::Language::English, &w);
-    QCOMPARE(sd.findChildren<QComboBox *>().size(), 2);  // tile + language
+    SettingsDialog sd(0, arx::ComputeDevice::Gpu, arx::Language::English, &w);
+    QCOMPARE(sd.findChildren<QComboBox *>().size(), 3);  // tile + device + language
+    // Only validated tiles; nothing at 640 or above.
+    const QList<QComboBox *> combos = sd.findChildren<QComboBox *>();
+    QComboBox *tiles = combos.first();
+    QCOMPARE(tiles->count(), 4);
+    for (int i = 0; i < tiles->count(); ++i)
+        QVERIFY(arx::AppSettings::isValidTile(tiles->itemData(i).toInt()));
 
     arx::AppSettings s;
     s.setNoiseLevel(arx::AppSettings::kDefaultNoise);
@@ -636,7 +646,7 @@ void TestUi::languageSwitchRetranslates()
     QVERIFY2(QFile::exists(QStringLiteral(":/i18n/animerestorex_ja.qm")), "embedded .qm missing");
 
     // LanguageChange is delivered through the event loop.
-    w.applySettings(0, true, int(arx::Language::TraditionalChinese));
+    w.applySettings(0, int(arx::ComputeDevice::Gpu), true, int(arx::Language::TraditionalChinese));
     QCOMPARE(LanguageManager::instance().current(), arx::Language::TraditionalChinese);
     QTRY_COMPARE(startButton->text(), QStringLiteral("開始處理"));
     QCOMPARE(w.menuBar()->actions().first()->text(), QStringLiteral("檔案(&F)"));
@@ -656,7 +666,7 @@ void TestUi::languageSwitchRetranslates()
         w.show();
         QTest::qWait(300);
         w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
-        SettingsDialog sd(0, LanguageManager::instance().current(), &w);
+        SettingsDialog sd(0, arx::ComputeDevice::Gpu, LanguageManager::instance().current(), &w);
         sd.show();
         QTest::qWait(200);
         sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
@@ -667,12 +677,12 @@ void TestUi::languageSwitchRetranslates()
     };
     snapshot(QStringLiteral("zh_TW"));
 
-    w.applySettings(0, true, int(arx::Language::Japanese));
+    w.applySettings(0, int(arx::ComputeDevice::Gpu), true, int(arx::Language::Japanese));
     QTRY_COMPARE(startButton->text(), QStringLiteral("処理開始"));
     snapshot(QStringLiteral("ja"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::Japanese));
 
-    w.applySettings(0, true, int(arx::Language::English));
+    w.applySettings(0, int(arx::ComputeDevice::Gpu), true, int(arx::Language::English));
     QTRY_COMPARE(startButton->text(), QStringLiteral("Start"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::English));
     QSettings().remove(QStringLiteral("ui/language"));
