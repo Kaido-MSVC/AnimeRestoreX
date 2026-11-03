@@ -15,6 +15,13 @@ function(arx_add_test name)
 endfunction()
 
 arx_add_test(tst_core arxcore)
+
+# Inference core (no Qt, no GPU): fake engine, real models/manifest.json, scratch folder
+# for the hash / path tests. Moved from tools/winml-probe in P3.
+add_executable(tst_inference_core tst_inference_core.cpp)
+target_link_libraries(tst_inference_core PRIVATE arxinfer)
+add_test(NAME tst_inference_core COMMAND tst_inference_core
+    "${CMAKE_SOURCE_DIR}/models/manifest.json" "${CMAKE_CURRENT_BINARY_DIR}/tst_inference_core-scratch")
 # The GPU pipeline test also writes its full log (failure reasons, failing
 # step, engine stderr) to tests/tst_pipeline-last.txt in the build folder,
 # so a one-off failure can be traced even if the console output is lost.

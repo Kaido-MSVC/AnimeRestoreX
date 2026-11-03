@@ -1,4 +1,5 @@
-// Unit tests for the P2 core module (no GPU, no ORT): tile plan coverage and alignment,
+// Unit tests for the inference core (P2 module, moved from tools/winml-probe/tests/core_tests.cpp
+// in P3; no GPU, no ORT, no Qt): tile plan coverage and alignment,
 // sizes, stride, tile rule, cancel, OOM retry, device errors, alpha flow, quantization,
 // manifest validation. A fake engine emulates the model as "nearest upscale, crop offset",
 // so a correct tiler must reproduce a plain nearest upscale of the whole image exactly.
@@ -11,8 +12,8 @@
 #include <string>
 #include <vector>
 
-#include "../core/ModelContract.h"
-#include "../core/TileProcessor.h"
+#include "core/inference/ModelContract.h"
+#include "core/inference/TileProcessor.h"
 
 using namespace arx::core;
 namespace fs = std::filesystem;

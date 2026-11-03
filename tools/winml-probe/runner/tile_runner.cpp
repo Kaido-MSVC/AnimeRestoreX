@@ -3,7 +3,7 @@
 //
 // ARX8 file: "ARX8" + uint32 width + uint32 height + uint32 channels (3|4) + width*height*channels
 // bytes, R,G,B[,A], rows tightly packed.
-#include "../core/OrtTileEngine.h"  // ORT_API_MANUAL_INIT comes from the arx_ort target
+#include "core/inference/OrtTileEngine.h"  // ORT_API_MANUAL_INIT comes from the arx_ort target
 
 #include <windows.h>
 #include <dxgi1_6.h>
@@ -21,8 +21,8 @@
 #include <thread>
 #include <vector>
 
-#include "../core/ModelContract.h"
-#include "../core/TileProcessor.h"
+#include "core/inference/ModelContract.h"
+#include "core/inference/TileProcessor.h"
 
 using namespace arx::core;
 namespace fs = std::filesystem;

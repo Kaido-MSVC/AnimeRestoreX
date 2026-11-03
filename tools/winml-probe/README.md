@@ -57,8 +57,8 @@ pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage speed -Only scale2x,noise3_sca
 
 | 路徑 | 內容 |
 |---|---|
-| `core/` | 不依賴 Qt 的 C++20 模組：`ModelContract`、`TileProcessor`、`OrtTileEngine`、`Sha256`、`Json`、`Status`（日後可搬進 `src/core/`） |
-| `tests/core_tests.cpp` | 用假引擎做的單元測試（不需要 GPU）：`build\core_tests.exe ..\..\models\manifest.json <scratch>` |
+| `src/core/inference/`（P3 起） | 不依賴 Qt 的 C++20 模組：`ModelContract`、`TileProcessor`、`OrtTileEngine`、`Sha256`、`Json`、`Status`。P3 從本目錄的 `core/` 搬到主程式；`tile_runner` 直接編譯那裡的原始碼 |
+| `tests/tst_inference_core.cpp`（P3 起） | 用假引擎做的單元測試（不需要 GPU），原本是本目錄的 `tests/core_tests.cpp`，現在由主程式的 ctest 執行 |
 | `runner/tile_runner.cpp` | 對單張 ARX8 原始影像執行模組，記錄時間、RAM／VRAM、進度與取消延遲 |
 | `scripts/p2_tools.py` | 合成測試圖、PNG ↔ ARX8、與上游比較（含誤差空間分布與熱圖）、alpha 放大圖 |
 | `scripts/nunif_weights_check.py` | 確認 nunif .pth 權重與 ONNX 是同一個網路 |

@@ -1,3 +1,16 @@
+# Inference core (v2.0 P2 module): manifest / model contract, SHA-256, tiling, seam
+# blending and alpha flow. Plain C++20, no Qt and no ONNX Runtime.
+add_library(arxinfer STATIC
+    core/inference/Status.h
+    core/inference/Json.h core/inference/Json.cpp
+    core/inference/Sha256.h core/inference/Sha256.cpp
+    core/inference/ModelContract.h core/inference/ModelContract.cpp
+    core/inference/TileProcessor.h core/inference/TileProcessor.cpp
+)
+target_include_directories(arxinfer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(arxinfer PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(arxinfer PUBLIC bcrypt)
+
 qt_add_library(arxcore STATIC
     core/ImageLimits.h core/ImageLimits.cpp
     core/ImageLoader.h core/ImageLoader.cpp
