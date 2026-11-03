@@ -10,27 +10,31 @@
 namespace arx {
 
 namespace {
+// Shared with v1.2 (same meaning, read and written by both versions).
 const QString kLanguageKey = QStringLiteral("ui/language");
 const QString kSourceKey = QStringLiteral("paths/sourceDir");
 const QString kOutputKey = QStringLiteral("paths/outputDir");
-const QString kNoiseKey = QStringLiteral("model/noiseLevel");
-const QString kSchemaKey = QStringLiteral("settings/schema");
-const QString kTileKey = QStringLiteral("inference/tileSize");
-const QString kDeviceKey = QStringLiteral("inference/device");
-const QString kOldTileKey = QStringLiteral("model/tileSize");      // schema 1 (waifu2x-ncnn-vulkan)
-const QString kProgressGroup = QStringLiteral("progress");         // speeds of the schema 1 engine
 const QString kGeometryKey = QStringLiteral("window/geometry");
 const QString kSplitterKey = QStringLiteral("window/splitter");
-const QString kProgressDeviceKey = QStringLiteral("progress/lastDevice");
 
-// "progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
+// v1.2 keys that v2.0 only reads, once, when its own group is created.
+const QString kV1NoiseKey = QStringLiteral("model/noiseLevel");
+
+// v2.0 only (nunif ONNX on Windows ML). v1.2 never sees these.
+const QString kSchemaKey = QStringLiteral("v2/schema");
+const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
+const QString kTileKey = QStringLiteral("v2/inference/tileSize");
+const QString kDeviceKey = QStringLiteral("v2/inference/device");
+const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
+
+// "v2/progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
 // are replaced in the device name.
 QString ratesGroup(QString device)
 {
     device.replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char('\\'), QLatin1Char('_'));
     if (device.trimmed().isEmpty())
         device = QStringLiteral("unknown");
-    return QStringLiteral("progress/rates/") + device;
+    return QStringLiteral("v2/progress/rates/") + device;
 }
 
 bool isExistingDir(const QString &dir)
@@ -47,15 +51,19 @@ AppSettings::~AppSettings() = default;
 
 void AppSettings::migrate()
 {
+    // Non-destructive: v1.2 keeps working with its own keys, so nothing outside "v2/"
+    // is ever removed or written here. The v2 group starts from the v1.2 denoise level
+    // (same meaning); the tile starts at Auto (v1.2 tiles are not valid swin_unet tiles)
+    // and the v1.2 speeds are ignored (other engine).
     bool ok = false;
-    const int schema = m_s->value(kSchemaKey, 1).toInt(&ok);
+    const int schema = m_s->value(kSchemaKey, 0).toInt(&ok);
     if (ok && schema >= kSchema)
         return;
-    // Old tile sizes (400/200/100) are not valid swin_unet tiles: back to Auto.
-    m_s->remove(kOldTileKey);
-    m_s->remove(kTileKey);
-    // Speeds measured with waifu2x-ncnn-vulkan do not apply to the new engine.
-    m_s->remove(kProgressGroup);
+    if (!m_s->contains(kNoiseKey)) {
+        const int v1 = m_s->value(kV1NoiseKey).toInt(&ok);
+        if (ok && v1 >= -1 && v1 <= 3)
+            m_s->setValue(kNoiseKey, v1);
+    }
     m_s->setValue(kSchemaKey, kSchema);
 }
 

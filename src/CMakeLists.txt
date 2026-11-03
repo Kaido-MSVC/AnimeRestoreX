@@ -58,8 +58,9 @@ qt_add_library(arxui STATIC
     ui/AppIcon.h
     ui/Theme.h ui/Theme.cpp
 )
-target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets)
-target_compile_definitions(arxui PRIVATE ARX_VERSION="${PROJECT_VERSION}")
+target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets PRIVATE version)
+target_compile_definitions(arxui PRIVATE ARX_VERSION="${PROJECT_VERSION}"
+    ARX_WINML_VERSION="${WINML_VERSION}")
 
 # Window icon PNGs (pre-rendered from resources/icons/app.svg; see tools/make-icons.ps1).
 qt_add_resources(arxui "app_icons"

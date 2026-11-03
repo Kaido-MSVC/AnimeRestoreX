@@ -39,14 +39,20 @@ void JobWorker::process(const QStringList &files, const arx::JobSpec &spec)
 {
     m_cancel.store(false);
 
-    // Image headers only; read here so a slow drive does not block the GUI.
-    QList<arx::ItemPlan> plans;
-    plans.reserve(files.size());
-    for (const QString &f : files)
-        plans << arx::ProcessJob::progressPlan(f, spec);
-    emit planned(plans);
-
     arx::BatchCallbacks cb;
+    // Plans after the engine side is prepared: speeds are grouped by the model hash and
+    // the tile actually used. Image headers only; read here so a slow drive does not
+    // block the GUI.
+    cb.prepared = [this, &files, &spec](const arx::PreparedJob &job) {
+        QList<arx::ItemPlan> plans;
+        plans.reserve(files.size());
+        for (int i = 0; i < files.size(); ++i) {
+            const arx::PlanContext ctx = arx::ProcessJob::planContext(job, i);
+            plans << arx::ProcessJob::progressPlan(files.at(i), spec, &ctx);
+        }
+        emit planned(plans);
+        emit prepared(job.tile.tile, job.tile.reason == arx::core::TileReason::AutoVram);
+    };
     cb.itemStarted = [this](int i) { emit itemStarted(i); };
     cb.itemFinished = [this](int i, const arx::ItemResult &r) { emit itemFinished(i, r); };
     cb.stageStarted = [this](int i, const arx::StageEvent &e) {

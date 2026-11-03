@@ -14,6 +14,7 @@
 #include <QImageReader>
 #include <QMessageBox>
 #include <QMetaType>
+#include <QSettings>
 
 int main(int argc, char *argv[])
 {
@@ -21,6 +22,18 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("Kaido-MSVC"));
     QCoreApplication::setApplicationName(QStringLiteral("AnimeRestoreX"));
     QCoreApplication::setApplicationVersion(QStringLiteral(PROJECT_VERSION_STRING));
+
+    // --settings-dir <folder>: keep all settings in an INI file below that folder instead
+    // of the registry (manual checks and screenshots must not touch the real settings,
+    // which v1.2 shares). Must run before the first QSettings object is created.
+    {
+        const QStringList args = QCoreApplication::arguments();
+        const qsizetype i = args.indexOf(QStringLiteral("--settings-dir"));
+        if (i >= 0 && i + 1 < args.size()) {
+            QSettings::setDefaultFormat(QSettings::IniFormat);
+            QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, args.at(i + 1));
+        }
+    }
 
     // 72 MP RGBA is ~288 MB; raise Qt's default reader limit (official example uses 1024 MB).
     QImageReader::setAllocationLimit(1024);

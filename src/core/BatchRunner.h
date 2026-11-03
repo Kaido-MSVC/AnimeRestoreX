@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/JobSpec.h"
+#include "core/ProcessJob.h"
 #include "core/Progress.h"
 #include "core/inference/Backend.h"
 
@@ -24,6 +25,9 @@ struct BatchSummary {
 };
 
 struct BatchCallbacks {
+    // After the engine side was prepared (models checked, tile and device decided),
+    // before the first item.
+    std::function<void(const PreparedJob &job)> prepared;
     std::function<void(int index)> itemStarted;
     std::function<void(int index, const ItemResult &result)> itemFinished;
     std::function<void(int index, const StageEvent &e)> stageStarted;

@@ -34,6 +34,8 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backe
         s.notProcessed = total;
         return s;
     }
+    if (cb.prepared)
+        cb.prepared(job);
     if (cb.deviceDetected)
         cb.deviceDetected(job.deviceName);
 

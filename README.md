@@ -1,12 +1,17 @@
 # AnimeRestoreX
 
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
-illustrations, using waifu2x-ncnn-vulkan (models-cunet) and Qt 6.12 Widgets.
+illustrations, using the waifu2x swin_unet/art models (nagadomi/nunif, ONNX) on
+Windows ML (ONNX Runtime + DirectML) and Qt 6.12 Widgets.
+
+> This branch is v2.0 (not released yet). The latest release, v1.2, still uses
+> waifu2x-ncnn-vulkan; its requirements are listed under "Download".
 
 ## Features
 
 - AI denoising without upscaling (1x) and 2x / 4x upscaling with the waifu2x
-  CUnet model; PNG, JPEG and WebP input and output (WebP lossy or lossless).
+  swin_unet/art models; PNG, JPEG and WebP input and output (WebP lossy or lossless).
+- GPU through DirectML (any DirectX 12 GPU), or the CPU when chosen in the settings.
 - Batch list with thumbnails; add images or whole folders, also by drag and drop.
 - Side-by-side preview of the original and the result (fit to window or 100%).
 - Progress for the current image (reading → AI processing → encoding) and for
@@ -25,8 +30,41 @@ take `AnimeRestoreX-<version>-win64.zip`, extract the entire archive, then run
 `AnimeRestoreX.exe` (no installation). To check the download, compare its
 SHA256 with `SHA256SUMS.txt` attached to the same release.
 
-Requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a
+v1.2 requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a
 compatible driver. The executable is unsigned.
+
+## System requirements (v2.0)
+
+| | Requirement | Basis |
+|---|---|---|
+| OS | **Windows 11 x64** (tested: 25H2, build 26200) | the only tested system |
+| | Windows 10 1903 (build 18362) or later: allowed by the components, **not tested** | Windows ML 2.5.96 package: Windows 10 19H1+; Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support) |
+| GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 |
+| GPU memory | Auto tile 256: about 0.5 GB at 1x/2x, 0.9 GB at 4x per model (twice that for 4x with transparency); tile 400 at 4x about 2.8 GB | measured on the GTX 1060 (P1/P2) |
+| RAM | **8 GB recommended**. Peak private memory of the app: about 0.7 GB at 1x/2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (P3) |
+| CPU mode | works without a GPU, about 5 times slower than the GTX 1060 on the test PC | measured (P4) |
+
+Not tested: AMD and Intel GPUs, GPUs with less than 6 GB, more than one GPU (the
+Windows default adapter is always used), Windows 10, ARM64, remote desktop and
+virtual machines.
+
+## Known limitations (v2.0)
+
+- **Cancel during encoding waits for the encoder.** A cancel during AI processing
+  stops within about 0.1 s (GPU) or immediately (CPU), but a file that is being
+  encoded is finished first and then discarded: up to about 6 s for a 4x WebP
+  lossless output. The status bar says "finishing the encoding of the current file".
+  No output file is left behind.
+- **The tile size changes the result slightly** (a property of the swin_unet
+  models, the same upstream). Auto uses 256 and falls back to 160 only when GPU
+  memory is short or runs out; such items are marked in the list and in the
+  summary. Choose a fixed tile size in the settings for identical results.
+- The first image of a batch takes a few seconds longer (the AI models are loaded
+  and checked); the time estimate learns this separately.
+- After the GPU has been used, about 280 MB of memory stays allocated by the
+  DirectML runtime until the program closes (it does not grow with more images).
+- v1.2 and v2.0 share the language, folder and window settings; the AI settings
+  and measured speeds of v2.0 are kept separately ("v2/"), so v1.2 keeps its own.
 
 ## Development notes
 

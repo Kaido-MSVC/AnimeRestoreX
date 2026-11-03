@@ -24,16 +24,16 @@
         <translation>サードパーティ製コンポーネント</translation>
     </message>
     <message>
-        <source>AI inference engine that performs the denoising and upscaling (MIT License).</source>
-        <translation>ノイズ除去と拡大を行う AI 推論エンジン（MIT ライセンス）。</translation>
+        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (Microsoft license terms, see the licenses folder).</source>
+        <translation>AI 推論ランタイム。DirectML を通じて GPU で、または CPU でモデルを実行します（Microsoft のライセンス条項。licenses フォルダーを参照）。</translation>
     </message>
     <message>
-        <source>Neural network inference framework with Vulkan GPU acceleration, built into waifu2x-ncnn-vulkan (BSD 3-Clause License).</source>
-        <translation>Vulkan による GPU 高速化に対応したニューラルネットワーク推論フレームワーク。waifu2x-ncnn-vulkan に組み込まれています（BSD 3-Clause ライセンス）。</translation>
+        <source>Trained models for anime-style illustrations, converted for DirectML (license being verified).</source>
+        <translation>アニメ調イラスト向けに学習したモデル。DirectML 用に変換済み（ライセンス確認中）。</translation>
     </message>
     <message>
-        <source>Trained models for anime-style illustrations (MIT License).</source>
-        <translation>アニメ調イラスト向けに学習されたモデル（MIT ライセンス）。</translation>
+        <source>Model files: %1, exported from nunif %2; source: %3</source>
+        <translation>モデルファイル：%1、nunif %2 からエクスポート。入手元：%3</translation>
     </message>
     <message>
         <source>User interface and image reading and writing (GNU LGPL v3).</source>
@@ -42,6 +42,22 @@
     <message>
         <source>See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.</source>
         <translation>完全な一覧とライセンス本文は THIRD_PARTY_NOTICES.md と licenses フォルダーを参照してください。</translation>
+    </message>
+    <message>
+        <source>AI runtime: %1</source>
+        <translation>AI ランタイム：%1</translation>
+    </message>
+    <message>
+        <source>AI runtime not available: %1</source>
+        <translation>AI ランタイムを使用できません：%1</translation>
+    </message>
+    <message>
+        <source>Processing device: not used yet in this session</source>
+        <translation>処理デバイス：この起動ではまだ使用していません</translation>
+    </message>
+    <message>
+        <source>Processing device: %1</source>
+        <translation>処理デバイス：%1</translation>
     </message>
     <message>
         <source>Open License Files</source>
@@ -87,6 +103,10 @@
         <translation>未処理：%1</translation>
     </message>
     <message>
+        <source>Made with the smaller tile size %1 (GPU memory): %2</source>
+        <translation>小さいタイルサイズ %1 で処理（GPU メモリ）：%2</translation>
+    </message>
+    <message>
         <source>Processing stopped: %1</source>
         <translation>処理を中止しました：%1</translation>
     </message>
@@ -99,8 +119,24 @@
         <translation>出力ファイルは作成されませんでした。</translation>
     </message>
     <message>
-        <source>Failed items:</source>
-        <translation>失敗した項目：</translation>
+        <source>[tile %1]</source>
+        <translation>[タイル %1]</translation>
+    </message>
+    <message>
+        <source>Failed (%1):</source>
+        <translation>失敗（%1）：</translation>
+    </message>
+    <message>
+        <source>Not processed (%1):</source>
+        <translation>未処理（%1）：</translation>
+    </message>
+    <message>
+        <source>Succeeded (%1):</source>
+        <translation>成功（%1）：</translation>
+    </message>
+    <message>
+        <source>Auto had to use the smaller tile size %1 (not enough GPU memory). The tile size changes the result slightly.</source>
+        <translation>GPU メモリが不足したため、「自動」で小さいタイルサイズ %1 を使用しました。タイルサイズによって結果がわずかに変わります。</translation>
     </message>
     <message>
         <source>Open Output Folder</source>
@@ -405,12 +441,40 @@
         <translation>すべての項目が完了しています。出力設定を変更するか画像を追加すると、再度処理できます。</translation>
     </message>
     <message>
+        <source> (tile %1: not enough GPU memory for 256)</source>
+        <translation>（タイル %1：256 には GPU メモリが不足）</translation>
+    </message>
+    <message>
+        <source> (tile %1: redone after running out of GPU memory)</source>
+        <translation>（タイル %1：GPU メモリ不足のため再処理）</translation>
+    </message>
+    <message>
+        <source>AI processing again with tile size %1 (out of GPU memory)</source>
+        <translation>タイルサイズ %1 で AI 処理をやり直し中（GPU メモリ不足）</translation>
+    </message>
+    <message>
+        <source>AI processing (tile size %1: GPU memory is short)</source>
+        <translation>AI 処理（タイルサイズ %1：GPU メモリ不足）</translation>
+    </message>
+    <message>
         <source>Estimated from the image size and the measured speed of earlier images.</source>
         <translation>画像サイズとこれまでの実測速度から推定しています。</translation>
     </message>
     <message>
         <source>Starting...</source>
         <translation>開始しています…</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory for tile size 256: this job uses tile size %1.</source>
+        <translation>タイルサイズ 256 には GPU メモリが不足しています。今回の処理はタイルサイズ %1 を使用します。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory: processing %1 again with tile size %2...</source>
+        <translation>GPU メモリ不足：%1 をタイルサイズ %2 で再処理しています…</translation>
+    </message>
+    <message>
+        <source>Canceling: finishing the encoding of the current file...</source>
+        <translation>キャンセル中：現在のファイルのエンコードを完了しています…</translation>
     </message>
     <message>
         <source>Processing %1 / %2: %3</source>
@@ -438,7 +502,7 @@
     </message>
     <message>
         <source>estimating time left</source>
-        <translation>残り時間を計算中</translation>
+        <translation>推定中</translation>
     </message>
     <message>
         <source>almost done</source>
@@ -598,32 +662,100 @@
         <translation>出力フォルダーに書き込めません：%1</translation>
     </message>
     <message>
+        <source>Unsupported scale: %1x.</source>
+        <translation>対応していない倍率です：%1×。</translation>
+    </message>
+    <message>
+        <source>Unsupported denoise level: %1.</source>
+        <translation>対応していないノイズ除去レベルです：%1。</translation>
+    </message>
+    <message>
+        <source>&quot;No upscaling (1x)&quot; only denoises: choose a denoise level.</source>
+        <translation>「拡大なし（1×）」はノイズ除去のみです。ノイズ除去レベルを選んでください。</translation>
+    </message>
+    <message>
+        <source>Tile size %1 is not valid for this model.</source>
+        <translation>タイルサイズ %1 はこのモデルでは使用できません。</translation>
+    </message>
+    <message>
         <source>The %1 image plugin is missing.</source>
         <translation>%1 画像プラグインが見つかりません。</translation>
     </message>
     <message>
-        <source>Cannot create a temporary folder: %1</source>
-        <translation>一時フォルダーを作成できません：%1</translation>
+        <source>The AI runtime files (onnxruntime.dll, DirectML.dll) are missing from the program folder. Please reinstall AnimeRestoreX.</source>
+        <translation>プログラムフォルダーに AI ランタイムのファイル（onnxruntime.dll、DirectML.dll）がありません。AnimeRestoreX を再インストールしてください。</translation>
     </message>
     <message>
-        <source>Cannot write the temporary file: %1</source>
-        <translation>一時ファイルに書き込めません：%1</translation>
+        <source>The AI runtime in the program folder cannot be used (wrong version or damaged). Please reinstall AnimeRestoreX. Details: %1</source>
+        <translation>プログラムフォルダーの AI ランタイムを使用できません（バージョン違いまたは破損）。AnimeRestoreX を再インストールしてください。詳細：%1</translation>
     </message>
     <message>
-        <source>The AI engine did not produce an output image.</source>
-        <translation>AI エンジンが出力画像を生成しませんでした。</translation>
+        <source>Not enough GPU memory to process this image.</source>
+        <translation>この画像を処理するための GPU メモリが不足しています。</translation>
     </message>
     <message>
-        <source>Cannot read the AI output: %1</source>
-        <translation>AI の出力を読み込めません：%1</translation>
+        <source>The GPU stopped responding (device error %1). Processing was stopped and the GPU engine was reset. Close other programs that use the GPU or update the graphics driver, then try again.</source>
+        <translation>GPU が応答しなくなりました（デバイスエラー %1）。処理を中止し、GPU エンジンをリセットしました。GPU を使う他のプログラムを閉じるか、グラフィックスドライバーを更新してから、もう一度お試しください。</translation>
+    </message>
+    <message>
+        <source>A model file is damaged or was replaced (its checksum does not match models/manifest.json). Please reinstall AnimeRestoreX.</source>
+        <translation>モデルファイルが破損しているか置き換えられています（チェックサムが models/manifest.json と一致しません）。AnimeRestoreX を再インストールしてください。</translation>
+    </message>
+    <message>
+        <source>A model file is missing. Please reinstall AnimeRestoreX.</source>
+        <translation>モデルファイルがありません。AnimeRestoreX を再インストールしてください。</translation>
+    </message>
+    <message>
+        <source>The AI model does not match its description in models/manifest.json.</source>
+        <translation>AI モデルが models/manifest.json の記述と一致しません。</translation>
+    </message>
+    <message>
+        <source>The tile size is not valid for this model.</source>
+        <translation>このタイルサイズはこのモデルでは使用できません。</translation>
+    </message>
+    <message>
+        <source>The image is too large to process with the available memory.</source>
+        <translation>画像が大きすぎて、使用可能なメモリでは処理できません。</translation>
+    </message>
+    <message>
+        <source>The image cannot be processed in this format.</source>
+        <translation>この形式の画像は処理できません。</translation>
+    </message>
+    <message>
+        <source>Canceled.</source>
+        <translation>キャンセルしました。</translation>
+    </message>
+    <message>
+        <source>The AI engine reported an error (%1).</source>
+        <translation>AI エンジンがエラーを報告しました（%1）。</translation>
+    </message>
+    <message>
+        <source>The model list (models/manifest.json) is missing or invalid. Please reinstall AnimeRestoreX.</source>
+        <translation>モデル一覧（models/manifest.json）がないか無効です。AnimeRestoreX を再インストールしてください。</translation>
+    </message>
+    <message>
+        <source>The model %1 is not listed in models/manifest.json.</source>
+        <translation>モデル %1 は models/manifest.json に記載されていません。</translation>
+    </message>
+    <message>
+        <source>The job was not prepared.</source>
+        <translation>処理の準備ができていません。</translation>
+    </message>
+    <message>
+        <source>Out of memory while converting the image.</source>
+        <translation>画像の変換中にメモリが不足しました。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory to process this image, even with the smaller tile size %1.</source>
+        <translation>小さいタイルサイズ %1 でも、この画像を処理するための GPU メモリが不足しています。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory to process this image with tile size %1. Choose a smaller tile size or Auto in the settings.</source>
+        <translation>タイルサイズ %1 ではこの画像を処理するための GPU メモリが不足しています。設定で小さいタイルサイズか「自動」を選んでください。</translation>
     </message>
     <message>
         <source>The AI output has an unexpected size (%1 x %2, expected %3 x %4).</source>
         <translation>AI の出力サイズが想定と異なります（%1 x %2、想定 %3 x %4）。</translation>
-    </message>
-    <message>
-        <source>Out of memory while converting the AI output.</source>
-        <translation>AI の出力を変換中にメモリが不足しました。</translation>
     </message>
     <message>
         <source>Cannot create a file in the output folder: %1</source>
@@ -636,6 +768,14 @@
 </context>
 <context>
     <name>SettingsDialog</name>
+    <message>
+        <source>The CPU is much slower than the GPU: on the test PC about 5 times (GTX 1060), on slower CPUs more. Use it only if the GPU cannot be used.</source>
+        <translation>CPU は GPU よりかなり遅くなります。テスト PC では約 5 倍（GTX 1060 との比較）、遅い CPU ではそれ以上です。GPU を使えない場合だけ選んでください。</translation>
+    </message>
+    <message>
+        <source>If the GPU fails, processing stops; it does not switch to the CPU on its own.</source>
+        <translation>GPU でエラーが起きると処理を中止します。自動で CPU に切り替えることはありません。</translation>
+    </message>
     <message>
         <source>Settings</source>
         <translation>設定</translation>
@@ -657,8 +797,20 @@
         <translation>自動</translation>
     </message>
     <message>
-        <source>Smaller tiles use less GPU memory but are slower. Try a smaller size if processing fails with large images.</source>
-        <translation>タイルを小さくすると GPU メモリの使用量は減りますが、処理は遅くなります。大きな画像で失敗する場合は小さい値を試してください。</translation>
+        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 400 needs about 3 GB of GPU memory at 4x. The tile size slightly changes the result.</source>
+        <translation>「自動」は 256 を使い、GPU メモリが少ないか不足したときは 160 を使います。タイルが小さいほど GPU メモリの使用量は減りますが遅くなります。400 は 4× で約 3 GB の GPU メモリが必要です。タイルサイズによって結果がわずかに変わります。</translation>
+    </message>
+    <message>
+        <source>Processing device:</source>
+        <translation>処理デバイス：</translation>
+    </message>
+    <message>
+        <source>GPU (DirectML)</source>
+        <translation>GPU（DirectML）</translation>
+    </message>
+    <message>
+        <source>CPU (much slower)</source>
+        <translation>CPU（かなり遅い）</translation>
     </message>
     <message>
         <source>Language</source>
@@ -686,45 +838,6 @@
     <message>
         <source>Invalid image size or scale.</source>
         <translation>画像サイズまたは倍率が無効です。</translation>
-    </message>
-</context>
-<context>
-    <name>Waifu2xRunner</name>
-    <message>
-        <source>&quot;No upscaling (1x)&quot; needs a denoise level. Choose a denoise level or an upscale factor.</source>
-        <translation>「拡大しない（1×）」にはノイズ除去レベルが必要です。ノイズ除去レベルを選ぶか、拡大倍率を選んでください。</translation>
-    </message>
-    <message>
-        <source>The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1</source>
-        <translation>AI エンジン（waifu2x-ncnn-vulkan.exe）が見つかりません：%1</translation>
-    </message>
-    <message>
-        <source>The program folder path is too long for the AI engine (%1 characters, the limit is 255). Please move AnimeRestoreX to a shorter folder path.</source>
-        <translation>プログラムフォルダーのパスが長すぎるため、AI エンジンを使用できません（%1 文字、上限は 255 文字）。AnimeRestoreX をパスの短いフォルダーに移動してください。</translation>
-    </message>
-    <message>
-        <source>The AI model folder is missing: %1</source>
-        <translation>AI モデルフォルダーが見つかりません：%1</translation>
-    </message>
-    <message>
-        <source>The AI model file is missing: %1</source>
-        <translation>AI モデルファイルが見つかりません：%1</translation>
-    </message>
-    <message>
-        <source>Cannot start the AI engine: %1</source>
-        <translation>AI エンジンを起動できません：%1</translation>
-    </message>
-    <message>
-        <source>The AI engine crashed.</source>
-        <translation>AI エンジンが異常終了しました。</translation>
-    </message>
-    <message>
-        <source>No usable Vulkan GPU was found. Please check the graphics driver. (%1)</source>
-        <translation>使用可能な Vulkan GPU が見つかりません。グラフィックスドライバーを確認してください。（%1）</translation>
-    </message>
-    <message>
-        <source>The AI engine failed (exit code %1). %2</source>
-        <translation>AI エンジンの実行に失敗しました（終了コード %1）。%2</translation>
     </message>
 </context>
 </TS>

@@ -12,6 +12,8 @@ public:
     explicit AboutDialog(QWidget *parent = nullptr);
 
     QString bodyText() const;
+    // GPU (or "CPU") the engine reported in this session; empty = not used yet.
+    void setDeviceName(const QString &device);
     QPushButton *openLicensesButton() const { return m_openLicenses; }
     QPushButton *aboutQtButton() const { return m_aboutQt; }
 
@@ -31,4 +33,5 @@ private:
     QPushButton *m_openLicenses = nullptr;
     QPushButton *m_aboutQt = nullptr;
     QPushButton *m_close = nullptr;
+    QString m_device;
 };

@@ -27,6 +27,10 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
     model->addRow(m_tileLabel, m_tile);
     m_tileHint = new QLabel(this);
     m_tileHint->setWordWrap(true);
+    // A fixed text width (follows font and scale), so the dialog width does not depend on
+    // the language and the wrapped height is computed for the width actually used.
+    const int hintWidth = fontMetrics().horizontalAdvance(QLatin1Char('M')) * 26;
+    m_tileHint->setMinimumWidth(hintWidth);
     model->addRow(QString(), m_tileHint);
     m_deviceLabel = new QLabel(this);
     m_device = new QComboBox(this);
@@ -35,6 +39,7 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
     model->addRow(m_deviceLabel, m_device);
     m_deviceHint = new QLabel(this);
     m_deviceHint->setWordWrap(true);
+    m_deviceHint->setMinimumWidth(hintWidth);
     model->addRow(QString(), m_deviceHint);
     root->addWidget(m_modelGroup);
 
@@ -55,7 +60,28 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
     m_tile->setCurrentIndex(std::max(0, m_tile->findData(tile)));
     m_device->setCurrentIndex(std::max(0, m_device->findData(int(device))));
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
+    connect(m_device, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDeviceHint);
     retranslate();
+}
+
+void SettingsDialog::updateDeviceHint()
+{
+    if (computeDevice() == arx::ComputeDevice::Cpu)
+        m_deviceHint->setText(tr("The CPU is much slower than the GPU: on the test PC about 5 times "
+                                 "(GTX 1060), on slower CPUs more. Use it only if the GPU cannot be used."));
+    else
+        m_deviceHint->setText(tr("If the GPU fails, processing stops; it does not switch to the CPU "
+                                 "on its own."));
+    fitToContents();
+}
+
+void SettingsDialog::fitToContents()
+{
+    // Wrapped labels changed their text: recompute the height for the current width
+    // (adjustSize uses heightForWidth), so no line is cut off in any language.
+    if (QLayout *l = layout())
+        l->activate();
+    adjustSize();
 }
 
 void SettingsDialog::retranslate()
@@ -73,11 +99,11 @@ void SettingsDialog::retranslate()
                            "3 GB of GPU memory at 4x. The tile size slightly changes the result."));
     m_deviceLabel->setText(tr("Processing device:"));
     m_device->setItemText(0, tr("GPU (DirectML)"));
-    m_device->setItemText(1, tr("CPU (very slow)"));
-    m_deviceHint->setText(tr("If the GPU fails, processing stops; it does not switch to the CPU "
-                             "on its own."));
+    m_device->setItemText(1, tr("CPU (much slower)"));
+    updateDeviceHint();
     m_langGroup->setTitle(tr("Language"));
     m_langLabel->setText(tr("Interface language:"));
+    fitToContents();
 }
 
 void SettingsDialog::changeEvent(QEvent *event)

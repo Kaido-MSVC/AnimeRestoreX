@@ -159,12 +159,24 @@ void TestUi::dialogMixedCounts()
     arx::BatchSummary s;
     s.succeeded = 2;
     s.failed = 1;
-    CompletionDialog dlg(s, m_dir.path(), {QStringLiteral("bad.png: Cannot decode")});
+    s.smallerTile = 1;
+    using Item = CompletionDialog::Item;
+    CompletionDialog dlg(s, m_dir.path(),
+                         {Item{Item::Succeeded, QStringLiteral("a.png"), QStringLiteral("a_2x.png"), 0},
+                          Item{Item::Failed, QStringLiteral("bad.png"), QStringLiteral("Cannot decode"), 0},
+                          Item{Item::Succeeded, QStringLiteral("b.png"), QStringLiteral("b_2x.png"), 160}});
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Succeeded: 2")));
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Failed: 1")));
+    QVERIFY(dlg.summaryText().contains(QStringLiteral("smaller tile size 160 (GPU memory): 1")));
     QVERIFY(!dlg.summaryText().contains(QStringLiteral("Not processed")));
     QVERIFY(dlg.openFolderButton());
-    QVERIFY(dlg.findChild<QPlainTextEdit *>());
+    QVERIFY(dlg.findChild<QPlainTextEdit *>(QStringLiteral("itemList")));
+    // Every item is listed under its kind; the tile-160 item is marked.
+    const QString items = dlg.itemsText();
+    QVERIFY2(items.contains(QStringLiteral("Failed (1):\n  bad.png: Cannot decode")), qPrintable(items));
+    QVERIFY2(items.contains(QStringLiteral("Succeeded (2):\n  a.png → a_2x.png\n  b.png → b_2x.png [tile 160]")),
+             qPrintable(items));
+    QVERIFY(!items.contains(QStringLiteral("Not processed")));
 }
 
 void TestUi::dialogAllFailed()
@@ -173,9 +185,15 @@ void TestUi::dialogAllFailed()
     s.failed = 1;
     s.notProcessed = 2;
     s.fatalError = QStringLiteral("No usable Vulkan GPU");
-    CompletionDialog dlg(s, m_dir.path(), {QStringLiteral("a.png: GPU")});
+    using Item = CompletionDialog::Item;
+    CompletionDialog dlg(s, m_dir.path(),
+                         {Item{Item::Failed, QStringLiteral("a.png"), QStringLiteral("GPU"), 0},
+                          Item{Item::NotProcessed, QStringLiteral("b.png"), QString(), 0},
+                          Item{Item::NotProcessed, QStringLiteral("c.png"), QString(), 0}});
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Succeeded: 0")));
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Not processed: 2")));
+    QVERIFY2(dlg.itemsText().contains(QStringLiteral("Not processed (2):\n  b.png\n  c.png")),
+             qPrintable(dlg.itemsText()));
     bool foundNoOutput = false, foundFatal = false;
     for (QLabel *l : dlg.findChildren<QLabel *>()) {
         foundNoOutput |= l->text().contains(QStringLiteral("No output files"));
@@ -315,6 +333,21 @@ void TestUi::fullBatchThroughMainWindow()
     QCOMPARE(bar->value(), 3);
     QVERIFY(QFileInfo::exists(QDir(out).filePath(QStringLiteral("1_2x.png"))));
     QVERIFY(QFileInfo::exists(QDir(out).filePath(QStringLiteral("2_2x.png"))));
+    // Measured speeds are stored under v2/, per GPU, grouped by model hash, EP, tile, scale.
+    {
+        QSettings raw;
+        raw.beginGroup(QStringLiteral("v2/progress/rates"));
+        const QStringList devices = raw.childGroups();
+        QCOMPARE(devices.size(), 1);
+        raw.beginGroup(devices.first());
+        const QStringList keys = raw.allKeys();
+        const QRegularExpression inference(
+            QStringLiteral("^nunif/swin_unet/art/noise1_scale2x@[0-9a-f]{8}/dml/t256/x2$"));
+        QVERIFY2(std::any_of(keys.cbegin(), keys.cend(), [&](const QString &k) { return inference.match(k).hasMatch(); }),
+                 qPrintable(keys.join(QLatin1Char(' '))));
+        qInfo() << "stored rate keys:" << keys;
+    }
+    QVERIFY(!QSettings().contains(QStringLiteral("progress/lastDevice")));  // v1.2 key untouched
     QVERIFY(w.findChild<QPushButton *>(QStringLiteral("startButton"))->isEnabled());
 
     // Second start: only the non-"Done" item (the broken one) is processed.
@@ -493,6 +526,19 @@ void TestUi::denoiseOnMainWindow()
     QCOMPARE(tiles->count(), 4);
     for (int i = 0; i < tiles->count(); ++i)
         QVERIFY(arx::AppSettings::isValidTile(tiles->itemData(i).toInt()));
+    // Devices: DirectML and CPU only; choosing the CPU explains that it is much slower.
+    QComboBox *devices = combos.at(1);
+    QCOMPARE(devices->count(), 2);
+    auto hintText = [&] {
+        QString all;
+        for (QLabel *l : sd.findChildren<QLabel *>())
+            all += l->text() + QLatin1Char('\n');
+        return all;
+    };
+    QVERIFY(!hintText().contains(QStringLiteral("much slower than the GPU")));
+    devices->setCurrentIndex(devices->findData(int(arx::ComputeDevice::Cpu)));
+    QVERIFY2(hintText().contains(QStringLiteral("much slower than the GPU")), qPrintable(hintText()));
+    QCOMPARE(sd.computeDevice(), arx::ComputeDevice::Cpu);
 
     arx::AppSettings s;
     s.setNoiseLevel(arx::AppSettings::kDefaultNoise);
@@ -730,21 +776,33 @@ void TestUi::languageSwitchRetranslates()
     QVERIFY2(dlg.summaryText().contains(QStringLiteral("成功：1")), qPrintable(dlg.summaryText()));
 
     const QString snapDir = qEnvironmentVariable("ARX_UI_SNAPSHOT");
-    auto snapshot = [&](const QString &tag) {
+    // Light and dark theme for every language; the settings dialog with the CPU chosen
+    // (longest hint text).
+    auto snapshot = [&](const QString &lang) {
         if (snapDir.isEmpty())
             return;
-        w.resize(1100, 720);
-        w.show();
-        QTest::qWait(300);
-        w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
-        SettingsDialog sd(0, arx::ComputeDevice::Gpu, LanguageManager::instance().current(), &w);
-        sd.show();
-        QTest::qWait(200);
-        sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
-        AboutDialog ad(&w);
-        ad.show();
-        QTest::qWait(200);
-        ad.grab().save(QDir(snapDir).filePath(QStringLiteral("about_%1.png").arg(tag)));
+        const theme::Mode before = theme::currentMode();
+        // A neutral folder instead of the user's own Pictures path (screenshots go to docs/).
+        w.findChild<QLineEdit *>(QStringLiteral("outputDirEdit"))->setText(QStringLiteral("D:\\Images\\Output"));
+        for (theme::Mode mode : {theme::Mode::Light, theme::Mode::Dark}) {
+            theme::apply(mode);
+            const QString tag = lang + (mode == theme::Mode::Light ? QStringLiteral("_light")
+                                                                    : QStringLiteral("_dark"));
+            w.resize(1100, 720);
+            w.show();
+            QTest::qWait(300);
+            w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
+            SettingsDialog sd(0, arx::ComputeDevice::Cpu, LanguageManager::instance().current(), &w);
+            sd.show();
+            QTest::qWait(200);
+            sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
+            AboutDialog ad(&w);
+            ad.setDeviceName(QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
+            ad.show();
+            QTest::qWait(200);
+            ad.grab().save(QDir(snapDir).filePath(QStringLiteral("about_%1.png").arg(tag)));
+        }
+        theme::apply(before);
     };
     snapshot(QStringLiteral("zh_TW"));
 
@@ -755,6 +813,7 @@ void TestUi::languageSwitchRetranslates()
 
     w.applySettings(0, int(arx::ComputeDevice::Gpu), true, int(arx::Language::English));
     QTRY_COMPARE(startButton->text(), QStringLiteral("Start"));
+    snapshot(QStringLiteral("en"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::English));
     QSettings().remove(QStringLiteral("ui/language"));
 }
@@ -781,6 +840,15 @@ void TestUi::aboutDialogContents()
                              QStringLiteral("DirectML"), QStringLiteral("nagadomi/nunif"), QStringLiteral("Qt 6.12"),
                              QStringLiteral("LGPL")})
         QVERIFY2(text.contains(s), qPrintable(s));
+    // Versions as deployed (DirectML from the DLL next to the exe, models from the manifest).
+    if (engineDeployed()) {
+        QVERIFY2(text.contains(QStringLiteral("DirectML 1.15.4")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("waifu2x_onnx_models_20250502.zip")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("https://github.com/nagadomi/nunif")), qPrintable(text));
+    }
+    QVERIFY(text.contains(QStringLiteral("Processing device: not used yet in this session")));
+    dlg.setDeviceName(QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
+    QVERIFY(dlg.bodyText().contains(QStringLiteral("Processing device: NVIDIA GeForce GTX 1060 6GB")));
     QVERIFY(dlg.openLicensesButton());
     QVERIFY(dlg.aboutQtButton());
 

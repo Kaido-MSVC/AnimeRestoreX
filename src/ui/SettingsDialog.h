@@ -29,6 +29,8 @@ protected:
 
 private:
     void retranslate();
+    void updateDeviceHint();
+    void fitToContents();
 
     QGroupBox *m_modelGroup = nullptr;
     QGroupBox *m_langGroup = nullptr;

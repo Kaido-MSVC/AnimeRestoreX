@@ -22,6 +22,15 @@ struct PreparedJob {
     quint64 vramMiB = 0;     // budget seen when the job started (0 = unknown / CPU)
 };
 
+// What progressPlan() needs to know about the prepared job to group measured speeds:
+// the model file (hash), the tile actually used and whether the item starts cold
+// (its inference creates the AI sessions).
+struct PlanContext {
+    QString modelHash;   // manifest SHA-256 of the RGB model (first 8 hex digits are used)
+    int tile = 0;        // 0 = not decided yet (Auto)
+    bool cold = false;
+};
+
 class ProcessJob {
     Q_DECLARE_TR_FUNCTIONS(ProcessJob)
 public:
@@ -51,7 +60,13 @@ public:
 
     // The stages run() goes through for this file, with the expected cost of
     // each (engine adapter for ProgressEstimator). Reads only the image header.
-    static ItemPlan progressPlan(const QString &sourcePath, const JobSpec &spec);
+    // Inference speeds are grouped by model hash, EP, tile and scale (the device is
+    // the group the caller stores them under); a cold item learns its start-up cost
+    // separately. Without a context the model hash and the Auto tile are unknown.
+    static ItemPlan progressPlan(const QString &sourcePath, const JobSpec &spec,
+                                 const PlanContext *context = nullptr);
+    // Context of item `index` of a prepared job (the first item is cold).
+    static PlanContext planContext(const PreparedJob &job, int index);
 
     // User-facing text for an engine error (no English runtime message is shown alone).
     static QString engineErrorMessage(const core::Status &s);

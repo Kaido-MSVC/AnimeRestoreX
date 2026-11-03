@@ -127,6 +127,8 @@ private:
     QThreadPool m_thumbPool;
     int thumbnailSide() const;  // logical px
     void requestThumbnail(const QString &path);
+    int m_vramTile = 0;     // job: Auto chose this smaller tile (GPU memory), else 0
+    int m_retryTile = 0;    // current item: redone with this tile after OOM, else 0
     QString m_device;       // GPU reported by the engine in this session
     QString m_ratesDevice;  // device whose measured speeds the estimator uses
     void onDeviceDetected(const QString &device);

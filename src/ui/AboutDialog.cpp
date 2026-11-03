@@ -8,13 +8,73 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+namespace {
+
+struct ModelSource {
+    QString release;  // file name of the upstream release archive
+    QString commit;   // nunif commit the models were exported with (short)
+    QString url;      // upstream project page
+};
+
+ModelSource modelSource(const QString &manifestPath)
+{
+    QFile f(manifestPath);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const QJsonObject source = QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("source")).toObject();
+    ModelSource s;
+    s.release = QUrl(source.value(QStringLiteral("url")).toString()).fileName();
+    s.commit = source.value(QStringLiteral("exported_with_commit")).toString().left(7);
+    const QString project = source.value(QStringLiteral("project")).toString();
+    if (!project.isEmpty())
+        s.url = QStringLiteral("https://github.com/") + project;
+    return s;
+}
+
+// "1.15.4" from the version resource of a DLL ("" if it has none).
+QString fileVersion(const QString &path)
+{
+    const std::wstring p = QDir::toNativeSeparators(path).toStdWString();
+    DWORD handle = 0;
+    const DWORD size = GetFileVersionInfoSizeW(p.c_str(), &handle);
+    if (size == 0)
+        return {};
+    QByteArray data(int(size), '\0');
+    if (!GetFileVersionInfoW(p.c_str(), 0, size, data.data()))
+        return {};
+    VS_FIXEDFILEINFO *info = nullptr;
+    UINT len = 0;
+    if (!VerQueryValueW(data.constData(), L"\\", reinterpret_cast<void **>(&info), &len) || !info)
+        return {};
+    return QStringLiteral("%1.%2.%3")
+        .arg(HIWORD(info->dwProductVersionMS))
+        .arg(LOWORD(info->dwProductVersionMS))
+        .arg(HIWORD(info->dwProductVersionLS));
+}
+
+} // namespace
+
+void AboutDialog::setDeviceName(const QString &device)
+{
+    m_device = device;
+    retranslate();
+}
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
@@ -67,24 +127,36 @@ void AboutDialog::retranslate()
            "The MIT License covers only AnimeRestoreX itself; the third-party components "
            "below remain under their own licenses.").toHtmlEscaped());
     html += QStringLiteral("<p><b>%1</b></p><ul style='margin-top:0'>").arg(tr("Third-party components").toHtmlEscaped());
-    html += item(QStringLiteral("Windows ML 2.5.96: ONNX Runtime %1 + DirectML 1.15.4 (Microsoft)")
-                     .arg(QStringLiteral(ARX_ORT_VERSION)),
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString dml = fileVersion(QDir(appDir).filePath(QStringLiteral("DirectML.dll")));
+    html += item(QStringLiteral("Windows ML %1: ONNX Runtime %2 + DirectML %3 (Microsoft)")
+                     .arg(QStringLiteral(ARX_WINML_VERSION), QStringLiteral(ARX_ORT_VERSION),
+                          dml.isEmpty() ? QStringLiteral("?") : dml),
                  tr("AI inference runtime; runs the models on the GPU through DirectML, or on the CPU "
                     "(Microsoft license terms, see the licenses folder)."));
     html += item(QStringLiteral("waifu2x swin_unet/art models (nagadomi/nunif)"),
                  tr("Trained models for anime-style illustrations, converted for DirectML "
                     "(license being verified)."));
+    const ModelSource src = modelSource(QDir(appDir).filePath(QStringLiteral("models/manifest.json")));
+    if (!src.release.isEmpty())
+        html += QStringLiteral("<li style='list-style:none'><small>%1</small></li>")
+                    .arg(tr("Model files: %1, exported from nunif %2; source: %3")
+                             .arg(src.release, src.commit, src.url)
+                             .toHtmlEscaped());
     html += item(QStringLiteral("Qt 6.12 (The Qt Company)"),
                  tr("User interface and image reading and writing (GNU LGPL v3)."));
     html += QStringLiteral("</ul><p>%1</p>").arg(
         tr("See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.").toHtmlEscaped());
-    // Runtime actually loaded in this process (checked at start-up).
-    if (const arx::core::RuntimeInfo *rt = arx::core::EngineHost::runtime()) {
-        const QString state = rt->status.ok()
-                                  ? tr("AI runtime: %1").arg(QString::fromStdString(rt->details))
-                                  : tr("AI runtime not available: %1").arg(QString::fromStdString(rt->status.message));
-        html += QStringLiteral("<p><small>%1</small></p>").arg(state.toHtmlEscaped());
-    }
+    // Runtime actually loaded in this process (checked at start-up) and the device used.
+    QStringList state;
+    if (const arx::core::RuntimeInfo *rt = arx::core::EngineHost::runtime())
+        state << (rt->status.ok()
+                      ? tr("AI runtime: %1").arg(QString::fromStdString(rt->details))
+                      : tr("AI runtime not available: %1").arg(QString::fromStdString(rt->status.message)));
+    state << (m_device.isEmpty() ? tr("Processing device: not used yet in this session")
+                                 : tr("Processing device: %1").arg(m_device));
+    for (const QString &line : std::as_const(state))
+        html += QStringLiteral("<p style='margin:0'><small>%1</small></p>").arg(line.toHtmlEscaped());
     m_body->setText(html);
 
     m_openLicenses->setText(tr("Open License Files"));

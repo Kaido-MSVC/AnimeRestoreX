@@ -36,6 +36,23 @@ class ElidingComboBox : public QComboBox {
 public:
     using QComboBox::QComboBox;
 
+    // Preferred width: the longest item fits the text field as the style sheet draws it
+    // (QComboBox's own hint does not include the style sheet padding, so the text was
+    // elided even with room to spare). The minimum width stays small (narrow windows).
+    QSize sizeHint() const override
+    {
+        QSize s = QComboBox::sizeHint();
+        QStyleOptionComboBox opt;
+        initStyleOption(&opt);
+        const QRect field = style()->subControlRect(QStyle::CC_ComboBox, &opt, QStyle::SC_ComboBoxEditField, this);
+        const int chrome = opt.rect.width() - field.width();
+        int longest = 0;
+        for (int i = 0; i < count(); ++i)
+            longest = std::max(longest, fontMetrics().horizontalAdvance(itemText(i)));
+        s.setWidth(std::max(s.width(), longest + chrome + fontMetrics().averageCharWidth()));
+        return s;
+    }
+
 protected:
     void paintEvent(QPaintEvent *) override
     {
@@ -163,6 +180,9 @@ PreviewPane::PreviewPane(QWidget *parent) : QWidget(parent)
     // Full text when there is room; in a narrow window the combo may shrink
     // (text elided) instead of raising the window's minimum width.
     m_mode->setMinimumWidth(fontMetrics().averageCharWidth() * 8 + 32);
+    // The preferred width follows the item texts, also after a language switch at run
+    // time (the default policy keeps the width of the first language shown).
+    m_mode->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 
     // Each column: bold title row above its view. The preview mode sits at
     // the right end of the Result title row (no extra row of its own).

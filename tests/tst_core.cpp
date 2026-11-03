@@ -55,6 +55,7 @@ private slots:
     void estimatorBatchWeightAndRemaining();
     void estimatorUsesEngineFraction();
     void progressRatesPersist();
+    void estimatorColdAndWarm();
     void estimatorWaitsForDevice();
 
 private:
@@ -451,9 +452,11 @@ void TestCore::settingsSeparateKeysAndValidation()
     QVERIFY(raw.value(QStringLiteral("paths/sourceDir")) != raw.value(QStringLiteral("paths/outputDir")));
 
     // Corrupt values fall back to safe defaults.
-    raw.setValue(QStringLiteral("model/noiseLevel"), 9);
-    raw.setValue(QStringLiteral("inference/tileSize"), QStringLiteral("abc"));
-    raw.setValue(QStringLiteral("inference/device"), QStringLiteral("npu"));
+    QVERIFY(raw.contains(QStringLiteral("v2/inference/tileSize")));  // v2.0-only keys
+    QVERIFY(!raw.contains(QStringLiteral("model/noiseLevel")));       // v1.2 key never written
+    raw.setValue(QStringLiteral("v2/model/noiseLevel"), 9);
+    raw.setValue(QStringLiteral("v2/inference/tileSize"), QStringLiteral("abc"));
+    raw.setValue(QStringLiteral("v2/inference/device"), QStringLiteral("npu"));
     raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
     raw.sync();
     AppSettings s;
@@ -466,9 +469,12 @@ void TestCore::settingsSeparateKeysAndValidation()
 
 void TestCore::settingsMigrateFromSchema1()
 {
-    // v1.2 settings: waifu2x tile 200 and measured waifu2x speeds; no schema key.
+    // A v1.2 settings store (waifu2x tile 200, measured waifu2x speeds), plus the keys a
+    // P3 development build wrote. v2.0 must leave every one of them exactly as it was.
     const QString dir = m_dir.filePath(QStringLiteral("遷移"));
     QVERIFY(QDir().mkpath(dir));
+    const QString gtx = QStringLiteral("NVIDIA GeForce GTX 1060 6GB");
+    QHash<QString, QVariant> v1;
     {
         QSettings raw;
         raw.clear();
@@ -479,29 +485,65 @@ void TestCore::settingsMigrateFromSchema1()
         raw.setValue(QStringLiteral("model/tileSize"), 200);
         raw.setValue(QStringLiteral("window/geometry"), QByteArray("geom"));
         raw.setValue(QStringLiteral("window/splitter"), QByteArray("split"));
-        raw.setValue(QStringLiteral("progress/lastDevice"), QStringLiteral("NVIDIA GeForce GTX 1060 6GB"));
-        raw.setValue(QStringLiteral("progress/rates/NVIDIA GeForce GTX 1060 6GB/waifu2x/noise1_scale2.0x_model"), 0.4);
+        raw.setValue(QStringLiteral("progress/lastDevice"), gtx);
+        raw.setValue(QStringLiteral("progress/rates/") + gtx + QStringLiteral("/waifu2x/noise1_scale2.0x_model"), 0.4);
+        raw.setValue(QStringLiteral("progress/rates/") + gtx + QStringLiteral("/encode/png"), 0.15);
+        raw.setValue(QStringLiteral("settings/schema"), 2);             // P3 development build
+        raw.setValue(QStringLiteral("inference/tileSize"), 400);       // P3 development build
         raw.sync();
+        for (const QString &k : raw.allKeys())
+            v1.insert(k, raw.value(k));
     }
+    QCOMPARE(v1.size(), 12);
     {
         AppSettings s;
+        // Shared keys are read as v1.2 left them.
         QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
         QCOMPARE(s.sourceDir(), dir);
         QCOMPARE(s.outputDir(), dir);
-        QCOMPARE(s.noiseLevel(), 2);
         QCOMPARE(s.windowGeometry(), QByteArray("geom"));
         QCOMPARE(s.splitterState(), QByteArray("split"));
-        QCOMPARE(s.tileSize(), 0);                     // reset to Auto
+        // v2 keys start correctly: denoise from v1.2, tile Auto, GPU, no speeds.
+        QCOMPARE(s.noiseLevel(), 2);
+        QCOMPARE(s.tileSize(), 0);
         QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);
-        QVERIFY(s.progressDevice().isEmpty());          // old speeds removed
-        QVERIFY(s.progressRates(QStringLiteral("NVIDIA GeForce GTX 1060 6GB")).isEmpty());
+        QVERIFY(s.progressDevice().isEmpty());
+        QVERIFY(s.progressRates(gtx).isEmpty());
+        // Using v2.0 changes only its own keys.
+        s.setNoiseLevel(3);
         s.setTileSize(256);
+        s.setComputeDevice(ComputeDevice::Cpu);
+        s.setProgressRates(gtx, {{QStringLiteral("v2rate"), 0.5}});
+        s.setProgressDevice(gtx);
         QVERIFY(s.sync());
     }
+    {
+        AppSettings s;  // second start: the migration does not run again
+        QCOMPARE(s.noiseLevel(), 3);
+        QCOMPARE(s.tileSize(), 256);
+        QCOMPARE(s.progressRates(gtx).value(QStringLiteral("v2rate")), 0.5);
+    }
     QSettings raw;
-    QVERIFY(!raw.contains(QStringLiteral("model/tileSize")));
-    QCOMPARE(raw.value(QStringLiteral("settings/schema")).toInt(), AppSettings::kSchema);
-    QCOMPARE(AppSettings().tileSize(), 256);  // migration runs only once
+    for (auto it = v1.cbegin(); it != v1.cend(); ++it)
+        QVERIFY2(raw.value(it.key()) == it.value(), qPrintable(it.key()));
+    QStringList added;
+    for (const QString &k : raw.allKeys())
+        if (!v1.contains(k))
+            added << k;
+    for (const QString &k : std::as_const(added))
+        QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
+    QCOMPARE(raw.value(QStringLiteral("v2/schema")).toInt(), AppSettings::kSchema);
+
+    // An empty store (no v1.2): defaults, and still nothing outside v2/.
+    raw.clear();
+    raw.sync();
+    {
+        AppSettings s;
+        QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
+        QCOMPARE(s.tileSize(), 0);
+    }
+    for (const QString &k : raw.allKeys())
+        QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
     raw.clear();
 }
 
@@ -636,7 +678,7 @@ void TestCore::progressPlanFollowsStages()
     QCOMPARE(plan.stages[0].megapixels, 0.02);
     QCOMPARE(plan.stages[1].stage, Stage::Inference);
     QCOMPARE(plan.stages[1].pass, 0);
-    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1_scale4x/dml/auto"));
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1_scale4x/dml/auto/x4"));
     QCOMPARE(plan.stages[1].megapixels, 0.32);   // 4x output
     QCOMPARE(plan.stages[2].stage, Stage::Encode);
     QCOMPARE(plan.stages[2].rateKey, QStringLiteral("encode/webp-lossless"));
@@ -647,8 +689,24 @@ void TestCore::progressPlanFollowsStages()
     spec.inference.device = ComputeDevice::Cpu;
     plan = ProcessJob::progressPlan(img, spec);
     QCOMPARE(plan.stages.size(), 3);
-    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1/cpu/t160"));
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1/cpu/t160/x1"));
     QCOMPARE(plan.weight, 0.02);
+    QVERIFY(plan.stages[1].overheadKey.isEmpty());
+
+    // With the prepared job: model hash and the tile Auto decided; the first item is cold.
+    spec.inference = InferenceOptions{};
+    spec.inference.scale = 2;
+    PlanContext ctx{QStringLiteral("afa6a24c72be8588"), 160, true};
+    plan = ProcessJob::progressPlan(img, spec, &ctx);
+    const QString key = QStringLiteral("nunif/swin_unet/art/noise1_scale2x@afa6a24c/dml/t160/x2");
+    QCOMPARE(plan.stages[1].rateKey, key);
+    QCOMPARE(plan.stages[1].overheadKey, key + QStringLiteral("#cold"));
+    QVERIFY(plan.stages[1].overheadSec > 0);
+    ctx.cold = false;
+    plan = ProcessJob::progressPlan(img, spec, &ctx);
+    QCOMPARE(plan.stages[1].rateKey, key);  // warm items share the speed
+    QVERIFY(plan.stages[1].overheadKey.isEmpty());
+    QCOMPARE(plan.stages[1].overheadSec, 0.0);
 
     // Unreadable header: size unknown, the estimator uses an average weight.
     plan = ProcessJob::progressPlan(m_dir.filePath(QStringLiteral("missing.png")), spec);
@@ -795,6 +853,54 @@ void TestCore::progressRatesPersist()
     QCOMPARE(s.progressRates(other).value(QStringLiteral("waifu2x/noise1_scale2.0x_model")), 0.2);
     QCOMPARE(s.progressRates(other).size(), 1);
     QVERIFY(s.progressRates(QStringLiteral("Intel Arc A770")).isEmpty());
+}
+
+void TestCore::estimatorColdAndWarm()
+{
+    // Item 0 is cold (sessions are created: +4 s expected), items 1.. are warm.
+    auto item = [](bool cold) {
+        ItemPlan p;
+        p.weight = 4;
+        p.stages << StagePlan{Stage::Inference, 0, QStringLiteral("m"), 4.0, 0.5, cold ? 4.0 : 0.0,
+                              cold ? QStringLiteral("m#cold") : QString()};
+        return p;
+    };
+    ProgressEstimator e;
+    e.startBatch({item(true), item(false), item(false)}, 0);
+    QCOMPARE(e.snapshot(0).remainingSec, -1.0);  // nothing measured: "estimating"
+
+    // Cold item: 4 MP in 10 s. No warm speed yet, so the expected 4 s cold cost is taken
+    // off: warm speed (10 - 4) / 4 = 1.5 s/MP. No cold cost is learned from it.
+    e.itemStarted(0, 0);
+    e.stageStarted(0, {Stage::Inference, 0, 1}, 0);
+    e.itemFinished(0, true, 10000);
+    QCOMPARE(e.learnedRates().value(QStringLiteral("m")), 1.5);
+    QVERIFY(!e.learnedRates().contains(QStringLiteral("m#cold")));
+
+    // Warm item: 4 MP in 4 s -> 1.0 s/MP, smoothed: 0.5 * 1.5 + 0.5 * 1.0 = 1.25.
+    e.itemStarted(1, 10000);
+    e.stageStarted(1, {Stage::Inference, 0, 1}, 10000);
+    e.itemFinished(1, true, 14000);
+    QCOMPARE(e.learnedRates().value(QStringLiteral("m")), 1.25);
+    // Remaining: the last warm item only, 4 MP * 1.25 = 5 s (no cold cost).
+    QCOMPARE(e.snapshot(14000).remainingSec, 5.0);
+
+    // Next job: the cold item learns its own cost from the known warm speed:
+    // 12 s - 4 MP * 1.25 = 7 s; the warm speed is not changed by it.
+    ProgressEstimator next;
+    next.setLearnedRates(e.learnedRates());
+    next.startBatch({item(true), item(false)}, 0);
+    QCOMPARE(next.snapshot(0).remainingSec, (4.0 + 5.0) + 5.0);  // default cold cost before learning
+    next.itemStarted(0, 0);
+    next.stageStarted(0, {Stage::Inference, 0, 1}, 0);
+    next.itemFinished(0, true, 12000);
+    QCOMPARE(next.learnedRates().value(QStringLiteral("m#cold")), 7.0);
+    QCOMPARE(next.learnedRates().value(QStringLiteral("m")), 1.25);
+    QCOMPARE(next.snapshot(12000).remainingSec, 5.0);
+    ProgressEstimator third;
+    third.setLearnedRates(next.learnedRates());
+    third.startBatch({item(true)}, 0);
+    QCOMPARE(third.snapshot(0).remainingSec, 7.0 + 5.0);  // learned cold cost is used
 }
 
 void TestCore::estimatorWaitsForDevice()

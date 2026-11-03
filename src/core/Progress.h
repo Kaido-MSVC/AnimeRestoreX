@@ -45,7 +45,11 @@ struct StagePlan {
     QString rateKey;          // stages sharing a key share a measured speed
     double megapixels = 0;    // pixels this stage produces (load: input pixels)
     double defaultRate = 0;   // seconds per megapixel before anything was measured
-    double overheadSec = 0;   // fixed cost (process start, model load, ...)
+    double overheadSec = 0;   // fixed cost (model load, ...) before anything was measured
+    // Cold start (the first image of a job creates the AI sessions): the fixed cost is
+    // learned under this key, in seconds, separately from the warm speed of rateKey.
+    // Empty = warm stage without a fixed cost.
+    QString overheadKey;
 };
 
 struct ItemPlan {
@@ -98,6 +102,7 @@ public:
 
 private:
     double rateFor(const StagePlan &s) const;
+    double overheadFor(const StagePlan &s) const;
     double machineFactor() const;  // measured / default inference speed
     void closeStage(qint64 nowMs, bool calibrate);
     double currentStageFraction(qint64 nowMs) const;

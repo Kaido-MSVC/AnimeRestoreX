@@ -256,11 +256,21 @@ QString ProcessJob::prepare(const JobSpec &spec, core::Backend &backend, Prepare
     return {};
 }
 
-ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec)
+PlanContext ProcessJob::planContext(const PreparedJob &job, int index)
+{
+    PlanContext c;
+    if (job.rgbModel)
+        c.modelHash = QString::fromStdString(job.rgbModel->sha256);
+    c.tile = job.tile.tile;
+    c.cold = index == 0;
+    return c;
+}
+
+ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec, const PlanContext *context)
 {
     // Default speeds in seconds per output megapixel, from the P2 tile 256 measurements
     // on the GTX 1060 6GB (input MP/s: 1x 0.284, 2x 0.303, 4x 0.234). They only shape the
-    // first estimate; measured speeds replace them. CPU: rough factor, not measured yet.
+    // first estimate; measured speeds replace them. CPU: factor measured on one PC (P4).
     constexpr double kLoadRate = 0.05;  // decode + conversion, per input MP
     const QSize in = QImageReader(sourcePath).size();  // header only; invalid if unreadable
     const double inMp = in.isValid() ? double(in.width()) * in.height() / 1e6 : 0.0;
@@ -270,15 +280,25 @@ ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec
 
     double rate = scale == 1 ? 3.52 : scale == 2 ? 0.825 : 0.267;
     if (cpu)
-        rate *= 20.0;
+        rate *= 5.0;  // P4: CPU 13.9-15.8 s vs. GTX 1060 2.9 s for a 0.38-0.5 MP 2x image
 
     ItemPlan plan;
     plan.weight = inMp * scale * scale;
-    plan.stages << StagePlan{Stage::Load, 0, QStringLiteral("load"), inMp, kLoadRate, 0.0};
-    const QString key = QStringLiteral("nunif/%1/%2/%3")
-                            .arg(modelId(o), cpu ? QStringLiteral("cpu") : QStringLiteral("dml"),
-                                 o.tile ? QStringLiteral("t%1").arg(o.tile) : QStringLiteral("auto"));
-    plan.stages << StagePlan{Stage::Inference, 0, key, plan.weight, rate, 0.0};
+    plan.stages << StagePlan{Stage::Load, 0, QStringLiteral("load"), inMp, kLoadRate, 0.0, {}};
+    const int tile = context && context->tile ? context->tile : o.tile;
+    QString model = modelId(o);
+    if (context && !context->modelHash.isEmpty())
+        model += QLatin1Char('@') + context->modelHash.left(8);
+    const QString key = QStringLiteral("nunif/%1/%2/%3/x%4")
+                            .arg(model, cpu ? QStringLiteral("cpu") : QStringLiteral("dml"),
+                                 tile ? QStringLiteral("t%1").arg(tile) : QStringLiteral("auto"))
+                            .arg(scale);
+    // Cold start: session creation (and the hash check) before the first tile; about 4 s
+    // per DML session on the GTX 1060 (P2/P3 measurements), less on the CPU.
+    const bool cold = context && context->cold;
+    const double coldSec = cold ? (cpu ? 1.0 : 4.0) : 0.0;
+    plan.stages << StagePlan{Stage::Inference, 0, key, plan.weight, rate, coldSec,
+                             cold ? key + QStringLiteral("#cold") : QString()};
 
     QString encKey;
     double encRate = 0;
@@ -291,7 +311,7 @@ ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec
         encRate = spec.encode.webpLossless ? 1.0 : 0.15;
         break;
     }
-    plan.stages << StagePlan{Stage::Encode, 0, encKey, plan.weight, encRate, 0.0};
+    plan.stages << StagePlan{Stage::Encode, 0, encKey, plan.weight, encRate, 0.0, {}};
     return plan;
 }
 

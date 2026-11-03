@@ -34,8 +34,11 @@ public slots:
     void process(const QStringList &files, const arx::JobSpec &spec);
 
 signals:
-    // Emitted first: the expected stages of every item, for progress estimation.
+    // Emitted first (after the engine was prepared): the expected stages of every item,
+    // for progress estimation. Not emitted if the job cannot start.
     void planned(const QList<arx::ItemPlan> &plans);
+    // Tile used for the job; `smallerForVram`: Auto chose 160 because GPU memory is short.
+    void prepared(int tile, bool smallerForVram);
     void itemStarted(int index);
     // `stage` is an arx::Stage value.
     void stageStarted(int index, int stage, int pass, int passCount);

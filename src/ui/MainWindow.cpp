@@ -48,6 +48,7 @@ constexpr int kRolePath = Qt::UserRole;
 constexpr int kRoleState = Qt::UserRole + 1;
 constexpr int kRoleDetail = Qt::UserRole + 2;
 constexpr int kRoleOutput = Qt::UserRole + 3;
+constexpr int kRoleSmallerTile = Qt::UserRole + 4;  // Auto used a smaller tile (0 = no)
 
 enum Column { ColFile = 0, ColStatus = 1, ColDetail = 2 };
 
@@ -210,7 +211,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_worker, &JobWorker::stageFraction, this, [this](int index, double fraction) {
         m_estimator.stageFraction(index, fraction, m_clock.elapsed());
     });
+    connect(m_worker, &JobWorker::prepared, this, [this](int tile, bool smallerForVram) {
+        m_vramTile = smallerForVram ? tile : 0;
+        if (m_vramTile)
+            m_status->setText(tr("Not enough GPU memory for tile size 256: this job uses tile size %1.")
+                                  .arg(m_vramTile));
+    });
     connect(m_worker, &JobWorker::retrying, this, [this](int index, int tile) {
+        m_retryTile = tile;
         m_estimator.stageRestarted(index, m_clock.elapsed());
         if (QTreeWidgetItem *item = m_jobItems.value(index))
             m_status->setText(tr("Not enough GPU memory: processing %1 again with tile size %2...")
@@ -236,7 +244,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->cancelButton, &QPushButton::clicked, this, [this] {
         m_worker->requestCancel();
         ui->cancelButton->setEnabled(false);
-        m_status->setText(tr("Canceling..."));
+        // The image encoders cannot be interrupted: a file being encoded is finished
+        // first (and then discarded), which can take a few seconds for large outputs.
+        const arx::ProgressSnapshot snap = m_estimator.snapshot(m_clock.elapsed());
+        if (snap.index >= 0 && snap.stage == arx::Stage::Encode)
+            m_status->setText(tr("Canceling: finishing the encoding of the current file..."));
+        else
+            m_status->setText(tr("Canceling..."));
     });
     connect(ui->fileList, &QTreeWidget::currentItemChanged, this, &MainWindow::updatePreview);
     connect(ui->fileList, &QTreeWidget::itemSelectionChanged, this, &MainWindow::updateButtons);
@@ -322,6 +336,7 @@ void MainWindow::openSettings()
 void MainWindow::openAbout()
 {
     AboutDialog dlg(this);
+    dlg.setDeviceName(m_device);
     dlg.exec();
 }
 
@@ -975,6 +990,8 @@ void MainWindow::start()
     const arx::JobSpec spec = currentSpec();
     m_jobOutputDir = spec.outputDir;
     m_finishedCount = 0;
+    m_vramTile = 0;
+    m_retryTile = 0;
     // While running, both bars show the estimate in 0.1% steps; the batch
     // bar is weighted by output pixels (refreshProgress).
     // Measured speeds belong to one GPU. Before the engine has named the GPU
@@ -1005,6 +1022,7 @@ void MainWindow::onItemStarted(int index)
     if (!item)
         return;
     m_estimator.itemStarted(index, m_clock.elapsed());
+    m_retryTile = 0;
     setItemState(item, ItemState::Processing);
     ui->fileList->scrollToItem(item);
     m_status->setText(tr("Processing %1 / %2: %3")
@@ -1021,6 +1039,9 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
     QTreeWidgetItem *item = m_jobItems.value(index);
     if (!item)
         return;
+    const bool smaller = r.ok && (r.tileChoice == arx::TileChoice::SmallerForVram ||
+                                  r.tileChoice == arx::TileChoice::OomRetry);
+    item->setData(ColFile, kRoleSmallerTile, smaller ? r.tileUsed : 0);
     if (r.ok) {
         item->setData(ColFile, kRoleOutput, r.outputPath);
         QString detail = QFileInfo(r.outputPath).fileName();
@@ -1061,6 +1082,10 @@ QString MainWindow::stageText(const arx::ProgressSnapshot &snap) const
     case arx::Stage::Load:
         return tr("Reading");
     case arx::Stage::Inference:
+        if (m_retryTile)
+            return tr("AI processing again with tile size %1 (out of GPU memory)").arg(m_retryTile);
+        if (m_vramTile)
+            return tr("AI processing (tile size %1: GPU memory is short)").arg(m_vramTile);
         if (snap.passCount > 1)
             return tr("AI processing %1/%2").arg(snap.pass + 1).arg(snap.passCount);
         return tr("AI processing");
@@ -1135,26 +1160,36 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
     // Counts come from this job's items in the list, so the dialog matches it.
     arx::BatchSummary shown = summary;
     shown.succeeded = shown.failed = shown.notProcessed = 0;
-    QStringList failures;
+    QList<CompletionDialog::Item> items;
+    shown.smallerTile = 0;
     for (QTreeWidgetItem *item : std::as_const(m_jobItems)) {
+        CompletionDialog::Item entry;
+        entry.file = item->text(ColFile);
         switch (ItemState(item->data(ColFile, kRoleState).toInt())) {
         case ItemState::Done:
             ++shown.succeeded;
+            entry.kind = CompletionDialog::Item::Succeeded;
+            entry.detail = QFileInfo(item->data(ColFile, kRoleOutput).toString()).fileName();
+            entry.smallerTile = item->data(ColFile, kRoleSmallerTile).toInt();
+            shown.smallerTile += entry.smallerTile > 0 ? 1 : 0;
             break;
         case ItemState::Failed:
             ++shown.failed;
-            failures << QStringLiteral("%1: %2").arg(item->text(ColFile),
-                                                     item->data(ColFile, kRoleDetail).toString());
+            entry.kind = CompletionDialog::Item::Failed;
+            entry.detail = item->data(ColFile, kRoleDetail).toString();
             break;
         case ItemState::Pending:
         case ItemState::Processing:
             setItemState(item, ItemState::NotProcessed);
             ++shown.notProcessed;
+            entry.kind = CompletionDialog::Item::NotProcessed;
             break;
         case ItemState::NotProcessed:
             ++shown.notProcessed;
+            entry.kind = CompletionDialog::Item::NotProcessed;
             break;
         }
+        items << entry;
     }
     m_jobItems.clear();
 
@@ -1168,7 +1203,7 @@ void MainWindow::onJobFinished(const arx::BatchSummary &summary)
 
     if (m_closing)
         return;
-    CompletionDialog dlg(shown, m_jobOutputDir, failures, this);
+    CompletionDialog dlg(shown, m_jobOutputDir, items, this);
     dlg.exec();
 }
 

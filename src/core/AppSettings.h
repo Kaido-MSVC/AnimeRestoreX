@@ -17,13 +17,14 @@ namespace arx {
 // User-scope persistent settings (QSettings, organisation "Kaido-MSVC",
 // application "AnimeRestoreX"). Source and output folders use separate keys.
 //
-// Schema 2 (v2.0, nunif ONNX on Windows ML): the old engine's tile value
-// ("model/tileSize": 0/400/200/100) is dropped and the tile starts at Auto again;
-// the measured speeds of the old engine ("progress/...") are removed. Language,
-// folders, window state and the denoise level (-1..3, same meaning) are kept.
+// v1.2 and v2.0 share one settings store, without breaking each other:
+//  - shared (same meaning in both): ui/language, paths/*, window/*;
+//  - v2.0 only, under "v2/": denoise level, tile, device, measured speeds, schema;
+//  - v1.2 keys (model/*, progress/*) are only read, never removed or overwritten.
+// The first v2.0 start copies the v1.2 denoise level into v2/; the tile starts at Auto.
 class AppSettings {
 public:
-    static constexpr int kSchema = 2;
+    static constexpr int kSchema = 1;  // "v2/schema"
     static constexpr int kDefaultNoise = 1;
     static constexpr int kDefaultTile = 0;   // auto: 256, 160 when VRAM is short or after OOM
 

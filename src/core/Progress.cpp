@@ -73,9 +73,17 @@ double ProgressEstimator::rateFor(const StagePlan &s) const
     return s.defaultRate;
 }
 
+double ProgressEstimator::overheadFor(const StagePlan &s) const
+{
+    if (!s.overheadKey.isEmpty())
+        if (const auto it = m_learned.constFind(s.overheadKey); it != m_learned.cend())
+            return *it;
+    return s.overheadSec;
+}
+
 double ProgressEstimator::stageSeconds(const StagePlan &s) const
 {
-    return s.overheadSec + rateFor(s) * s.megapixels;
+    return overheadFor(s) + rateFor(s) * s.megapixels;
 }
 
 void ProgressEstimator::startBatch(const QList<ItemPlan> &items, qint64 nowMs)
@@ -139,17 +147,29 @@ void ProgressEstimator::closeStage(qint64 nowMs, bool calibrate)
     if (m_index < 0 || m_stage < 0)
         return;
     const StagePlan &s = m_items.at(m_index).stages.at(m_stage);
-    if (!calibrate || s.rateKey.isEmpty() || s.megapixels < kMinMegapixelsToLearn)
+    if (!calibrate || s.rateKey.isEmpty())
+        return;
+    const bool canLearnRate = s.megapixels >= kMinMegapixelsToLearn;  // tiny images: overhead only
+    if (!canLearnRate && (s.overheadKey.isEmpty() || !m_learned.contains(s.rateKey)))
         return;
     const double elapsed = double(nowMs - m_stageStart) / 1000.0;
-    const double sample = std::max(elapsed - s.overheadSec, 0.0) / s.megapixels;
-    if (!isValidRate(sample))
+    auto learn = [this](const QString &key, double sample) {
+        if (!isValidRate(sample))
+            return;
+        const auto it = m_learned.find(key);
+        if (it == m_learned.end())
+            m_learned.insert(key, sample);
+        else
+            *it = (1.0 - kSmoothing) * *it + kSmoothing * sample;
+    };
+    // Cold stage with a known warm speed: what is left over is the cold-start cost.
+    if (!s.overheadKey.isEmpty() && m_learned.contains(s.rateKey)) {
+        learn(s.overheadKey, elapsed - m_learned.value(s.rateKey) * s.megapixels);
         return;
-    const auto it = m_learned.find(s.rateKey);
-    if (it == m_learned.end())
-        m_learned.insert(s.rateKey, sample);
-    else
-        *it = (1.0 - kSmoothing) * *it + kSmoothing * sample;
+    }
+    // Warm stage, or a cold one before any warm speed is known (the expected cold-start
+    // cost is taken off so the warm speed is not inflated by it).
+    learn(s.rateKey, std::max(elapsed - overheadFor(s), 0.0) / s.megapixels);
 }
 
 void ProgressEstimator::stageStarted(int index, const StageEvent &e, qint64 nowMs)

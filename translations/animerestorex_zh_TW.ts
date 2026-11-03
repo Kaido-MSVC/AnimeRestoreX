@@ -24,16 +24,16 @@
         <translation>第三方元件</translation>
     </message>
     <message>
-        <source>AI inference engine that performs the denoising and upscaling (MIT License).</source>
-        <translation>執行降噪與放大的 AI 推論引擎（MIT 授權）。</translation>
+        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (Microsoft license terms, see the licenses folder).</source>
+        <translation>AI 推論執行環境；透過 DirectML 在 GPU 上執行模型，或在 CPU 上執行（Microsoft 授權條款，請見 licenses 資料夾）。</translation>
     </message>
     <message>
-        <source>Neural network inference framework with Vulkan GPU acceleration, built into waifu2x-ncnn-vulkan (BSD 3-Clause License).</source>
-        <translation>支援 Vulkan GPU 加速的神經網路推論框架，內建於 waifu2x-ncnn-vulkan（BSD 3-Clause 授權）。</translation>
+        <source>Trained models for anime-style illustrations, converted for DirectML (license being verified).</source>
+        <translation>針對動漫風格插畫訓練的模型，已轉換為 DirectML 可用的格式（授權確認中）。</translation>
     </message>
     <message>
-        <source>Trained models for anime-style illustrations (MIT License).</source>
-        <translation>針對動漫風格插畫訓練的模型（MIT 授權）。</translation>
+        <source>Model files: %1, exported from nunif %2; source: %3</source>
+        <translation>模型檔：%1，由 nunif %2 匯出；來源：%3</translation>
     </message>
     <message>
         <source>User interface and image reading and writing (GNU LGPL v3).</source>
@@ -42,6 +42,22 @@
     <message>
         <source>See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.</source>
         <translation>完整清單與授權原文請見 THIRD_PARTY_NOTICES.md 與 licenses 資料夾。</translation>
+    </message>
+    <message>
+        <source>AI runtime: %1</source>
+        <translation>AI 執行環境：%1</translation>
+    </message>
+    <message>
+        <source>AI runtime not available: %1</source>
+        <translation>AI 執行環境無法使用：%1</translation>
+    </message>
+    <message>
+        <source>Processing device: not used yet in this session</source>
+        <translation>處理裝置：本次執行尚未使用</translation>
+    </message>
+    <message>
+        <source>Processing device: %1</source>
+        <translation>處理裝置：%1</translation>
     </message>
     <message>
         <source>Open License Files</source>
@@ -87,6 +103,10 @@
         <translation>未處理：%1</translation>
     </message>
     <message>
+        <source>Made with the smaller tile size %1 (GPU memory): %2</source>
+        <translation>改用較小的 Tile 大小 %1（GPU 記憶體）：%2</translation>
+    </message>
+    <message>
         <source>Processing stopped: %1</source>
         <translation>處理已停止：%1</translation>
     </message>
@@ -99,8 +119,24 @@
         <translation>沒有產生任何輸出檔案。</translation>
     </message>
     <message>
-        <source>Failed items:</source>
-        <translation>失敗項目：</translation>
+        <source>[tile %1]</source>
+        <translation>[Tile %1]</translation>
+    </message>
+    <message>
+        <source>Failed (%1):</source>
+        <translation>失敗（%1）：</translation>
+    </message>
+    <message>
+        <source>Not processed (%1):</source>
+        <translation>未處理（%1）：</translation>
+    </message>
+    <message>
+        <source>Succeeded (%1):</source>
+        <translation>成功（%1）：</translation>
+    </message>
+    <message>
+        <source>Auto had to use the smaller tile size %1 (not enough GPU memory). The tile size changes the result slightly.</source>
+        <translation>「自動」因 GPU 記憶體不足而改用較小的 Tile 大小 %1。Tile 大小會讓結果略有不同。</translation>
     </message>
     <message>
         <source>Open Output Folder</source>
@@ -405,12 +441,40 @@
         <translation>所有項目都已完成。變更輸出設定或加入圖片後即可再次處理。</translation>
     </message>
     <message>
+        <source> (tile %1: not enough GPU memory for 256)</source>
+        <translation>（Tile %1：GPU 記憶體不足以使用 256）</translation>
+    </message>
+    <message>
+        <source> (tile %1: redone after running out of GPU memory)</source>
+        <translation>（Tile %1：GPU 記憶體不足後重新處理）</translation>
+    </message>
+    <message>
+        <source>AI processing again with tile size %1 (out of GPU memory)</source>
+        <translation>以 Tile 大小 %1 重新 AI 處理（GPU 記憶體不足）</translation>
+    </message>
+    <message>
+        <source>AI processing (tile size %1: GPU memory is short)</source>
+        <translation>AI 處理（Tile 大小 %1：GPU 記憶體不足）</translation>
+    </message>
+    <message>
         <source>Estimated from the image size and the measured speed of earlier images.</source>
         <translation>依圖片大小與先前圖片的實測速度推估。</translation>
     </message>
     <message>
         <source>Starting...</source>
         <translation>正在開始…</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory for tile size 256: this job uses tile size %1.</source>
+        <translation>GPU 記憶體不足以使用 Tile 大小 256：本次處理改用 Tile 大小 %1。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory: processing %1 again with tile size %2...</source>
+        <translation>GPU 記憶體不足：以 Tile 大小 %2 重新處理 %1…</translation>
+    </message>
+    <message>
+        <source>Canceling: finishing the encoding of the current file...</source>
+        <translation>正在取消：正在完成目前檔案的編碼…</translation>
     </message>
     <message>
         <source>Processing %1 / %2: %3</source>
@@ -438,7 +502,7 @@
     </message>
     <message>
         <source>estimating time left</source>
-        <translation>正在估算剩餘時間</translation>
+        <translation>估算中</translation>
     </message>
     <message>
         <source>almost done</source>
@@ -598,32 +662,100 @@
         <translation>輸出資料夾無法寫入：%1</translation>
     </message>
     <message>
+        <source>Unsupported scale: %1x.</source>
+        <translation>不支援的放大倍率：%1×。</translation>
+    </message>
+    <message>
+        <source>Unsupported denoise level: %1.</source>
+        <translation>不支援的降噪強度：%1。</translation>
+    </message>
+    <message>
+        <source>&quot;No upscaling (1x)&quot; only denoises: choose a denoise level.</source>
+        <translation>「不放大（1×）」只做降噪：請選擇降噪強度。</translation>
+    </message>
+    <message>
+        <source>Tile size %1 is not valid for this model.</source>
+        <translation>Tile 大小 %1 不適用於此模型。</translation>
+    </message>
+    <message>
         <source>The %1 image plugin is missing.</source>
         <translation>缺少 %1 圖片插件。</translation>
     </message>
     <message>
-        <source>Cannot create a temporary folder: %1</source>
-        <translation>無法建立暫存資料夾：%1</translation>
+        <source>The AI runtime files (onnxruntime.dll, DirectML.dll) are missing from the program folder. Please reinstall AnimeRestoreX.</source>
+        <translation>程式資料夾中缺少 AI 執行環境檔案（onnxruntime.dll、DirectML.dll）。請重新安裝 AnimeRestoreX。</translation>
     </message>
     <message>
-        <source>Cannot write the temporary file: %1</source>
-        <translation>無法寫入暫存檔：%1</translation>
+        <source>The AI runtime in the program folder cannot be used (wrong version or damaged). Please reinstall AnimeRestoreX. Details: %1</source>
+        <translation>程式資料夾中的 AI 執行環境無法使用（版本不符或已損壞）。請重新安裝 AnimeRestoreX。詳細資訊：%1</translation>
     </message>
     <message>
-        <source>The AI engine did not produce an output image.</source>
-        <translation>AI 引擎沒有產生輸出圖片。</translation>
+        <source>Not enough GPU memory to process this image.</source>
+        <translation>GPU 記憶體不足，無法處理這張圖片。</translation>
     </message>
     <message>
-        <source>Cannot read the AI output: %1</source>
-        <translation>無法讀取 AI 輸出：%1</translation>
+        <source>The GPU stopped responding (device error %1). Processing was stopped and the GPU engine was reset. Close other programs that use the GPU or update the graphics driver, then try again.</source>
+        <translation>GPU 停止回應（裝置錯誤 %1）。已停止處理並重設 GPU 引擎。請關閉其他使用 GPU 的程式或更新顯示卡驅動程式後再試一次。</translation>
+    </message>
+    <message>
+        <source>A model file is damaged or was replaced (its checksum does not match models/manifest.json). Please reinstall AnimeRestoreX.</source>
+        <translation>模型檔已損壞或被替換（檢查碼與 models/manifest.json 不符）。請重新安裝 AnimeRestoreX。</translation>
+    </message>
+    <message>
+        <source>A model file is missing. Please reinstall AnimeRestoreX.</source>
+        <translation>缺少模型檔。請重新安裝 AnimeRestoreX。</translation>
+    </message>
+    <message>
+        <source>The AI model does not match its description in models/manifest.json.</source>
+        <translation>AI 模型與 models/manifest.json 中的描述不符。</translation>
+    </message>
+    <message>
+        <source>The tile size is not valid for this model.</source>
+        <translation>此 Tile 大小不適用於這個模型。</translation>
+    </message>
+    <message>
+        <source>The image is too large to process with the available memory.</source>
+        <translation>圖片太大，可用記憶體不足以處理。</translation>
+    </message>
+    <message>
+        <source>The image cannot be processed in this format.</source>
+        <translation>無法處理此格式的圖片。</translation>
+    </message>
+    <message>
+        <source>Canceled.</source>
+        <translation>已取消。</translation>
+    </message>
+    <message>
+        <source>The AI engine reported an error (%1).</source>
+        <translation>AI 引擎回報錯誤（%1）。</translation>
+    </message>
+    <message>
+        <source>The model list (models/manifest.json) is missing or invalid. Please reinstall AnimeRestoreX.</source>
+        <translation>模型清單（models/manifest.json）遺失或無效。請重新安裝 AnimeRestoreX。</translation>
+    </message>
+    <message>
+        <source>The model %1 is not listed in models/manifest.json.</source>
+        <translation>models/manifest.json 中沒有模型 %1。</translation>
+    </message>
+    <message>
+        <source>The job was not prepared.</source>
+        <translation>處理工作尚未準備完成。</translation>
+    </message>
+    <message>
+        <source>Out of memory while converting the image.</source>
+        <translation>轉換圖片時記憶體不足。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory to process this image, even with the smaller tile size %1.</source>
+        <translation>即使改用較小的 Tile 大小 %1，GPU 記憶體仍不足以處理這張圖片。</translation>
+    </message>
+    <message>
+        <source>Not enough GPU memory to process this image with tile size %1. Choose a smaller tile size or Auto in the settings.</source>
+        <translation>以 Tile 大小 %1 處理這張圖片時 GPU 記憶體不足。請在設定中選擇較小的 Tile 大小或「自動」。</translation>
     </message>
     <message>
         <source>The AI output has an unexpected size (%1 x %2, expected %3 x %4).</source>
         <translation>AI 輸出尺寸不符（%1 x %2，預期 %3 x %4）。</translation>
-    </message>
-    <message>
-        <source>Out of memory while converting the AI output.</source>
-        <translation>轉換 AI 輸出時記憶體不足。</translation>
     </message>
     <message>
         <source>Cannot create a file in the output folder: %1</source>
@@ -636,6 +768,14 @@
 </context>
 <context>
     <name>SettingsDialog</name>
+    <message>
+        <source>The CPU is much slower than the GPU: on the test PC about 5 times (GTX 1060), on slower CPUs more. Use it only if the GPU cannot be used.</source>
+        <translation>CPU 比 GPU 慢很多：在測試電腦上約慢 5 倍（相對於 GTX 1060），CPU 較慢時差距更大。請只在無法使用 GPU 時選擇。</translation>
+    </message>
+    <message>
+        <source>If the GPU fails, processing stops; it does not switch to the CPU on its own.</source>
+        <translation>GPU 發生錯誤時會停止處理，不會自動改用 CPU。</translation>
+    </message>
     <message>
         <source>Settings</source>
         <translation>設定</translation>
@@ -657,8 +797,20 @@
         <translation>自動</translation>
     </message>
     <message>
-        <source>Smaller tiles use less GPU memory but are slower. Try a smaller size if processing fails with large images.</source>
-        <translation>Tile 越小，佔用的 GPU 記憶體越少，但速度較慢。處理大圖失敗時可改用較小的值。</translation>
+        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 400 needs about 3 GB of GPU memory at 4x. The tile size slightly changes the result.</source>
+        <translation>「自動」使用 256，GPU 記憶體不足或用盡時改用 160。Tile 越小越省 GPU 記憶體但越慢；400 在 4× 時約需 3 GB GPU 記憶體。Tile 大小會讓結果略有不同。</translation>
+    </message>
+    <message>
+        <source>Processing device:</source>
+        <translation>處理裝置：</translation>
+    </message>
+    <message>
+        <source>GPU (DirectML)</source>
+        <translation>GPU（DirectML）</translation>
+    </message>
+    <message>
+        <source>CPU (much slower)</source>
+        <translation>CPU（慢很多）</translation>
     </message>
     <message>
         <source>Language</source>
@@ -686,45 +838,6 @@
     <message>
         <source>Invalid image size or scale.</source>
         <translation>圖片尺寸或倍率無效。</translation>
-    </message>
-</context>
-<context>
-    <name>Waifu2xRunner</name>
-    <message>
-        <source>&quot;No upscaling (1x)&quot; needs a denoise level. Choose a denoise level or an upscale factor.</source>
-        <translation>「不放大（1×）」需要搭配降噪強度。請選擇降噪強度，或改用放大倍率。</translation>
-    </message>
-    <message>
-        <source>The AI engine (waifu2x-ncnn-vulkan.exe) is missing: %1</source>
-        <translation>找不到 AI 引擎（waifu2x-ncnn-vulkan.exe）：%1</translation>
-    </message>
-    <message>
-        <source>The program folder path is too long for the AI engine (%1 characters, the limit is 255). Please move AnimeRestoreX to a shorter folder path.</source>
-        <translation>程式資料夾路徑過長，AI 引擎無法使用（%1 個字元，上限為 255）。請將 AnimeRestoreX 移到路徑較短的資料夾。</translation>
-    </message>
-    <message>
-        <source>The AI model folder is missing: %1</source>
-        <translation>找不到 AI 模型資料夾：%1</translation>
-    </message>
-    <message>
-        <source>The AI model file is missing: %1</source>
-        <translation>找不到 AI 模型檔：%1</translation>
-    </message>
-    <message>
-        <source>Cannot start the AI engine: %1</source>
-        <translation>無法啟動 AI 引擎：%1</translation>
-    </message>
-    <message>
-        <source>The AI engine crashed.</source>
-        <translation>AI 引擎異常結束。</translation>
-    </message>
-    <message>
-        <source>No usable Vulkan GPU was found. Please check the graphics driver. (%1)</source>
-        <translation>找不到可用的 Vulkan GPU，請檢查顯示卡驅動程式。（%1）</translation>
-    </message>
-    <message>
-        <source>The AI engine failed (exit code %1). %2</source>
-        <translation>AI 引擎執行失敗（結束代碼 %1）。%2</translation>
     </message>
 </context>
 </TS>
