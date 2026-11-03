@@ -60,7 +60,7 @@ $Stage = Join-Path $StageRoot $Name
 Write-Host "Package : $Name"
 Write-Host "Models  : $(if ($IncludeModels) { "included (licence: $ModelLicense)" } else { 'not included' })"
 if ($Internal) {
-    Write-Warning "Model licence is $ModelLicense: INTERNAL test package, written to $OutDir. Do not distribute."
+    Write-Warning "Model licence is ${ModelLicense}: INTERNAL test package, written to $OutDir. Do not distribute."
 }
 
 function Get-Sha([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
@@ -185,7 +185,7 @@ foreach ($p in @('AnimeRestoreX.exe', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.d
                  'translations\qt_zh_TW.qm', 'translations\qt_ja.qm',
                  'onnxruntime.dll', 'DirectML.dll', 'models\manifest.json',
                  'EULA.txt', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls) { [void]$allow.Add($p) }
-foreach ($f in $tracked) { [void]$allow.Add($f -replace '/', '\') }
+foreach ($f in $tracked) { [void]$allow.Add(($f -replace '/', '\')) }
 if ($IncludeModels) { foreach ($m in $Manifest.models) { [void]$allow.Add('models\' + ($m.file -replace '/', '\')) } }
 $present = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($fi in $all) {
