@@ -53,6 +53,21 @@ pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage speed -Only scale2x,noise3_sca
 `run` 需要先把 `input_256.bin`、`input_core.png` 放到 `_work\p1fix\t256`，並用
 `verify_rewrite.py cpu-bitwise` 產生參考值。不要用 640 以上的 tile（6 GB 卡上 4× 模型會 887A0006）。
 
+## P2：tile 拼接、前後處理與 alpha 模組（`docs/v2.0-P2報告.md`）
+
+| 路徑 | 內容 |
+|---|---|
+| `core/` | 不依賴 Qt 的 C++20 模組：`ModelContract`、`TileProcessor`、`OrtTileEngine`、`Sha256`、`Json`、`Status`（日後可搬進 `src/core/`） |
+| `tests/core_tests.cpp` | 用假引擎做的單元測試（不需要 GPU）：`build\core_tests.exe ..\..\models\manifest.json <scratch>` |
+| `runner/tile_runner.cpp` | 對單張 ARX8 原始影像執行模組，記錄時間、RAM／VRAM、進度與取消延遲 |
+| `scripts/p2_tools.py` | 合成測試圖、PNG ↔ ARX8、與上游比較（含誤差空間分布與熱圖）、alpha 放大圖 |
+| `scripts/nunif_weights_check.py` | 確認 nunif .pth 權重與 ONNX 是同一個網路 |
+| `run-p2.ps1` | `inputs`／`reference`／`run`／`seams`／`tile160`／`full`／`cancel` 各階段 |
+
+上游參考需要 `_work\upstream\nunif`（commit `0d3d92c`）、`_work\venv-torch`（torch 2.14.1+cpu）以及
+`_work\nunif-home`（20250502 的 `swin_unet/art`），建立方式見報告 §5.1。`tile_runner` 讀取的模型目錄是
+`_work\models-rw\swin_unet\art\*.onnx`（從 `_work\rewritten` 複製）。
+
 ## probe 的行為
 
 - `onnxruntime.dll` 用 `/DELAYLOAD`，`main` 先呼叫 `SetDefaultDllDirectories`，再以 exe 目錄的
