@@ -1,0 +1,671 @@
+{
+  "schema": "animerestorex-models/0-draft",
+  "status": "DRAFT - not for release: model licence unresolved (docs/v2.0-P0-P1報告.md §5)",
+  "source": {
+    "project": "nagadomi/nunif",
+    "url": "https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_onnx_models_20250502.zip",
+    "zip_sha256": "4d531e299884f8895df82947939f85c5ff6fca15236b9b72f1aa8ea476132e08",
+    "path_in_zip": "onnx_models/swin_unet/art/",
+    "exported_with_commit": "31c0137dc949807e382d918dc325c65fd6703092",
+    "license": "UNRESOLVED"
+  },
+  "rewrite_tool": {
+    "script": "tools/winml-probe/scripts/rewrite_pad.py",
+    "script_sha256": "edcd94f5853e0cad07c7de9a672f357b243dfd3bc750e449fb8272ee6fd0875f",
+    "python": "3.13.17",
+    "onnx": "1.23.2",
+    "numpy": "2.5.4",
+    "reason": "DirectML EP (Windows ML 2.5.96 / ORT 1.28.3 / DirectML 1.15.4) returns zeros for Pad with negative pads; negative static Pad -> equivalent Slice, weights unchanged"
+  },
+  "io_contract": {
+    "input": {
+      "name": "x",
+      "dtype": "float32",
+      "layout": "NCHW",
+      "shape": [
+        1,
+        3,
+        "T",
+        "T"
+      ],
+      "color": "RGB",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    "output": {
+      "name": "y",
+      "dtype": "float32",
+      "layout": "NCHW",
+      "shape": [
+        1,
+        3,
+        "T*scale-2*offset",
+        "T*scale-2*offset"
+      ],
+      "range": [
+        0.0,
+        1.0
+      ],
+      "clamped_in_model": true
+    },
+    "tile_rule": "T > 16 and (T - 16) % 48 == 0 (64, 112, 160, 208, 256, 304, 352, 400, ..., 640)",
+    "input_offset": "ceil(offset / scale) = 8 for every model",
+    "input_blend": "ceil(blend_size / scale) = 4 for every model",
+    "step_in": "T - 20",
+    "input_padding": "replicate",
+    "opset": 17,
+    "ir_version": 8,
+    "batch": 1
+  },
+  "alpha": {
+    "scale1x": "not used (bypass model is itself a negative Pad); 1x alpha is kept as is / cropped in C++",
+    "scale2x_alpha_model": "swin_unet/art/scale2x",
+    "scale4x_alpha_model": "swin_unet/art/scale4x"
+  },
+  "models": [
+    {
+      "id": "swin_unet/art/noise0",
+      "file": "swin_unet/art/noise0.onnx",
+      "scale": 1,
+      "noise_level": 0,
+      "offset": 8,
+      "blend_size": 4,
+      "source_sha256": "87dffff8f9e72984bf08060b2a41f71ce45b928fea21b8a1d49f48bcd80b16aa",
+      "sha256": "32a627d32d732974c0b042aa676293accbbca2b3691ac96d22388d9cc0457439",
+      "size": 16723672,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise1",
+      "file": "swin_unet/art/noise1.onnx",
+      "scale": 1,
+      "noise_level": 1,
+      "offset": 8,
+      "blend_size": 4,
+      "source_sha256": "089a2c7e3273a1ab667de2a7ee3f15b446691005597fba0f1a3d706b6b721043",
+      "sha256": "37a3df1f4391543c9ab4078fabf3559383b5303425a28566398f7930e7658a0c",
+      "size": 16723672,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise2",
+      "file": "swin_unet/art/noise2.onnx",
+      "scale": 1,
+      "noise_level": 2,
+      "offset": 8,
+      "blend_size": 4,
+      "source_sha256": "f42e21169f98a5a20afc30064a80f1c0703ae157cc3e07a8464b170b6d81a477",
+      "sha256": "b293f3fc83614df5aea5c1ecd118cd1475f9d961562ce7559a342b60064117ea",
+      "size": 16723672,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise3",
+      "file": "swin_unet/art/noise3.onnx",
+      "scale": 1,
+      "noise_level": 3,
+      "offset": 8,
+      "blend_size": 4,
+      "source_sha256": "e9c56d4aa6bbf772edf1497a78ed576a89723026b6b44589fa53b33ffcf762c6",
+      "sha256": "22e733ee85ece6eeca86707622aaf95e710e873b026eda71a2ad2993a564c364",
+      "size": 16723672,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise0_scale2x",
+      "file": "swin_unet/art/noise0_scale2x.onnx",
+      "scale": 2,
+      "noise_level": 0,
+      "offset": 16,
+      "blend_size": 8,
+      "source_sha256": "9af63e6436b54db0f6c62a8412fb9bb47bbfc9c456987a27fe723854805f19ef",
+      "sha256": "0e97430aced49375c0bf7f20d2c685879f586df28953817a85dd755b8881fddd",
+      "size": 16727320,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise1_scale2x",
+      "file": "swin_unet/art/noise1_scale2x.onnx",
+      "scale": 2,
+      "noise_level": 1,
+      "offset": 16,
+      "blend_size": 8,
+      "source_sha256": "d56d2317e721772544763ab7c4b2aa845951786ef3fda285a68e772a9e721d4e",
+      "sha256": "afa6a24c72be858868b2bbbedc9ff4831133194590661f635115c87a9eea0caa",
+      "size": 16727320,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise2_scale2x",
+      "file": "swin_unet/art/noise2_scale2x.onnx",
+      "scale": 2,
+      "noise_level": 2,
+      "offset": 16,
+      "blend_size": 8,
+      "source_sha256": "623f6cfcecec48170d8d0d80610a8000311e9c219741801e45163b79c9e69e16",
+      "sha256": "ddcf26c44da5ab8f7193dd3c52000bb62ea63a0568d327aca0138d971d5284a4",
+      "size": 16727320,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise3_scale2x",
+      "file": "swin_unet/art/noise3_scale2x.onnx",
+      "scale": 2,
+      "noise_level": 3,
+      "offset": 16,
+      "blend_size": 8,
+      "source_sha256": "9982ff6f75ed7d0ada5ff8e007259e699cb40fb13986fc9858a74defda240cae",
+      "sha256": "7981e0c30019cf80043c80fbef689590a8255ae55b54baba87f9aede5f599533",
+      "size": 16727320,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/scale2x",
+      "file": "swin_unet/art/scale2x.onnx",
+      "scale": 2,
+      "noise_level": -1,
+      "offset": 16,
+      "blend_size": 8,
+      "source_sha256": "581a69575295f5e082531b1ce6974dc27977576601b1d15c4c89d69b48c6ebef",
+      "sha256": "0384ac1e933bd1832e8cb93a6f6c856932b74d101c39ae809fdfe0929d492ca4",
+      "size": 16727320,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise0_scale4x",
+      "file": "swin_unet/art/noise0_scale4x.onnx",
+      "scale": 4,
+      "noise_level": 0,
+      "offset": 32,
+      "blend_size": 16,
+      "source_sha256": "cca11a8c4650dd9a1926262e01da64ea5e7cbd50099f536e1b4fdf9dc53af3a4",
+      "sha256": "0c1fee3c092ac651391b0ac14f018acb13a2e1a42b767b383f9ffc2ef45344bf",
+      "size": 18905795,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise1_scale4x",
+      "file": "swin_unet/art/noise1_scale4x.onnx",
+      "scale": 4,
+      "noise_level": 1,
+      "offset": 32,
+      "blend_size": 16,
+      "source_sha256": "46493d552457f52bb604316e290c1dfb6427e4e78b5ca5d4e0d3a9b5b5f52794",
+      "sha256": "6a4844baed99eddb1ec56d02d20aefe13ebc35f0c9db37e05f74a522a8d63151",
+      "size": 18905795,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise2_scale4x",
+      "file": "swin_unet/art/noise2_scale4x.onnx",
+      "scale": 4,
+      "noise_level": 2,
+      "offset": 32,
+      "blend_size": 16,
+      "source_sha256": "4208071a78b033fb4d060ede560f80ee6733c3b5a36b822b3cca250f028ff73f",
+      "sha256": "c35eecec67133516e073af06b5971c9fcc5da2d5338c249de9fc19c1449765be",
+      "size": 18905795,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/noise3_scale4x",
+      "file": "swin_unet/art/noise3_scale4x.onnx",
+      "scale": 4,
+      "noise_level": 3,
+      "offset": 32,
+      "blend_size": 16,
+      "source_sha256": "78208abf4d00a913969c8de30cb45d572a76b43b046c1d48a9c9aff78e69a12a",
+      "sha256": "b849a9f35234174fbe59c984711a5854389fb820b9a807ef4c638423468f84ee",
+      "size": 18905795,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    },
+    {
+      "id": "swin_unet/art/scale4x",
+      "file": "swin_unet/art/scale4x.onnx",
+      "scale": 4,
+      "noise_level": -1,
+      "offset": 32,
+      "blend_size": 16,
+      "source_sha256": "b3a03d52fb71c86485f354aa07236c2c8ecdd6615d84cbc446e23c43d056b68a",
+      "sha256": "e31ec8d89f1443327c205b5d7f0689f37da5d073814dc229dd9a6e4232d36cb5",
+      "size": 18905795,
+      "rewrite": [
+        {
+          "name": "/unet/Pad",
+          "kind": "static",
+          "action": "Slice",
+          "pads": [
+            0,
+            0,
+            -6,
+            -6,
+            0,
+            0,
+            -6,
+            -6
+          ],
+          "slice": {
+            "starts": [
+              6,
+              6
+            ],
+            "ends": [
+              -6,
+              -6
+            ],
+            "axes": [
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "pad_nodes_untouched": 14
+    }
+  ]
+}
