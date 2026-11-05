@@ -4,6 +4,31 @@
 對 nunif swin_unet/art 模型跑單一 tile，比較 DirectML 與 CPU 的結果。
 不屬於主程式建置，不隨發行包散布。結果與結論見 `docs/v2.0-P0-P1報告.md`。
 
+## P1 重做：上游 runtime 與新匯出模型（`docs/v2.0-P1重做報告.md`）
+
+```powershell
+pwsh -File tools\winml-probe\fetch-deps.ps1                 # 也會取得 ORT 1.24.4 與 DirectML 1.15.4
+pwsh -File tools\winml-probe\build.ps1 -Runtime upstream    # 輸出 build-upstream\（預設）
+pwsh -File tools\winml-probe\build.ps1 -Runtime winml       # 輸出 build\
+$p = 'tools\winml-probe\run-p1redo.ps1'
+pwsh -File $p -Stage rewrite                                # rewrite_pad.py + 三方雜湊，輸出 _work\p1redo\models
+pwsh -File $p -Stage azfix                                  # 實驗：allowzero 修正，輸出 _work\p1redo\models-az
+$az = (Resolve-Path 'tools\winml-probe\_work\p1redo\models-az').Path
+foreach ($s in 'load','correct','tile','illegal','cancel','bitwise','rawpad','oldgraph','image') {
+    pwsh -File $p -Stage $s -ModelsRoot $az
+}
+```
+
+| 需求 | 參數 |
+|---|---|
+| 換模型 | `run-p1redo.ps1 -ModelsRoot`、`run-probe.ps1 -ModelDir`、`run-p1fix.ps1 -Orig -Rw -Out` |
+| 換 runtime | 三個腳本都有 `-RuntimeDir <含 onnxruntime.dll 與 DirectML.dll 的資料夾> -ExpectOrt <版本>`，例如 `_work\pkg\2.5.96\runtimes\win-x64\native` 與 `1.28.3` |
+| 換 exe | 三個腳本都有 `-Exe`，預設 `build-upstream\winml_probe.exe` |
+
+用 1.24 標頭建置的 exe 可以跑 1.24.4 與 1.28.3；反過來不行（`GetApi(28)` 在 1.24.4 回傳 null）。`compat\winml\` 只在 upstream 建置時進入 include path，讓 `src\` 不必改。
+
+`--load-only` 只建立 session（不需要 `--input`）。注意 session 成功不代表 Run 會成功。
+
 ## 目錄
 
 | 路徑 | 內容 | 版本控制 |
@@ -70,10 +95,10 @@ pwsh -File tools\winml-probe\run-p1fix.ps1 -Stage speed -Only scale2x,noise3_sca
 
 ## probe 的行為
 
-- `onnxruntime.dll` 用 `/DELAYLOAD`，`main` 先呼叫 `SetDefaultDllDirectories`，再以 exe 目錄的
+- `onnxruntime.dll` 用 `/DELAYLOAD`，`main` 先呼叫 `SetDefaultDllDirectories`，再以 exe 目錄（或 `--runtime-dir`）的
   絕對路徑 `LoadLibraryExW` 載入 `DirectML.dll` 與 `onnxruntime.dll`，接著確認模組路徑一致、
   行程內同名模組只有一份，最後才 `Ort::InitApi()`（`ORT_API_MANUAL_INIT`）。
-  `GetVersionString()` 不等於 `WINML_EXPECTED_ORT_VERSION`（預設 1.28.3）時以 exit 3 結束。
+  `GetVersionString()` 不等於預期版本（`--expect-ort`，預設為建置時的 `WINML_EXPECTED_ORT_VERSION`）時以 exit 3 結束。
 - SessionOptions：`DisableMemPattern()`、`ORT_SEQUENTIAL`（依 ORT DirectML EP 文件；CPU 路徑也用同樣設定）。
   DML 透過 `GetExecutionProviderApi("DML")` 取得 `OrtDmlApi::SessionOptionsAppendExecutionProvider_DML`
   （標頭把舊的 `OrtSessionOptionsAppendExecutionProvider_DML` 匯出標為 deprecated）。

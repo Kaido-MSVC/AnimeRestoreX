@@ -1,4 +1,5 @@
 # downloaded runtime packages, models, venv, build output and run results
 _work/
 build/
+build-upstream/
 __pycache__/

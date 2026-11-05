@@ -6,7 +6,9 @@ Why: the DirectML EP in Windows ML 2.5.96 (ORT 1.28.3, DirectML 1.15.4) returns
 zeros for Pad with negative pads (= cropping). See docs/v2.0-P0-P1報告.md §6.4.
 
 Rules for every Pad node:
-  * mode attribute must be "constant" (absent == constant). Otherwise: STOP.
+  * mode attribute must be "constant" (absent == constant) or "edge". Otherwise: STOP.
+  * "edge" is only let through when its pads are proven >= 0 (it is then left
+    untouched). Negative or unproven edge pads: STOP. Edge is never rewritten.
   * an `axes` input (opset >= 18) is not handled: STOP.
   * pads are resolved in one of two ways:
       - static: the pads input depends only on initializers / Constant nodes.
@@ -158,8 +160,8 @@ def rewrite(model):
             new_nodes.append(node)
             continue
         rec = dict(name=node.name, mode=pad_mode(node))
-        if rec["mode"] != "constant":
-            raise Stop(f"{node.name}: mode={rec['mode']} (not constant)")
+        if rec["mode"] not in ("constant", "edge"):
+            raise Stop(f"{node.name}: mode={rec['mode']} (not constant or edge)")
         if len(node.input) > 3 and node.input[3]:
             raise Stop(f"{node.name}: has an axes input (not handled)")
         pads_name = node.input[1]
@@ -182,6 +184,8 @@ def rewrite(model):
             new_nodes.append(node)
             records.append(rec)
             continue
+        if rec["mode"] == "edge":
+            raise Stop(f"{node.name}: mode=edge with negative pads {pads.tolist()}")
         # Slice for the negative part.
         axes = [i for i in range(r) if begin[i] < 0 or end[i] < 0]
         starts = [int(-begin[i]) if begin[i] < 0 else 0 for i in axes]

@@ -11,15 +11,24 @@ param(
     [string]$Stage = 'run',
     [string[]]$Only = @(),
     [string]$Tiles = '256,400,640',  # string: pwsh -File does not split arrays
-    [int]$Repeat = 1
+    [int]$Repeat = 1,
+    [string]$Orig = '',        # original models; default: 20250502 swin_unet\art
+    [string]$Rw = '',          # rewritten models; default: _work\rewritten
+    [string]$Out = '',         # results; default: _work\p1fix
+    [string]$RuntimeDir = '',  # onnxruntime.dll + DirectML.dll; empty = exe folder
+    [string]$ExpectOrt = '',   # required with -RuntimeDir when it differs from the exe's build-time version
+    [string]$Exe = ''          # default: build-upstream (ORT 1.24 headers run on 1.24.4 and 1.28.3)
 )
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
-$Exe  = Join-Path $Root 'build\winml_probe.exe'
+if (-not $Exe) { $Exe = Join-Path $Root 'build-upstream\winml_probe.exe' }
 $W    = Join-Path $Root '_work'
-$Orig = Join-Path $W 'models\onnx_models\swin_unet\art'
-$Rw   = Join-Path $W 'rewritten'
-$Out  = Join-Path $W 'p1fix'
+if (-not $Orig) { $Orig = Join-Path $W 'models\onnx_models\swin_unet\art' }
+if (-not $Rw)   { $Rw   = Join-Path $W 'rewritten' }
+if (-not $Out)  { $Out  = Join-Path $W 'p1fix' }
+$RtArgs = @()
+if ($RuntimeDir) { $RtArgs += @('--runtime-dir', $RuntimeDir) }
+if ($ExpectOrt)  { $RtArgs += @('--expect-ort', $ExpectOrt) }
 $Py   = Join-Path $W 'venv\Scripts\python.exe'
 $Ver  = Join-Path $Root 'scripts\verify_rewrite.py'
 $All = 'noise0','noise1','noise2','noise3','noise0_scale2x','noise1_scale2x','noise2_scale2x','noise3_scale2x',
@@ -28,7 +37,7 @@ $Models = if ($Only) { $Only -split ',' | Where-Object { $_ } } else { $All }  #
 function ScaleOf([string]$n) { if ($n -match 'scale4x') { 4 } elseif ($n -match 'scale2x') { 2 } else { 1 } }
 function OffsetOf([string]$n) { 8 * (ScaleOf $n) }
 function Probe([string]$Log, [string[]]$A) {
-    & $Exe @A *> $Log
+    & $Exe @RtArgs @A *> $Log
     $c = $LASTEXITCODE
     if ($c) { Get-Content $Log | ForEach-Object { "  $_" } }
     "  exit=$c"
@@ -67,7 +76,7 @@ switch ($Stage) {
             $R = Join-Path $Out "t$t"
             New-Item -ItemType Directory -Force $R | Out-Null
             if (-not (Test-Path "$R\input_$t.bin")) {
-                Copy-Item (Join-Path $Out 't256\input_core.png') $R
+                Copy-Item (Join-Path $W 'p1fix\t256\input_core.png') $R
                 & $Py -I $Ver make-input $R $t
                 & $Py -I $Ver cpu-bitwise $R $t $Orig $Rw @Models | Out-Host
             }

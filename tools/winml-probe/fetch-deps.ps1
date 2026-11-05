@@ -15,7 +15,19 @@ $Assets = @(
     @{ Url  = 'https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_onnx_models_20250502.zip'
        File = 'dl\nunif\waifu2x_onnx_models_20250502.zip'
        Sha  = '4d531e299884f8895df82947939f85c5ff6fca15236b9b72f1aa8ea476132e08'
-       To   = 'models'; Members = @('onnx_models/swin_unet/art', 'onnx_models/utils') }
+       To   = 'models'; Members = @('onnx_models/swin_unet/art', 'onnx_models/utils') },
+    # Upstream runtime (v2.0 decision, docs/v2.0-P1重做報告.md). Extracted hashes:
+    #   runtimes/win-x64/native/onnxruntime.dll e7eedec6a6f26dc39dc948276a75ef6d2bee3fff944d874ceed0bbd3b97bff40
+    #   bin/x64-win/DirectML.dll                9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1
+    # onnxruntime_providers_shared.dll is in the package but was not needed (DML + CPU).
+    @{ Url  = 'https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg'
+       File = 'dl\nupkg-upstream\microsoft.ml.onnxruntime.directml.1.24.4.nupkg'
+       Sha  = '57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681'
+       To   = 'pkg\ort-dml-1.24.4'; Members = @() },
+    @{ Url  = 'https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg'
+       File = 'dl\nupkg-upstream\microsoft.ai.directml.1.15.4.nupkg'
+       Sha  = '4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9'
+       To   = 'pkg\directml-1.15.4'; Members = @() }
 )
 if ($AlsoOld) {
     $Assets += @{ Url  = 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.ai.machinelearning/2.4.89/microsoft.windows.ai.machinelearning.2.4.89.nupkg'

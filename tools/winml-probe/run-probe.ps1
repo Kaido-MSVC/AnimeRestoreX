@@ -8,13 +8,20 @@ param(
     [ValidateSet('timing', 'placement', 'cancel', 'compare')]
     [string]$Stage = 'timing',
     [int[]]$CancelDelayMs = @(50, 150),
-    [string[]]$CancelEp = @('dml')
+    [string[]]$CancelEp = @('dml'),
+    [string]$ModelDir = '',    # default: 20250502 swin_unet\art
+    [string]$RuntimeDir = '',  # onnxruntime.dll + DirectML.dll; empty = exe folder
+    [string]$ExpectOrt = '',   # required with -RuntimeDir when it differs from the exe's build-time version
+    [string]$Exe = ''          # default: build-upstream (ORT 1.24 headers run on 1.24.4 and 1.28.3)
 )
 $ErrorActionPreference = 'Stop'
 $Root  = $PSScriptRoot
-$Exe   = Join-Path $Root 'build\winml_probe.exe'
+if (-not $Exe) { $Exe = Join-Path $Root 'build-upstream\winml_probe.exe' }
 $W     = Join-Path $Root '_work'
-$ModelDir = Join-Path $W 'models\onnx_models\swin_unet\art'
+if (-not $ModelDir) { $ModelDir = Join-Path $W 'models\onnx_models\swin_unet\art' }
+$RtArgs = @()
+if ($RuntimeDir) { $RtArgs += @('--runtime-dir', $RuntimeDir) }
+if ($ExpectOrt)  { $RtArgs += @('--expect-ort', $ExpectOrt) }
 $R     = Join-Path $W 'run'
 $Py    = Join-Path $W 'venv\Scripts\python.exe'
 $Ref   = Join-Path $Root 'scripts\reference.py'
@@ -26,7 +33,7 @@ $Models = @(
 
 function Invoke-Probe([string]$Tag, [string[]]$ProbeArgs) {
     $log = Join-Path $R "$Tag.txt"
-    & $Exe @ProbeArgs *> $log
+    & $Exe @RtArgs @ProbeArgs *> $log
     $code = $LASTEXITCODE
     Get-Content $log | ForEach-Object { "  $_" }
     "  exit=$code"

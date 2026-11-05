@@ -67,6 +67,9 @@ std::string jsonEscape(const std::string& s) {
 
 struct Args {
     fs::path model, input, output, log, json, profile, dumpDir;
+    fs::path runtimeDir;  // folder with onnxruntime.dll + DirectML.dll; empty = exe folder
+    std::string expectOrt = WINML_EXPECTED_ORT_VERSION;
+    bool loadOnly = false;  // create the session, report, exit (no input file needed)
     std::string ep = "dml";
     int device = 0;
     int tile = 256;
@@ -85,6 +88,8 @@ struct Args {
         "                   [--tile 256] [--device 0] [--warm 3] [--output out.bin]\n"
         "                   [--verbose --log file] [--profile prefix] [--cancel-delay-ms D]\n"
         "                   [--opt disable|basic|extended|all] [--json results.jsonl]\n"
+        "                   [--runtime-dir D --expect-ort X.Y.Z]  (DLL folder; default: exe folder)\n"
+        "                   [--load-only]  (session creation only; --input not required)\n"
         "                   [--dump-dir D]  (run once, write every float graph output to D)\n"
         "                   [--config key=value]...  (session config entry, e.g. ep.dml.disable_graph_fusion=1)\n", stderr);
     std::exit(64);
@@ -116,10 +121,13 @@ Args parseArgs(int argc, wchar_t** argv) {
             if (eq == std::string::npos) usage();
             a.config.emplace_back(kv.substr(0, eq), kv.substr(eq + 1));
         }
+        else if (k == L"--runtime-dir") a.runtimeDir = next();
+        else if (k == L"--expect-ort") a.expectOrt = narrow(next());
+        else if (k == L"--load-only") a.loadOnly = true;
         else if (k == L"--verbose") a.verbose = true;
         else usage();
     }
-    if (a.model.empty() || a.input.empty() || (a.ep != "dml" && a.ep != "cpu")) usage();
+    if (a.model.empty() || (a.input.empty() && !a.loadOnly) || (a.ep != "dml" && a.ep != "cpu")) usage();
     return a;
 }
 
@@ -294,21 +302,28 @@ int wmain(int argc, wchar_t** argv) {
     std::ostringstream js;  // one JSON object per invocation
     js << "{\"model\":\"" << jsonEscape(narrow(a.model.filename().wstring())) << "\",\"ep\":\"" << a.ep << "\"";
 
-    // 1. Runtime DLLs from the app directory only.
-    const fs::path dir = exeDir();
+    // 1. Runtime DLLs from one folder only (default: next to the exe). The exe must be built
+    //    with headers no newer than the runtime, otherwise GetApi(ORT_API_VERSION) returns null.
+    const fs::path dir = a.runtimeDir.empty() ? exeDir() : fs::absolute(a.runtimeDir);
     std::string why;
     if (!pinRuntimeDlls(dir, why)) {
         std::fprintf(stderr, "FATAL: runtime DLL check failed: %s\n", why.c_str());
         return 3;
     }
-    Ort::InitApi();
+    const OrtApi* ortApi = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    if (!ortApi) {
+        std::fprintf(stderr, "FATAL: %s does not provide ORT API %d (built with newer headers?)\n",
+                     OrtGetApiBase()->GetVersionString(), ORT_API_VERSION);
+        return 3;
+    }
+    Ort::InitApi(ortApi);
     const std::string ortPath = narrow(modulePath(GetModuleHandleW(L"onnxruntime.dll")));
     const std::string dmlPath = narrow(modulePath(GetModuleHandleW(L"DirectML.dll")));
     const std::string ver = Ort::GetVersionString();
     std::printf("onnxruntime.dll : %s\nDirectML.dll    : %s\nGetVersionString: %s (expected %s)\n",
-                ortPath.c_str(), dmlPath.c_str(), ver.c_str(), WINML_EXPECTED_ORT_VERSION);
+                ortPath.c_str(), dmlPath.c_str(), ver.c_str(), a.expectOrt.c_str());
     js << ",\"ort_path\":\"" << jsonEscape(ortPath) << "\",\"ort_version\":\"" << ver << "\"";
-    if (ver != WINML_EXPECTED_ORT_VERSION) {
+    if (ver != a.expectOrt) {
         std::fprintf(stderr, "FATAL: unexpected ORT version\n");
         return 3;
     }
@@ -350,6 +365,23 @@ int wmain(int argc, wchar_t** argv) {
             Ort::ThrowOnError(Ort::GetApi().GetExecutionProviderApi("DML", ORT_API_VERSION,
                                                                     reinterpret_cast<const void**>(&dml)));
             Ort::ThrowOnError(dml->SessionOptionsAppendExecutionProvider_DML(so, a.device));
+        }
+
+        // Load test: session creation only. Unsupported IR/opset fails here.
+        if (a.loadOnly) {
+            auto t0 = Clock::now();
+            Ort::Session session(env, a.model.c_str(), so);
+            const double t = ms(t0, Clock::now());
+            Ort::AllocatorWithDefaultOptions alloc;
+            const std::string in0 = session.GetInputNameAllocated(0, alloc).get();
+            const std::string out0 = session.GetOutputNameAllocated(0, alloc).get();
+            std::printf("session create  : %.1f ms; input %s, output %s\n", t, in0.c_str(), out0.c_str());
+            js << ",\"load_only\":true,\"session_ms\":" << t << ",\"input\":\"" << jsonEscape(in0)
+               << "\",\"output\":\"" << jsonEscape(out0) << "\",\"ok\":true}";
+            if (a.verbose)
+                for (auto& l : sink.placement) std::printf("  %s\n", l.c_str());
+            if (!a.json.empty()) std::ofstream(a.json, std::ios::app) << js.str() << "\n";
+            return 0;
         }
 
         // 3. Input tile.
