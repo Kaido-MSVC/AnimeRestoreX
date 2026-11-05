@@ -62,9 +62,10 @@ function Get-PipelinePython {
     $venv = Join-Path $Work 'venv-models'
     $py = Join-Path $venv 'Scripts\python.exe'
     if (-not (Test-Path $py)) {
-        & py -3.13 -m venv $venv
+        # Out-Host: tool output must not end up in this function's return value.
+        & py -3.13 -m venv $venv | Out-Host
         if ($LASTEXITCODE) { throw "venv creation failed (needs Python 3.13 via the py launcher)" }
-        & $py -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot 'models-requirements.txt')
+        & $py -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot 'models-requirements.txt') | Out-Host
         if ($LASTEXITCODE) { throw "pip install failed" }
     }
     return $py
