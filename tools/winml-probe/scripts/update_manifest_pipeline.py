@@ -96,12 +96,13 @@ def main():
     for k, v in m.items():  # same position in the file as the old block
         out["pipeline" if k == "rewrite_tool" else k] = pipeline if k == "rewrite_tool" else v
     out["v3_pending"] = {
-        "status": "PENDING - P2 moves these into \"models\"; the source URL is filled in after the Release exists",
+        "status": "PENDING - P2 moves these into \"models\"; fetched by tools/fetch-models.ps1, not read by the app yet",
         "source": {
             "project": "nagadomi/nunif",
             "commit": "0d3d92c",
             "exported_with": "torch 2.14.1+cpu, onnx 1.23.2, onnxscript 0.7.2",
-            "url": "",
+            "url": "https://github.com/Kaido-MSVC/AnimeRestoreX/releases/download/models-v3-nunif-0d3d92c/"
+                   "waifu2x-swin_unet_v3-art-onnx-nunif-0d3d92c.zip",
             "zip_name": "waifu2x-swin_unet_v3-art-onnx-nunif-0d3d92c.zip",
             "zip_sha256": zip_sha,
             "path_in_zip": "swin_unet_v3/art/",

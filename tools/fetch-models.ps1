@@ -6,9 +6,9 @@
 #             Three-way check: source model, both script hashes, result of each step.
 #   -FromDir: copy already processed models (e.g. tools\winml-probe\_work\models-rw) and check
 #             every hash against the manifest.
-#   -V3Dir  : also run the "v3_pending" models through the same pipeline from a folder holding
-#             the nunif exports (swin_unet_v3\art). Without it those models are SKIPPED and the
-#             script says so: their Release has no download URL yet.
+#             The "v3_pending" models go through the same pipeline from the zip of this
+#             project's GitHub Release (HTTPS, pinned SHA-256; -Cache applies here too).
+#   -V3Dir  : take the v3 exports from this local folder (swin_unet_v3\art) instead of the Release.
 # Any mismatch stops the script; nothing is installed into third_party\models unless every
 # model passed (staging folder, then a single move). The script never packages anything.
 [CmdletBinding()]
@@ -85,22 +85,43 @@ function Invoke-Pipeline([string]$Py, [string[]]$Scripts, [string]$Orig, [string
     Write-Host "OK $($M.id)"
 }
 
-function Write-V3Skipped {
-    Write-Warning ("SKIPPED: $(@($Manifest.v3_pending.models).Count) swin_unet_v3 models, no download " +
-        "source yet (v3_pending.source.url is empty). Use -V3Dir <nunif exports> to process them.")
+# Returns the path of a zip with the pinned hash: already downloaded, from -Cache, or over HTTPS.
+function Get-PinnedZip([string]$Url, [string]$Sha) {
+    if (-not $Url.StartsWith('https://')) { throw "not an https URL: $Url" }
+    $zipName = Split-Path $Url -Leaf
+    $zip = Join-Path $Work $zipName
+    if (-not ((Test-Path $zip) -and (Get-Sha $zip) -eq $Sha)) {
+        $cached = if ($Cache) { Join-Path $Cache $zipName } else { '' }
+        if ($cached -and (Test-Path $cached) -and (Get-Sha $cached) -eq $Sha) {
+            Write-Host "Using cached $cached"
+            Copy-Item $cached $zip -Force
+        } else {
+            Write-Host "Downloading $Url"
+            Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+        }
+    }
+    Assert-Sha $zip $Sha $zipName
+    Write-Host "SHA256 OK: $zipName"
+    return $zip
+}
+
+# Extracts one folder of a zip into a fresh folder and returns that folder's path.
+function Expand-ZipFolder([string]$Zip, [string]$PathInZip, [string]$To) {
+    if (Test-Path $To) { Remove-Item $To -Recurse -Force }
+    New-Item -ItemType Directory -Force $To | Out-Null
+    $member = $PathInZip.TrimEnd('/')
+    & "$env:SystemRoot\System32\tar.exe" -xf $Zip -C $To $member | Out-Host
+    if ($LASTEXITCODE) { throw "extract failed: $Zip ($member)" }
+    return Join-Path $To ($member -replace '/', '\')
 }
 
 if ((Test-Path $Dest) -and -not $Force -and -not $V3Dir) {
     $ok = $true
-    foreach ($m in $Manifest.models) {
+    foreach ($m in @($Manifest.models) + @($Manifest.v3_pending.models)) {
         $p = Join-Path $Dest (Get-SafeRelative $m.file)
         if (-not (Test-Path $p) -or (Get-Sha $p) -ne $m.sha256) { $ok = $false; break }
     }
-    if ($ok) {
-        Write-Host "third_party\models already matches the manifest (use -Force to rebuild)."
-        Write-V3Skipped
-        exit 0
-    }
+    if ($ok) { Write-Host "third_party\models already matches the manifest (use -Force to rebuild)."; exit 0 }
 }
 
 New-Item -ItemType Directory -Force $Work | Out-Null
@@ -117,52 +138,35 @@ if ($FromDir) {
     }
 } else {
     $src = $Manifest.source
-    $zipName = Split-Path $src.url -Leaf
-    $zip = Join-Path $Work $zipName
-    if (-not ((Test-Path $zip) -and (Get-Sha $zip) -eq $src.zip_sha256)) {
-        $cached = if ($Cache) { Join-Path $Cache $zipName } else { '' }
-        if ($cached -and (Test-Path $cached) -and (Get-Sha $cached) -eq $src.zip_sha256) {
-            Write-Host "Using cached $cached"
-            Copy-Item $cached $zip -Force
-        } else {
-            Write-Host "Downloading $($src.url)"
-            Invoke-WebRequest -Uri $src.url -OutFile $zip -UseBasicParsing
-        }
-    }
-    Assert-Sha $zip $src.zip_sha256 $zipName
-    Write-Host "SHA256 OK: $zipName"
-
+    $zip = Get-PinnedZip $src.url $src.zip_sha256
     $extract = Join-Path $Work 'nunif-onnx'
-    if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
-    New-Item -ItemType Directory -Force $extract | Out-Null
-    $member = $src.path_in_zip.TrimEnd('/')
-    & "$env:SystemRoot\System32\tar.exe" -xf $zip -C $extract $member
-    if ($LASTEXITCODE) { throw "extract failed: $zip ($member)" }
+    $srcDir = Expand-ZipFolder $zip $src.path_in_zip $extract
 
     $scripts = @(Get-PipelineScripts)
     $py = Get-PipelinePython
     foreach ($m in $Manifest.models) {
         $rel = Get-SafeRelative $m.file
-        $name = Split-Path $rel -Leaf
-        $orig = Join-Path $extract (Join-Path ($member -replace '/', '\') $name)
-        Invoke-Pipeline $py $scripts $orig (Join-Path $Stage $rel) $m
+        Invoke-Pipeline $py $scripts (Join-Path $srcDir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
     }
     Remove-Item $extract -Recurse -Force
 }
 
-$count = @($Manifest.models).Count
-if ($V3Dir) {
-    $scripts = @(Get-PipelineScripts)
-    $py = Get-PipelinePython
-    foreach ($m in $Manifest.v3_pending.models) {
-        $rel = Get-SafeRelative $m.file
-        Invoke-Pipeline $py $scripts (Join-Path $V3Dir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
-        $count++
-    }
-} else {
-    Write-V3Skipped
+$scripts = @(Get-PipelineScripts)
+$py = Get-PipelinePython
+$v3Dir = $V3Dir
+$v3Extract = Join-Path $Work 'v3-onnx'
+if (-not $v3Dir) {
+    $v3 = $Manifest.v3_pending.source
+    $v3Zip = Get-PinnedZip $v3.url $v3.zip_sha256
+    $v3Dir = Expand-ZipFolder $v3Zip $v3.path_in_zip $v3Extract
 }
+foreach ($m in $Manifest.v3_pending.models) {
+    $rel = Get-SafeRelative $m.file
+    Invoke-Pipeline $py $scripts (Join-Path $v3Dir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
+}
+if (Test-Path $v3Extract) { Remove-Item $v3Extract -Recurse -Force }
 
+$count = @($Manifest.models).Count + @($Manifest.v3_pending.models).Count
 if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }
 Move-Item $Stage $Dest
 Write-Host "$count models verified and installed to $Dest"
