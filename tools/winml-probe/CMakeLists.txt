@@ -101,3 +101,23 @@ add_custom_command(TARGET tile_runner POST_BUILD
         ${ARX_RUNTIME_DLLS}
         $<TARGET_FILE_DIR:tile_runner>
     VERBATIM)
+
+# ---- v2.0 P1 close: tile sizes the app refuses, measured through the real tiler ----
+# Same sources as tile_runner; only the tile check of makeTilePlan is widened to what the v3 graph
+# itself needs (T/2 must be a multiple of window 8). src/ stays unchanged; never shipped.
+file(READ "${ARX_INF}/TileProcessor.cpp" ARX_TP_SRC)
+string(REPLACE "if (!ModelContract::isValidTile(tile))" "if (tile < 64 || tile % 16 != 0)" ARX_TP_ANY "${ARX_TP_SRC}")
+if(ARX_TP_ANY STREQUAL ARX_TP_SRC)
+    message(FATAL_ERROR "TileProcessor.cpp: tile check not found, tile_runner_anytile is out of date")
+endif()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/anytile/TileProcessor.cpp" "${ARX_TP_ANY}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ARX_INF}/TileProcessor.cpp")
+
+add_executable(tile_runner_anytile runner/tile_runner.cpp ${ARX_INF}/OrtTileEngine.cpp ${ARX_INF}/Json.cpp
+    ${ARX_INF}/Sha256.cpp ${ARX_INF}/ModelContract.cpp "${CMAKE_CURRENT_BINARY_DIR}/anytile/TileProcessor.cpp")
+target_compile_definitions(tile_runner_anytile PRIVATE ${ARX_DEFS} ORT_API_MANUAL_INIT
+    WINML_EXPECTED_ORT_VERSION="${WINML_EXPECTED_ORT_VERSION}")
+target_compile_options(tile_runner_anytile PRIVATE ${ARX_WARN})
+target_include_directories(tile_runner_anytile PRIVATE "${ARX_SRC}" "${ARX_INF}" "${ARX_ORT_INCLUDE}")
+target_link_libraries(tile_runner_anytile PRIVATE ${ARX_ORT_TARGET} bcrypt dxgi delayimp)
+target_link_options(tile_runner_anytile PRIVATE /DELAYLOAD:onnxruntime.dll)

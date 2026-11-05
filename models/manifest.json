@@ -9,13 +9,24 @@
     "exported_with_commit": "31c0137dc949807e382d918dc325c65fd6703092",
     "license": "UNRESOLVED"
   },
-  "rewrite_tool": {
-    "script": "tools/winml-probe/scripts/rewrite_pad.py",
-    "script_sha256": "edcd94f5853e0cad07c7de9a672f357b243dfd3bc750e449fb8272ee6fd0875f",
+  "pipeline": {
     "python": "3.13.17",
     "onnx": "1.23.2",
     "numpy": "2.5.4",
-    "reason": "DirectML EP (Windows ML 2.5.96 / ORT 1.28.3 / DirectML 1.15.4) returns zeros for Pad with negative pads; negative static Pad -> equivalent Slice, weights unchanged"
+    "steps": [
+      {
+        "name": "rewrite_pad",
+        "script": "tools/winml-probe/scripts/rewrite_pad.py",
+        "script_sha256": "193fba277eac490f89fc2d03e0fd87d3f7f5f5b5abdcb9a0e6d4b3a76e315e89",
+        "reason": "DirectML EP returns zeros for Pad with negative pads (still true on ORT 1.24.4 / DirectML 1.15.4); negative static Pad -> equivalent Slice, weights unchanged"
+      },
+      {
+        "name": "fix_reshape_allowzero",
+        "script": "tools/winml-probe/scripts/fix_reshape_allowzero.py",
+        "script_sha256": "d5c6008e43375ff9ece00810fe7c1b40c1249e9f71a2d3133f7ad873aaa16e46",
+        "reason": "DirectML EP does not resolve -1 in Reshape when allowzero=1, Run fails on dynamo graphs; allowzero cleared where the static shape has -1 and no 0 (same operation). No change on the 20250502 graphs (no allowzero at all)"
+      }
+    ]
   },
   "runtime": {
     "comment": "The runtime these models were rewritten for and verified with (P1-P4). tools/package.ps1 requires the shipped DLLs to match exactly; the app checks the ONNX Runtime version at start-up.",
@@ -93,6 +104,7 @@
       "offset": 8,
       "blend_size": 4,
       "source_sha256": "87dffff8f9e72984bf08060b2a41f71ce45b928fea21b8a1d49f48bcd80b16aa",
+      "pad_sha256": "32a627d32d732974c0b042aa676293accbbca2b3691ac96d22388d9cc0457439",
       "sha256": "32a627d32d732974c0b042aa676293accbbca2b3691ac96d22388d9cc0457439",
       "size": 16723672,
       "rewrite": [
@@ -126,7 +138,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise1",
@@ -136,6 +150,7 @@
       "offset": 8,
       "blend_size": 4,
       "source_sha256": "089a2c7e3273a1ab667de2a7ee3f15b446691005597fba0f1a3d706b6b721043",
+      "pad_sha256": "37a3df1f4391543c9ab4078fabf3559383b5303425a28566398f7930e7658a0c",
       "sha256": "37a3df1f4391543c9ab4078fabf3559383b5303425a28566398f7930e7658a0c",
       "size": 16723672,
       "rewrite": [
@@ -169,7 +184,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise2",
@@ -179,6 +196,7 @@
       "offset": 8,
       "blend_size": 4,
       "source_sha256": "f42e21169f98a5a20afc30064a80f1c0703ae157cc3e07a8464b170b6d81a477",
+      "pad_sha256": "b293f3fc83614df5aea5c1ecd118cd1475f9d961562ce7559a342b60064117ea",
       "sha256": "b293f3fc83614df5aea5c1ecd118cd1475f9d961562ce7559a342b60064117ea",
       "size": 16723672,
       "rewrite": [
@@ -212,7 +230,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise3",
@@ -222,6 +242,7 @@
       "offset": 8,
       "blend_size": 4,
       "source_sha256": "e9c56d4aa6bbf772edf1497a78ed576a89723026b6b44589fa53b33ffcf762c6",
+      "pad_sha256": "22e733ee85ece6eeca86707622aaf95e710e873b026eda71a2ad2993a564c364",
       "sha256": "22e733ee85ece6eeca86707622aaf95e710e873b026eda71a2ad2993a564c364",
       "size": 16723672,
       "rewrite": [
@@ -255,7 +276,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise0_scale2x",
@@ -265,6 +288,7 @@
       "offset": 16,
       "blend_size": 8,
       "source_sha256": "9af63e6436b54db0f6c62a8412fb9bb47bbfc9c456987a27fe723854805f19ef",
+      "pad_sha256": "0e97430aced49375c0bf7f20d2c685879f586df28953817a85dd755b8881fddd",
       "sha256": "0e97430aced49375c0bf7f20d2c685879f586df28953817a85dd755b8881fddd",
       "size": 16727320,
       "rewrite": [
@@ -298,7 +322,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise1_scale2x",
@@ -308,6 +334,7 @@
       "offset": 16,
       "blend_size": 8,
       "source_sha256": "d56d2317e721772544763ab7c4b2aa845951786ef3fda285a68e772a9e721d4e",
+      "pad_sha256": "afa6a24c72be858868b2bbbedc9ff4831133194590661f635115c87a9eea0caa",
       "sha256": "afa6a24c72be858868b2bbbedc9ff4831133194590661f635115c87a9eea0caa",
       "size": 16727320,
       "rewrite": [
@@ -341,7 +368,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise2_scale2x",
@@ -351,6 +380,7 @@
       "offset": 16,
       "blend_size": 8,
       "source_sha256": "623f6cfcecec48170d8d0d80610a8000311e9c219741801e45163b79c9e69e16",
+      "pad_sha256": "ddcf26c44da5ab8f7193dd3c52000bb62ea63a0568d327aca0138d971d5284a4",
       "sha256": "ddcf26c44da5ab8f7193dd3c52000bb62ea63a0568d327aca0138d971d5284a4",
       "size": 16727320,
       "rewrite": [
@@ -384,7 +414,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise3_scale2x",
@@ -394,6 +426,7 @@
       "offset": 16,
       "blend_size": 8,
       "source_sha256": "9982ff6f75ed7d0ada5ff8e007259e699cb40fb13986fc9858a74defda240cae",
+      "pad_sha256": "7981e0c30019cf80043c80fbef689590a8255ae55b54baba87f9aede5f599533",
       "sha256": "7981e0c30019cf80043c80fbef689590a8255ae55b54baba87f9aede5f599533",
       "size": 16727320,
       "rewrite": [
@@ -427,7 +460,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/scale2x",
@@ -437,6 +472,7 @@
       "offset": 16,
       "blend_size": 8,
       "source_sha256": "581a69575295f5e082531b1ce6974dc27977576601b1d15c4c89d69b48c6ebef",
+      "pad_sha256": "0384ac1e933bd1832e8cb93a6f6c856932b74d101c39ae809fdfe0929d492ca4",
       "sha256": "0384ac1e933bd1832e8cb93a6f6c856932b74d101c39ae809fdfe0929d492ca4",
       "size": 16727320,
       "rewrite": [
@@ -470,7 +506,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise0_scale4x",
@@ -480,6 +518,7 @@
       "offset": 32,
       "blend_size": 16,
       "source_sha256": "cca11a8c4650dd9a1926262e01da64ea5e7cbd50099f536e1b4fdf9dc53af3a4",
+      "pad_sha256": "0c1fee3c092ac651391b0ac14f018acb13a2e1a42b767b383f9ffc2ef45344bf",
       "sha256": "0c1fee3c092ac651391b0ac14f018acb13a2e1a42b767b383f9ffc2ef45344bf",
       "size": 18905795,
       "rewrite": [
@@ -513,7 +552,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise1_scale4x",
@@ -523,6 +564,7 @@
       "offset": 32,
       "blend_size": 16,
       "source_sha256": "46493d552457f52bb604316e290c1dfb6427e4e78b5ca5d4e0d3a9b5b5f52794",
+      "pad_sha256": "6a4844baed99eddb1ec56d02d20aefe13ebc35f0c9db37e05f74a522a8d63151",
       "sha256": "6a4844baed99eddb1ec56d02d20aefe13ebc35f0c9db37e05f74a522a8d63151",
       "size": 18905795,
       "rewrite": [
@@ -556,7 +598,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise2_scale4x",
@@ -566,6 +610,7 @@
       "offset": 32,
       "blend_size": 16,
       "source_sha256": "4208071a78b033fb4d060ede560f80ee6733c3b5a36b822b3cca250f028ff73f",
+      "pad_sha256": "c35eecec67133516e073af06b5971c9fcc5da2d5338c249de9fc19c1449765be",
       "sha256": "c35eecec67133516e073af06b5971c9fcc5da2d5338c249de9fc19c1449765be",
       "size": 18905795,
       "rewrite": [
@@ -599,7 +644,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/noise3_scale4x",
@@ -609,6 +656,7 @@
       "offset": 32,
       "blend_size": 16,
       "source_sha256": "78208abf4d00a913969c8de30cb45d572a76b43b046c1d48a9c9aff78e69a12a",
+      "pad_sha256": "b849a9f35234174fbe59c984711a5854389fb820b9a807ef4c638423468f84ee",
       "sha256": "b849a9f35234174fbe59c984711a5854389fb820b9a807ef4c638423468f84ee",
       "size": 18905795,
       "rewrite": [
@@ -642,7 +690,9 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     },
     {
       "id": "swin_unet/art/scale4x",
@@ -652,6 +702,7 @@
       "offset": 32,
       "blend_size": 16,
       "source_sha256": "b3a03d52fb71c86485f354aa07236c2c8ecdd6615d84cbc446e23c43d056b68a",
+      "pad_sha256": "e31ec8d89f1443327c205b5d7f0689f37da5d073814dc229dd9a6e4232d36cb5",
       "sha256": "e31ec8d89f1443327c205b5d7f0689f37da5d073814dc229dd9a6e4232d36cb5",
       "size": 18905795,
       "rewrite": [
@@ -685,7 +736,451 @@
           }
         }
       ],
-      "pad_nodes_untouched": 14
+      "pad_nodes_untouched": 14,
+      "reshape_allowzero_cleared": 0,
+      "reshape_allowzero_dynamic_kept": 0
     }
-  ]
+  ],
+  "v3_pending": {
+    "status": "PENDING - P2 moves these into \"models\"; the source URL is filled in after the Release exists",
+    "source": {
+      "project": "nagadomi/nunif",
+      "commit": "0d3d92c",
+      "exported_with": "torch 2.14.1+cpu, onnx 1.23.2, onnxscript 0.7.2",
+      "url": "",
+      "zip_name": "waifu2x-swin_unet_v3-art-onnx-nunif-0d3d92c.zip",
+      "zip_sha256": "a1af80553b636e8aaea86a1eb956c18f9291f77e2c3a4774fc02c17a0da40cec",
+      "path_in_zip": "swin_unet_v3/art/",
+      "license": "MIT"
+    },
+    "tile_rule": "T >= 64 and T % 32 == 0",
+    "alpha": {
+      "scale2x_alpha_model": "swin_unet_v3/art/scale2x"
+    },
+    "models": [
+      {
+        "id": "swin_unet_v3/art/noise0",
+        "file": "swin_unet_v3/art/noise0.onnx",
+        "scale": 1,
+        "noise_level": 0,
+        "offset": 8,
+        "blend_size": 4,
+        "source_sha256": "b1a1b76885eace2aaf3182eecf2c6966806a42bb79c466b1971378dfbb0238bd",
+        "source_size": 15347402,
+        "pad_sha256": "39ff920bb0982df20207c488e213b793d18f7b95cd388b555c54ad91a7d78b95",
+        "sha256": "3873e4ff2c42759e2e5679ee6fb5f17aca217998ffd6b418a84142881dc53395",
+        "size": 15346868,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -8,
+              -8,
+              0,
+              0,
+              -8,
+              -8
+            ],
+            "slice": {
+              "starts": [
+                8,
+                8
+              ],
+              "ends": [
+                -8,
+                -8
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise1",
+        "file": "swin_unet_v3/art/noise1.onnx",
+        "scale": 1,
+        "noise_level": 1,
+        "offset": 8,
+        "blend_size": 4,
+        "source_sha256": "a138dd06f46655a28b002a89eb68b82ee1eb0004e3e7b6edf8cf011b73e7506c",
+        "source_size": 15347402,
+        "pad_sha256": "7ff6b0f8fdda18fbc4fbb449ac680191630e97d8915b59ce03d66be8d8e54488",
+        "sha256": "f9be2137716a4b4c254d6dbe24b262128a7f5b7733a390af483f7cf74b8bd3ce",
+        "size": 15346868,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -8,
+              -8,
+              0,
+              0,
+              -8,
+              -8
+            ],
+            "slice": {
+              "starts": [
+                8,
+                8
+              ],
+              "ends": [
+                -8,
+                -8
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise2",
+        "file": "swin_unet_v3/art/noise2.onnx",
+        "scale": 1,
+        "noise_level": 2,
+        "offset": 8,
+        "blend_size": 4,
+        "source_sha256": "7e58a672e7435d55624b806827cb26dea76582f751df0090f6e23fcf75e714bd",
+        "source_size": 15347402,
+        "pad_sha256": "1c01d43bd6096e6977205c2819c5237d35654de3f84f8c847fd520bf27b9794c",
+        "sha256": "b9a1283bbe4f86b7dfa7a67f2a7adb8094fb39ce1a7d71d6e507e2b28e9f9c18",
+        "size": 15346868,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -8,
+              -8,
+              0,
+              0,
+              -8,
+              -8
+            ],
+            "slice": {
+              "starts": [
+                8,
+                8
+              ],
+              "ends": [
+                -8,
+                -8
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise3",
+        "file": "swin_unet_v3/art/noise3.onnx",
+        "scale": 1,
+        "noise_level": 3,
+        "offset": 8,
+        "blend_size": 4,
+        "source_sha256": "2b4ab504e84599729e58bec8b8c9cb5a50046523389612e52385c6ce239445fe",
+        "source_size": 15347402,
+        "pad_sha256": "22e342a57c390f03079185bcf9f84354686989a18bdd9c07412a9d8daa45d997",
+        "sha256": "f40f2bda9e1a979a9ca5bbe999a6bed83f9b349799a35253ebdf4055c94679d7",
+        "size": 15346868,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -8,
+              -8,
+              0,
+              0,
+              -8,
+              -8
+            ],
+            "slice": {
+              "starts": [
+                8,
+                8
+              ],
+              "ends": [
+                -8,
+                -8
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise0_scale2x",
+        "file": "swin_unet_v3/art/noise0_scale2x.onnx",
+        "scale": 2,
+        "noise_level": 0,
+        "offset": 16,
+        "blend_size": 8,
+        "source_sha256": "a7d6095b55c2f28d272559637934f2d97e656dce4fe6790105d70935a825b36f",
+        "source_size": 16794390,
+        "pad_sha256": "30a74f444818001c52e51b9c00c8c4302e4ef2ae0772c0be7f97db746b39517a",
+        "sha256": "d7c5c524724e5eecde0df82226b2a772b25cbeadf5c3dbef3639a0bfbd9c4b36",
+        "size": 16793851,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -16,
+              -16,
+              0,
+              0,
+              -16,
+              -16
+            ],
+            "slice": {
+              "starts": [
+                16,
+                16
+              ],
+              "ends": [
+                -16,
+                -16
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise1_scale2x",
+        "file": "swin_unet_v3/art/noise1_scale2x.onnx",
+        "scale": 2,
+        "noise_level": 1,
+        "offset": 16,
+        "blend_size": 8,
+        "source_sha256": "b65708769207dd1cfbdbd95a09dc16f8ffb1ea0d4ffd70d8c0b85aeb38fd6dec",
+        "source_size": 16794390,
+        "pad_sha256": "fcda4a7addb78ae571d133067abd9aaa4ddd5cb2ba11bb729b83b46e1f977512",
+        "sha256": "28944c27b398bdd831f36cf2aac3632cd7d65c07c836a2f17b02488be7007be9",
+        "size": 16793851,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -16,
+              -16,
+              0,
+              0,
+              -16,
+              -16
+            ],
+            "slice": {
+              "starts": [
+                16,
+                16
+              ],
+              "ends": [
+                -16,
+                -16
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise2_scale2x",
+        "file": "swin_unet_v3/art/noise2_scale2x.onnx",
+        "scale": 2,
+        "noise_level": 2,
+        "offset": 16,
+        "blend_size": 8,
+        "source_sha256": "93b2dd00f4ed4fae22decd766e54b2f822bfa521c14699c2fcc0c04b88637b6b",
+        "source_size": 16794390,
+        "pad_sha256": "53e374953a09850250e7631a61097eec9fe7029f3f18fb410368323fa093263a",
+        "sha256": "e7c9a863696b1c70297a840967b49b3324cb91678478f09849eca69d40eb8c3a",
+        "size": 16793851,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -16,
+              -16,
+              0,
+              0,
+              -16,
+              -16
+            ],
+            "slice": {
+              "starts": [
+                16,
+                16
+              ],
+              "ends": [
+                -16,
+                -16
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/noise3_scale2x",
+        "file": "swin_unet_v3/art/noise3_scale2x.onnx",
+        "scale": 2,
+        "noise_level": 3,
+        "offset": 16,
+        "blend_size": 8,
+        "source_sha256": "2305dd8e3f1f4de20511efadf39cf478dcc9bb5994af0e9e85abf1f11bd87b2a",
+        "source_size": 16794390,
+        "pad_sha256": "db05a7a999b4e4df76ae157ff91e5672ac28adf5abe9269a662b5a47bc1a8e8d",
+        "sha256": "61ca574c4ca13088026afbd4f246120396802953ffa35abddb33d0cc7da62c4e",
+        "size": 16793851,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -16,
+              -16,
+              0,
+              0,
+              -16,
+              -16
+            ],
+            "slice": {
+              "starts": [
+                16,
+                16
+              ],
+              "ends": [
+                -16,
+                -16
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      },
+      {
+        "id": "swin_unet_v3/art/scale2x",
+        "file": "swin_unet_v3/art/scale2x.onnx",
+        "scale": 2,
+        "noise_level": -1,
+        "offset": 16,
+        "blend_size": 8,
+        "source_sha256": "12ff33ed8456e69d95a29e4ccd7edfade4414b5a8833239cf4faf908277cf5cf",
+        "source_size": 16794390,
+        "pad_sha256": "c625627147e2900847fed57551cecb746de29025d620b23b1c7b949470cd744d",
+        "sha256": "ccd3691c0aac2a3bace69d9e43a7fe2a297250b721d6095b046dd0881ca8d725",
+        "size": 16793851,
+        "rewrite": [
+          {
+            "name": "node_pad_20",
+            "kind": "static",
+            "action": "Slice",
+            "pads": [
+              0,
+              0,
+              -16,
+              -16,
+              0,
+              0,
+              -16,
+              -16
+            ],
+            "slice": {
+              "starts": [
+                16,
+                16
+              ],
+              "ends": [
+                -16,
+                -16
+              ],
+              "axes": [
+                2,
+                3
+              ]
+            }
+          }
+        ],
+        "pad_nodes_untouched": 20,
+        "reshape_allowzero_cleared": 105,
+        "reshape_allowzero_dynamic_kept": 25
+      }
+    ]
+  }
 }

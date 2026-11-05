@@ -7,7 +7,7 @@
 #   -Stage illegal : illegal tiles on DML + CPU: error or silent wrong output?
 #   -Stage cancel  : SetTerminate() on DML
 #   -Stage rawpad  : allowzero fix only (Pad not rewritten) on DML: is the Pad rewrite still needed?
-#   -Stage azfix   : EXPERIMENT fix_reshape_allowzero.py on top of the rewritten models (models-az)
+#   -Stage azfix   : fix_reshape_allowzero.py on top of the rewritten models (models-az)
 #   -Stage bitwise : original vs rewritten + allowzero fix, CPU, must be bit-identical
 #   -Stage oldgraph: 20250502 rewritten 4x graphs on this runtime vs PyTorch + timing
 #   -Stage image   : whole images through tile_runner vs the nunif CLI

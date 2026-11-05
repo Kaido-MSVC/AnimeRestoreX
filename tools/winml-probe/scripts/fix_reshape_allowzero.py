@@ -1,5 +1,6 @@
-"""EXPERIMENT (P1 redo, dev only; not part of the decided rewrite pipeline):
-clear allowzero on Reshape nodes whose static shape contains -1 and no 0.
+"""Second step of the model pipeline (rewrite_pad.py -> this script; models/manifest.json
+"pipeline", tools/fetch-models.ps1). Dev only. Clears allowzero on Reshape nodes whose static
+shape contains -1 and no 0.
 
   python -I fix_reshape_allowzero.py <in.onnx> <out.onnx> [--report report.json]
 

@@ -1,4 +1,5 @@
-"""Builds the draft models/manifest.json from the rewrite_pad.py per-model reports.
+"""Builds the first draft of models/manifest.json from the rewrite_pad.py per-model reports.
+Historical: the pipeline fields now come from update_manifest_pipeline.py.
 
   python -I make_manifest.py <rewritten dir> <out manifest.json>
 """
