@@ -26,7 +26,7 @@ const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
 const QString kTileKey = QStringLiteral("v2/inference/tileSize");
 const QString kDeviceKey = QStringLiteral("v2/inference/device");
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
-const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // 2.0 RC1; removed by schema 2
+const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // early 2.0 test builds; removed by schema 2
 
 // "v2/progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
 // are replaced in the device name.

@@ -1,7 +1,7 @@
 # Builds AnimeRestoreX from a clean build folder, assembles a fresh staging folder from an
 # explicit allowlist, checks it, writes MANIFEST.txt, zips it and writes SHA256SUMS.
 #
-#   pwsh -File tools/package.ps1 [-Suffix rc1] [-IncludeModels] [-SkipBuild]
+#   pwsh -File tools/package.ps1 [-Suffix <tag>] [-IncludeModels] [-SkipBuild]
 #
 # Nothing is taken from build\ or dist\: the release is configured and built in
 # .package\build (deleted first), the staging folder is .package\stage (deleted first).

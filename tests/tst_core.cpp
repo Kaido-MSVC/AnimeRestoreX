@@ -534,7 +534,7 @@ void TestCore::settingsMigrateFromSchema1()
         QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
     QCOMPARE(raw.value(QStringLiteral("v2/schema")).toInt(), AppSettings::kSchema);
 
-    // 2.0 RC1 settings (schema 1): tile 400 becomes 352 once, the agreement key goes, the rest stays.
+    // Early 2.0 test-build settings (schema 1): tile 400 becomes 352 once, the agreement key goes, the rest stays.
     raw.clear();
     raw.setValue(QStringLiteral("v2/schema"), 1);
     raw.setValue(QStringLiteral("v2/inference/tileSize"), 400);

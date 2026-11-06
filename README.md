@@ -4,9 +4,6 @@ Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using the waifu2x swin_unet_v3 and swin_unet models (nagadomi/nunif,
 ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
 
-> This branch is v2.0 (not released yet). The latest release, v1.2, still uses
-> waifu2x-ncnn-vulkan; its requirements are listed under "Download".
-
 ## Features
 
 - AI denoising without upscaling (1x) and 2x upscaling with waifu2x swin_unet_v3/art,
@@ -26,12 +23,13 @@ The changes in each version are listed on the [Releases page](https://github.com
 
 Download the latest version from the
 [Releases page](https://github.com/Kaido-MSVC/AnimeRestoreX/releases/latest):
-take `AnimeRestoreX-<version>-win64.zip`, extract the entire archive, then run
-`AnimeRestoreX.exe` (no installation). To check the download, compare its
-SHA256 with `SHA256SUMS.txt` attached to the same release.
+take `AnimeRestoreX-<version>-win64-with-models.zip`, extract the entire archive,
+then run `AnimeRestoreX.exe` (no installation; the AI models are included). To check
+the download, compare its SHA256 with `SHA256SUMS-<package name>.txt` attached to the
+same release. The executable is unsigned.
 
-v1.2 requires Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a
-compatible driver. The executable is unsigned.
+v1.2 and older stay on the Releases page; they use waifu2x-ncnn-vulkan and need
+Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a compatible driver.
 
 ## System requirements (v2.0)
 
@@ -75,9 +73,11 @@ Theme: `src/ui/Theme.cpp` (tokens + style sheet). The chevron images in
 ## Release package
 
 ```powershell
-pwsh -File tools/package.ps1 -Suffix rc1                 # dist/AnimeRestoreX-<ver>-rc1-win64.zip (no models)
-pwsh -File tools/package.ps1 -Suffix rc1 -IncludeModels  # + the 14 models; INTERNAL while their licence is unresolved
+pwsh -File tools/package.ps1                  # dist/AnimeRestoreX-<ver>-win64.zip (no models)
+pwsh -File tools/package.ps1 -IncludeModels   # dist/AnimeRestoreX-<ver>-win64-with-models.zip (the 14 models)
 ```
+
+`-Suffix <tag>` adds a test-build tag to the package name and to `MANIFEST.txt`.
 
 The script configures and builds a clean Release in `.package/build` (tests off),
 assembles a fresh staging folder from an explicit allowlist (nothing is taken from
