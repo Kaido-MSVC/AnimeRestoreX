@@ -384,13 +384,14 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     opt.fallbackTile = job.tile.fallbackTile;
     opt.maxOutputPixels = quint64(limits::kMaxOutputPixels);
     opt.cancel = &cancel;
-    int lastAttempt = 1;
+    opt.beforeRetry = [&] {
+        if (progress.retrying)
+            progress.retrying(job.tile.fallbackTile);
+        // BackendEngine keeps no session pointer: the next Run creates new sessions and with
+        // them a new GPU device, once the runtime holds no reference to the old one.
+        backend.releaseAll();
+    };
     opt.progress = [&](const core::Progress &p) {
-        if (p.attempt != lastAttempt) {
-            lastAttempt = p.attempt;
-            if (progress.retrying)
-                progress.retrying(job.tile.fallbackTile);
-        }
         if (progress.stageFraction && p.totalPixels > 0)
             progress.stageFraction(double(p.donePixels) / double(p.totalPixels));
     };
@@ -403,24 +404,22 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
                                               job.alphaModel ? &alphaParams : nullptr,
                                               job.alphaModel ? &alphaEngine : nullptr, opt, out, &stats);
     input = QImage();
-    tileUsed = stats.tileUsed ? stats.tileUsed : (stats.attempts > 1 ? job.tile.fallbackTile : job.tile.tile);
+    const bool retried = stats.firstAttemptError.kind != core::ErrorKind::None;
+    tileUsed = stats.tileUsed ? stats.tileUsed : (retried ? job.tile.fallbackTile : job.tile.tile);
     if (!s.ok()) {
         // A CPU Run aborted by SetTerminate fails with an engine error: it is a cancel.
         if (s.kind == core::ErrorKind::Cancelled || cancel.load())
             return canceled();
         engineDetail = statusDiagnostics(s);
-        if (stats.firstAttemptError.kind != core::ErrorKind::None)
+        if (retried)
             engineDetail += QStringLiteral(" (after ") + statusDiagnostics(stats.firstAttemptError) +
                             QStringLiteral(" at tile %1)").arg(job.tile.tile);
         ItemResult r;
         switch (s.kind) {
         case core::ErrorKind::OutOfMemory:
-            r = fail(job.tile.allowOomRetry
-                         ? tr("Not enough GPU memory to process this image, even with the smaller tile size %1.")
-                               .arg(tileUsed)
-                         : tr("Not enough GPU memory to process this image with tile size %1. Choose a "
-                              "smaller tile size or Auto in the settings.")
-                               .arg(tileUsed));
+            r = fail(tr("Not enough GPU memory to process this image with tile size %1. Choose a "
+                        "smaller tile size or Auto in the settings.")
+                         .arg(tileUsed));
             r.resetEngine = true;  // release the sessions before the next image
             break;
         case core::ErrorKind::SizeOverflow:
@@ -434,6 +433,19 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
             r.fatal = true;
             r.resetEngine = true;
             break;
+        }
+        // The batch's single recovery is used up: stop here, never start a retry loop.
+        const bool gpuFailure = s.kind == core::ErrorKind::OutOfMemory || s.kind == core::ErrorKind::DeviceLost ||
+                                s.kind == core::ErrorKind::EngineFailure;
+        if (retried || (job.recovered && gpuFailure)) {
+            if (gpuFailure)
+                r = fail(tr("The GPU still failed after the AI engine was restarted, at tile size %1 "
+                            "(error %2). Choose a smaller tile size or the CPU in the settings, then "
+                            "try again.")
+                             .arg(tileUsed)
+                             .arg(s.hresult ? hex(s.hresult) : QString::fromLatin1(core::errorKindName(s.kind))));
+            r.fatal = true;
+            r.resetEngine = true;
         }
         r.tileUsed = 0;
         return r;

@@ -341,10 +341,12 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
             return s;
         }
         out.clear();
-        // Only an explicit OOM may restart, once, with the fallback tile, from a clean state.
-        // Device errors (DeviceLost) are never retried here: the engine is untrusted.
-        if (s.kind == ErrorKind::OutOfMemory && opt.allowOomRetry && attempt == 1 && tile != opt.fallbackTile) {
+        // Only an explicit OOM or a lost device may restart, once, with the fallback tile, from a
+        // clean state. The engine that failed is unusable: beforeRetry must release it.
+        const bool recoverable = s.kind == ErrorKind::OutOfMemory || s.kind == ErrorKind::DeviceLost;
+        if (recoverable && opt.allowOomRetry && attempt == 1 && tile != opt.fallbackTile) {
             st.firstAttemptError = s;
+            if (opt.beforeRetry) opt.beforeRetry();
             tile = opt.fallbackTile;
             continue;
         }

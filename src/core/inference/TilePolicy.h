@@ -1,6 +1,7 @@
 // Tile size and session scheduling for a job (docs/v2.0-P2報告.md §9, docs/v2.0-P2重做報告.md):
-//  - Auto = 256; 160 only when the GPU memory budget is too small for 256, or once per image
-//    after an explicit out-of-memory error (TileProcessor restarts that image from scratch).
+//  - Auto = 256; 160 when the GPU memory budget is too small for 256, or after an explicit
+//    out-of-memory or device-lost error: the sessions are rebuilt, TileProcessor restarts that
+//    image from scratch, and the rest of the batch stays on 160. One recovery per batch.
 //  - Manual 160 / 256 / 352 / 448: used as is, never retried with another size. These four are
 //    legal for both model families.
 //  - 640 and above are not offered (6 GB GTX 1060: device hung at 4x).
@@ -35,7 +36,7 @@ enum class TileReason {
 
 struct TileDecision {
     int tile = kAutoTile;
-    bool allowOomRetry = true;   // Auto at 256 on the GPU: one restart at 160 after OOM
+    bool allowOomRetry = true;   // Auto at 256: one restart at 160 after OOM or a lost device
     int fallbackTile = kFallbackTile;
     bool alphaTogether = true;   // RGB and alpha sessions may be open at the same time
     TileReason reason = TileReason::Auto;

@@ -69,6 +69,13 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backe
             ++s.succeeded;
             if (r.tileChoice == TileChoice::SmallerForVram || r.tileChoice == TileChoice::OomRetry)
                 ++s.smallerTile;
+            if (r.tileChoice == TileChoice::OomRetry) {
+                // Recovered: stay on the rebuilt sessions and the fallback tile, no second retry.
+                job.tile.tile = job.tile.fallbackTile;
+                job.tile.allowOomRetry = false;
+                job.tile.reason = core::TileReason::AutoVram;
+                job.recovered = true;
+            }
             continue;
         }
         ++s.failed;

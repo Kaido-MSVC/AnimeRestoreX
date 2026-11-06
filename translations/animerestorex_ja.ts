@@ -484,12 +484,12 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>（タイル %1：256 には GPU メモリが不足）</translation>
     </message>
     <message>
-        <source> (tile %1: redone after running out of GPU memory)</source>
-        <translation>（タイル %1：GPU メモリ不足のため再処理）</translation>
+        <source> (tile %1: redone after a GPU error)</source>
+        <translation>（タイル %1：GPU エラーのため再処理）</translation>
     </message>
     <message>
-        <source>AI processing again with tile size %1 (out of GPU memory)</source>
-        <translation>タイルサイズ %1 で AI 処理をやり直し中（GPU メモリ不足）</translation>
+        <source>AI processing again with tile size %1 (after a GPU error)</source>
+        <translation>タイルサイズ %1 で AI 処理をやり直し中（GPU エラー）</translation>
     </message>
     <message>
         <source>AI processing (tile size %1: GPU memory is short)</source>
@@ -508,8 +508,8 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>タイルサイズ 256 には GPU メモリが不足しています。今回の処理はタイルサイズ %1 を使用します。</translation>
     </message>
     <message>
-        <source>Not enough GPU memory: processing %1 again with tile size %2...</source>
-        <translation>GPU メモリ不足：%1 をタイルサイズ %2 で再処理しています…</translation>
+        <source>GPU error: processing %1 again with tile size %2...</source>
+        <translation>GPU エラー：%1 をタイルサイズ %2 で再処理しています…</translation>
     </message>
     <message>
         <source>Canceling: finishing the encoding of the current file...</source>
@@ -785,8 +785,8 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>画像の変換中にメモリが不足しました。</translation>
     </message>
     <message>
-        <source>Not enough GPU memory to process this image, even with the smaller tile size %1.</source>
-        <translation>小さいタイルサイズ %1 でも、この画像を処理するための GPU メモリが不足しています。</translation>
+        <source>The GPU still failed after the AI engine was restarted, at tile size %1 (error %2). Choose a smaller tile size or the CPU in the settings, then try again.</source>
+        <translation>AI エンジンを再起動した後も、タイルサイズ %1 で GPU エラーが発生しました（エラー %2）。設定で小さいタイルサイズか CPU を選んで、もう一度お試しください。</translation>
     </message>
     <message>
         <source>Not enough GPU memory to process this image with tile size %1. Choose a smaller tile size or Auto in the settings.</source>

@@ -59,14 +59,17 @@ Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePl
 struct Progress {
     uint64_t donePixels = 0, totalPixels = 0;  // effective output pixels (all passes)
     int tilesDone = 0, tilesTotal = 0;
-    int attempt = 1;                           // 2 after an OOM restart
+    int attempt = 1;                           // 2 after a restart with the fallback tile
     int pass = 0;                              // 0 = RGB, 1 = alpha
 };
 
 struct ProcessOptions {
     int tile = 256;
-    bool allowOomRetry = true;   // Auto tile: one restart with fallbackTile on explicit OOM
+    bool allowOomRetry = true;   // Auto tile: one restart with fallbackTile on OOM or a lost device
     int fallbackTile = 160;
+    // Runs once, right before that restart. Must release the sessions: after either error the
+    // D3D device is unusable, and the same session fails with 887A0006 (P2 redo report §4.4).
+    std::function<void()> beforeRetry;
     uint64_t maxOutputPixels = 75'000'000;  // plan §8.1 independent output guard
     const std::atomic<bool>* cancel = nullptr;  // checked before every tile
     std::function<void(const Progress&)> progress;  // after every tile
@@ -77,7 +80,7 @@ struct ProcessStats {
     int attempts = 0;
     int tilesRun = 0;            // Runs in the successful attempt (both passes)
     bool alphaPassed = false;    // a non-blank alpha went through the alpha model
-    Status firstAttemptError;    // the OOM that caused a restart, if any
+    Status firstAttemptError;    // the error that caused a restart, if any
 };
 
 // Waifu2x.convert (waifu2x/utils.py:261-311) for one 8-bit image:

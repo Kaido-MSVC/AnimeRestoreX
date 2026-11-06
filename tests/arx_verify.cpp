@@ -5,8 +5,15 @@
 //
 //   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu]]]... FILE...
 //              [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]
+//              [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]
 //   FORMAT: png | jpeg | webp | webpl (lossless). Jobs run in order over all files,
 //   in one process with one EngineHost (sessions are released after every job).
+//
+//   --force-oom-tile T: the first Run of each job really runs tile T on the real session
+//   (T is not an offered size, so this cannot go through the job options) and its real error
+//   goes back to the unchanged job code. --force-device-lost then Runs the damaged session once
+//   more and returns that error instead (887A0006). --fail-recovery simulates a failure of the
+//   session rebuild (887A0006) or of the first Run after it (8007000E).
 #include "core/BatchRunner.h"
 #include "core/ProcessJob.h"
 #include "core/inference/EngineHost.h"
@@ -70,13 +77,105 @@ bool parseJob(const QString &text, const QString &outDir, JobSpec &s)
     return true;
 }
 
+// Fault injection around the real backend; see --force-oom-tile above.
+class FaultBackend final : public core::Backend {
+public:
+    FaultBackend(core::EngineHost &host, int oomTile, bool deviceLost, QString failRecovery)
+        : m_host(host), m_engine(*this), m_oomTile(oomTile), m_deviceLost(deviceLost),
+          m_failRecovery(std::move(failRecovery)) {}
+
+    int sessionsAtRebuild = -1;  // EngineHost::sessionCount() when the first new session was requested
+    QString forcedErrors;        // what the real session returned
+
+    core::Status runtimeReady() override { return m_host.runtimeReady(); }
+    core::Status ready() override { return m_host.ready(); }
+    const core::ModelContract &contract() const override { return m_host.contract(); }
+    core::Status verify(const core::ModelInfo &m) override { return m_host.verify(m); }
+    core::Status beginJob(core::ExecutionDevice d, int n) override
+    {
+        m_armed = true;
+        m_tripped = m_redoFailed = false;
+        sessionsAtRebuild = -1;
+        return m_host.beginJob(d, n);
+    }
+    core::Status acquire(const core::ModelInfo &m, core::ITileEngine *&engine) override
+    {
+        if (m_tripped && sessionsAtRebuild < 0)
+            sessionsAtRebuild = m_host.sessionCount();
+        if (m_tripped && m_failRecovery == QLatin1String("rebuild")) {
+            engine = nullptr;
+            return core::Status::fail(core::ErrorKind::DeviceLost, "simulated: session rebuild failed", 0x887A0006);
+        }
+        core::Status s = m_host.acquire(m, m_real);
+        m_model = &m;
+        engine = &m_engine;
+        return s;
+    }
+    void releaseAll() override { m_host.releaseAll(); }
+    void requestTerminate() override { m_host.requestTerminate(); }
+    std::string deviceName(core::ExecutionDevice d) override { return m_host.deviceName(d); }
+    uint64_t availableVramMiB() override { return m_host.availableVramMiB(); }
+
+private:
+    struct Engine final : core::ITileEngine {
+        explicit Engine(FaultBackend &b) : backend(b) {}
+        FaultBackend &backend;
+        core::Status run(const float *in, int T, int outSide, std::vector<float> &out) override
+        {
+            return backend.run(in, T, outSide, out);
+        }
+    };
+
+    core::Status run(const float *in, int T, int outSide, std::vector<float> &out)
+    {
+        if (m_tripped && m_failRecovery == QLatin1String("redo") && !m_redoFailed) {
+            m_redoFailed = true;
+            return core::Status::fail(core::ErrorKind::OutOfMemory, "simulated: Run after the rebuild failed",
+                                      0x8007000E);
+        }
+        if (!m_armed || !m_oomTile)
+            return m_real->run(in, T, outSide, out);
+        m_armed = false;
+        m_tripped = true;
+        const core::TileParams p = core::ModelContract::tileParams(*m_model);
+        const std::vector<float> big(size_t(3) * m_oomTile * m_oomTile, 0.5f);
+        std::vector<float> ignored;
+        core::Status s = m_real->run(big.data(), m_oomTile, m_oomTile * p.scale - 2 * p.offset, ignored);
+        if (s.ok())
+            return core::Status::fail(core::ErrorKind::EngineFailure, "forced tile did not fail");
+        forcedErrors = QString::fromLatin1(core::errorKindName(s.kind)) + QLatin1Char(' ') +
+                       QString::number(s.hresult, 16);
+        if (m_deviceLost) {
+            // Tile 160 as in the P2 redo report §4.4: 256 on this session repeats 8007000E.
+            const std::vector<float> tile160(size_t(3) * 160 * 160, 0.5f);
+            core::Status second = m_real->run(tile160.data(), 160, 160 * p.scale - 2 * p.offset, ignored);
+            forcedErrors += QStringLiteral(", then ") + QString::fromLatin1(core::errorKindName(second.kind)) +
+                            QLatin1Char(' ') + QString::number(second.hresult, 16);
+            if (!second.ok())
+                return second;
+        }
+        return s;
+    }
+
+    core::EngineHost &m_host;
+    Engine m_engine;
+    core::ITileEngine *m_real = nullptr;
+    const core::ModelInfo *m_model = nullptr;
+    int m_oomTile;
+    bool m_deviceLost;
+    QString m_failRecovery;
+    bool m_armed = false, m_tripped = false, m_redoFailed = false;
+};
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QString outDir, jsonPath, cancelAt;
-    int cancelItem = 0, cancelDelayMs = 0;
+    int cancelItem = 0, cancelDelayMs = 0, forceOomTile = 0;
+    bool forceDeviceLost = false;
+    QString failRecovery;
     QStringList jobs, files;
     const QStringList args = app.arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -88,11 +187,15 @@ int main(int argc, char **argv)
         else if (a == QLatin1String("--cancel-at")) cancelAt = next();
         else if (a == QLatin1String("--cancel-item")) cancelItem = next().toInt();
         else if (a == QLatin1String("--cancel-delay-ms")) cancelDelayMs = next().toInt();
+        else if (a == QLatin1String("--force-oom-tile")) forceOomTile = next().toInt();
+        else if (a == QLatin1String("--force-device-lost")) forceDeviceLost = true;
+        else if (a == QLatin1String("--fail-recovery")) failRecovery = next();
         else files << a;
     }
     if (outDir.isEmpty() || jsonPath.isEmpty() || files.isEmpty()) {
         std::fputs("usage: arx_verify --out DIR --json LOG [--job S:N:FMT[:TILE[:cpu]]]... FILE...\n"
-                   "       [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]\n", stderr);
+                   "       [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]\n"
+                   "       [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]\n", stderr);
         return 64;
     }
     if (jobs.isEmpty())
@@ -116,6 +219,7 @@ int main(int argc, char **argv)
           {QStringLiteral("private_mib"), privateStart}});
     core::EngineHost host(QDir::toNativeSeparators(appDir.path()).toStdWString(), ARX_ORT_VERSION,
                           QDir::toNativeSeparators(appDir.filePath(QStringLiteral("models"))).toStdWString());
+    FaultBackend backend(host, forceOomTile, forceDeviceLost, failRecovery);
 
     using Clock = std::chrono::steady_clock;
     int exitCode = 0;
@@ -184,7 +288,7 @@ int main(int argc, char **argv)
 
         QElapsedTimer jobTimer;
         jobTimer.start();
-        const BatchSummary s = runBatch(files, spec, host, cancel, cb);
+        const BatchSummary s = runBatch(files, spec, backend, cancel, cb);
         const auto returned = Clock::now();
         if (canceller.joinable())
             canceller.join();
@@ -198,6 +302,8 @@ int main(int argc, char **argv)
                       {QStringLiteral("fatal_error"), s.fatalError},
                       {QStringLiteral("smaller_tile"), s.smallerTile},
                       {QStringLiteral("retries"), int(retries.size())},
+                      {QStringLiteral("sessions_at_rebuild"), backend.sessionsAtRebuild},
+                      {QStringLiteral("forced_errors"), backend.forcedErrors},
                       {QStringLiteral("ms"), double(jobTimer.nsecsElapsed()) / 1e6},
                       {QStringLiteral("vram_mib"), double(host.availableVramMiB())},
                       // runBatch released every session before returning.

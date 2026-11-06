@@ -17,8 +17,8 @@ enum class ErrorKind {
     HashMismatch,       // model file SHA-256 differs from the manifest
     ModelNotFound,      // model id or file missing
     Cancelled,          // user cancel (checked between tiles; CPU Run may be terminated)
-    OutOfMemory,        // explicit E_OUTOFMEMORY from the runtime: the only retryable kind
-    DeviceLost,         // DXGI 887A0005/0006/0007/0020: engine untrusted, rebuild device
+    OutOfMemory,        // explicit E_OUTOFMEMORY from the runtime: rebuild sessions, one retry
+    DeviceLost,         // DXGI 887A0005/0006/0007/0020: rebuild sessions, one retry
     EngineFailure,      // any other runtime error
 };
 

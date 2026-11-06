@@ -188,11 +188,14 @@ static void testOomRetryAndDeviceLost() {
         Image8 out;
         ProcessOptions o;
         o.tile = 256;
+        int callsAtRebuild = -1;
+        o.beforeRetry = [&] { callsAtRebuild = e.calls; };
         ProcessStats st;
         Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out, &st);
         CHECK(s.ok());
         CHECK(st.attempts == 2 && st.tileUsed == 160 && st.firstAttemptError.kind == ErrorKind::OutOfMemory);
         CHECK(e.tiles[0] == 256 && e.tiles[1] == 256 && e.tiles[2] == 160);
+        CHECK(callsAtRebuild == 2);  // released after the failed Run, before any Run at 160
         CHECK(equalsNearest(in, out, 2, false));
     }
     {  // OOM twice -> fail after the single retry
@@ -207,8 +210,11 @@ static void testOomRetryAndDeviceLost() {
         } e(P2);
         Image8 out;
         ProcessOptions o;
+        int rebuilds = 0;
+        o.beforeRetry = [&] { ++rebuilds; };
         Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
         CHECK(s.kind == ErrorKind::OutOfMemory && e.calls == 2 && out.pixels.empty());
+        CHECK(rebuilds == 1);
     }
     {  // manual tile: no retry
         FakeEngine e(P2);
@@ -217,17 +223,41 @@ static void testOomRetryAndDeviceLost() {
         Image8 out;
         ProcessOptions o;
         o.allowOomRetry = false;
+        int rebuilds = 0;
+        o.beforeRetry = [&] { ++rebuilds; };
         Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::OutOfMemory && e.calls == 1);
+        CHECK(s.kind == ErrorKind::OutOfMemory && e.calls == 1 && rebuilds == 0);
     }
-    for (uint32_t hr : {0x887A0005u, 0x887A0006u, 0x887A0007u, 0x887A0020u}) {  // never retried
+    for (uint32_t hr : {0x887A0005u, 0x887A0006u, 0x887A0007u, 0x887A0020u}) {  // recovered like OOM
         FakeEngine e(P2);
         e.failAtCall = 2;
         e.failWith = Status::fail(ErrorKind::DeviceLost, "device", hr);
         Image8 out;
         ProcessOptions o;
+        int rebuilds = 0;
+        o.beforeRetry = [&] { ++rebuilds; };
+        ProcessStats st;
+        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out, &st);
+        CHECK(s.ok() && st.tileUsed == 160 && rebuilds == 1 && st.firstAttemptError.hresult == hr);
+    }
+    for (uint32_t hr : {0x887A0005u, 0x887A0006u, 0x887A0007u, 0x887A0020u}) {  // manual: no retry
+        FakeEngine e(P2);
+        e.failAtCall = 2;
+        e.failWith = Status::fail(ErrorKind::DeviceLost, "device", hr);
+        Image8 out;
+        ProcessOptions o;
+        o.allowOomRetry = false;
         Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
         CHECK(s.kind == ErrorKind::DeviceLost && s.hresult == hr && e.calls == 2 && out.pixels.empty());
+    }
+    {  // any other engine error: no retry
+        FakeEngine e(P2);
+        e.failAtCall = 1;
+        e.failWith = Status::fail(ErrorKind::EngineFailure, "engine");
+        Image8 out;
+        ProcessOptions o;
+        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
+        CHECK(s.kind == ErrorKind::EngineFailure && e.calls == 1);
     }
 }
 

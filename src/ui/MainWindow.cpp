@@ -221,7 +221,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_retryTile = tile;
         m_estimator.stageRestarted(index, m_clock.elapsed());
         if (QTreeWidgetItem *item = m_jobItems.value(index))
-            m_status->setText(tr("Not enough GPU memory: processing %1 again with tile size %2...")
+            m_status->setText(tr("GPU error: processing %1 again with tile size %2...")
                                   .arg(item->text(ColFile))
                                   .arg(tile));
         refreshProgress();
@@ -1049,7 +1049,7 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
         if (r.tileChoice == arx::TileChoice::SmallerForVram)
             detail += tr(" (tile %1: not enough GPU memory for 256)").arg(r.tileUsed);
         else if (r.tileChoice == arx::TileChoice::OomRetry)
-            detail += tr(" (tile %1: redone after running out of GPU memory)").arg(r.tileUsed);
+            detail += tr(" (tile %1: redone after a GPU error)").arg(r.tileUsed);
         setItemState(item, ItemState::Done, detail);
     } else if (r.canceled) {
         setItemState(item, ItemState::NotProcessed, tr("Canceled"));
@@ -1083,7 +1083,7 @@ QString MainWindow::stageText(const arx::ProgressSnapshot &snap) const
         return tr("Reading");
     case arx::Stage::Inference:
         if (m_retryTile)
-            return tr("AI processing again with tile size %1 (out of GPU memory)").arg(m_retryTile);
+            return tr("AI processing again with tile size %1 (after a GPU error)").arg(m_retryTile);
         if (m_vramTile)
             return tr("AI processing (tile size %1: GPU memory is short)").arg(m_vramTile);
         if (snap.passCount > 1)

@@ -20,6 +20,7 @@ struct PreparedJob {
     core::TileDecision tile;
     QString deviceName;      // as the backend names it (GPU description or "CPU")
     quint64 vramMiB = 0;     // budget seen when the job started (0 = unknown / CPU)
+    bool recovered = false;  // the batch already rebuilt its sessions: the next GPU failure stops it
 };
 
 // What progressPlan() needs to know about the prepared job to group measured speeds:

@@ -35,6 +35,7 @@ struct Script {
     std::atomic_bool *cancel = nullptr;
     int cancelAtCall = -1;             // sets *cancel during that Run
     std::vector<int> tiles;            // tile of every Run
+    int failAtCall2 = -1;              // second failure, same error
 };
 
 // Nearest-neighbour upscale of the tile, as a model with the manifest's scale / offset would.
@@ -46,7 +47,7 @@ struct FakeEngine : core::ITileEngine {
     {
         ++script.calls;
         script.tiles.push_back(T);
-        if (script.calls == script.failAtCall) {
+        if (script.calls == script.failAtCall || script.calls == script.failAtCall2) {
             out.clear();
             return script.failWith;
         }
@@ -75,12 +76,14 @@ public:
     std::string badHashId;     // verify() fails for this model
     uint64_t vramMiB = 6000;
     Script script;
+    core::Status rebuildFailure;   // acquire() after the first releaseAll() fails with this
 
     // Observations.
     int releases = 0;
     int terminates = 0;
     int beginJobs = 0;
     int maxSessions = 0;
+    int sessionsCreated = 0;
     core::ExecutionDevice device = core::ExecutionDevice::Dml;
     std::vector<std::string> acquired;
 
@@ -103,7 +106,12 @@ public:
     core::Status acquire(const core::ModelInfo &m, core::ITileEngine *&engine) override
     {
         acquired.push_back(m.id);
+        engine = nullptr;
+        if (releases > 0 && !rebuildFailure.ok())
+            return rebuildFailure;
         auto &e = m_sessions[m.id];
+        if (!e)
+            ++sessionsCreated;
         if (!e)
             e = std::make_unique<FakeEngine>(core::ModelContract::tileParams(m), script);
         engine = e.get();
@@ -149,8 +157,12 @@ private slots:
     void runtimeMissingStops();
     void cancelDuringInference();
     void oomRetriesWithSmallerTile();
+    void deviceLostRecoversWithSmallerTile();
+    void recoveryFailureStopsBatch_data();
+    void recoveryFailureStopsBatch();
+    void failureAfterRecoveryStopsBatch();
     void oomManualTileFailsItemOnly();
-    void deviceLostStopsBatch();
+    void deviceLostManualTileStopsBatch();
     void smallGpuBudgetUses160();
     void cpuDevice();
     void batchMixedContinuesAfterFailure();
@@ -443,14 +455,108 @@ void TestPipeline::oomRetriesWithSmallerTile()
     std::atomic_bool cancel{false};
     const BatchSummary s = runBatch({m_big, m_opaque}, spec(OutputFormat::Png, 2), b, cancel, cb);
     QCOMPARE(s.succeeded, 2);
-    QCOMPARE(s.smallerTile, 1);
+    QCOMPARE(s.smallerTile, 2);
     QCOMPARE(retries, (QList<QPair<int, int>>{{0, 160}}));
     QCOMPARE(results[0].tileUsed, 160);
     QCOMPARE(results[0].tileChoice, TileChoice::OomRetry);
-    QCOMPARE(results[1].tileUsed, 256);   // the next image starts at 256 again
-    QCOMPARE(results[1].tileChoice, TileChoice::Default);
+    QCOMPARE(results[1].tileUsed, 160);   // the rest of the batch stays on the fallback tile
+    QCOMPARE(results[1].tileChoice, TileChoice::SmallerForVram);
     QCOMPARE(b.script.tiles.front(), 256);
-    QCOMPARE(b.script.tiles[1], 160);
+    for (size_t i = 1; i < b.script.tiles.size(); ++i)
+        QCOMPARE(b.script.tiles[i], 160);
+    QCOMPARE(b.sessionsCreated, 2);       // rebuilt once, then reused by the next image
+}
+
+void TestPipeline::deviceLostRecoversWithSmallerTile()
+{
+    FakeBackend b;
+    b.script.failAtCall = 2;
+    b.script.failWith = core::Status::fail(core::ErrorKind::DeviceLost, "DXGI_ERROR_DEVICE_HUNG", 0x887A0006);
+    int releasesAtRetry = -1;
+    QList<ItemResult> results;
+    BatchCallbacks cb;
+    cb.retrying = [&](int, int) { releasesAtRetry = b.releases; };
+    cb.itemFinished = [&](int, const ItemResult &r) { results << r; };
+    std::atomic_bool cancel{false};
+    const BatchSummary s = runBatch({m_big, m_opaque}, spec(OutputFormat::Png, 2), b, cancel, cb);
+    QCOMPARE(s.succeeded, 2);
+    QVERIFY(s.fatalError.isEmpty());
+    QCOMPARE(releasesAtRetry, 0);
+    QCOMPARE(b.sessionsCreated, 2);
+    QCOMPARE(results[0].tileChoice, TileChoice::OomRetry);
+    QCOMPARE(results[1].tileUsed, 160);
+}
+
+void TestPipeline::recoveryFailureStopsBatch_data()
+{
+    QTest::addColumn<bool>("rebuildFails");
+    QTest::addColumn<int>("kind");
+    QTest::addColumn<uint>("hresult");
+    QTest::newRow("rebuild: device lost") << true << int(core::ErrorKind::DeviceLost) << 0x887A0006u;
+    QTest::newRow("rebuild: out of memory") << true << int(core::ErrorKind::OutOfMemory) << 0x8007000Eu;
+    QTest::newRow("redo: out of memory") << false << int(core::ErrorKind::OutOfMemory) << 0x8007000Eu;
+    QTest::newRow("redo: device lost") << false << int(core::ErrorKind::DeviceLost) << 0x887A0005u;
+    QTest::newRow("redo: other engine error") << false << int(core::ErrorKind::EngineFailure) << 0x80004005u;
+}
+
+void TestPipeline::recoveryFailureStopsBatch()
+{
+    QFETCH(bool, rebuildFails);
+    QFETCH(int, kind);
+    QFETCH(uint, hresult);
+    const core::Status failure = core::Status::fail(core::ErrorKind(kind), "second failure", hresult);
+    FakeBackend b;
+    b.script.failAtCall = 1;
+    b.script.failWith = core::Status::fail(core::ErrorKind::OutOfMemory, "E_OUTOFMEMORY", 0x8007000E);
+    QList<ItemResult> results;
+    BatchCallbacks cb;
+    cb.itemFinished = [&](int, const ItemResult &r) { results << r; };
+    if (rebuildFails) {
+        b.rebuildFailure = failure;
+    } else {
+        // The first failure is the OOM; the first Run after the rebuild fails with `failure`.
+        b.script.failAtCall2 = 2;
+        cb.retrying = [&](int, int) { b.script.failWith = failure; };
+    }
+    std::atomic_bool cancel{false};
+    const int before = countFiles(m_outDir);
+    const BatchSummary s = runBatch({m_big, m_opaque, m_alpha}, spec(OutputFormat::Png, 2), b, cancel, cb);
+    QCOMPARE(s.failed, 1);
+    QCOMPARE(s.succeeded, 0);
+    QCOMPARE(s.notProcessed, 2);
+    QCOMPARE(results.size(), 1);
+    QVERIFY(results[0].fatal);
+    QVERIFY(results[0].resetEngine);
+    QCOMPARE(countFiles(m_outDir), before);
+    QCOMPARE(b.script.calls, rebuildFails ? 1 : 2);  // one retry, no loop
+    const QString code = QString::number(hresult, 16).toUpper();
+    QVERIFY2(s.fatalError.contains(code), qPrintable(s.fatalError));
+    QVERIFY2(s.fatalError.contains(QStringLiteral("CPU")), qPrintable(s.fatalError));
+    QVERIFY2(s.fatalError.contains(QStringLiteral("smaller tile size")), qPrintable(s.fatalError));
+}
+
+void TestPipeline::failureAfterRecoveryStopsBatch()
+{
+    FakeBackend b;
+    b.script.failAtCall = 1;  // OOM on the first image
+    b.script.failWith = core::Status::fail(core::ErrorKind::OutOfMemory, "E_OUTOFMEMORY", 0x8007000E);
+    int retries = 0;
+    QList<ItemResult> results;
+    BatchCallbacks cb;
+    cb.retrying = [&](int, int) { ++retries; };
+    cb.itemStarted = [&](int i) {
+        if (i == 1)  // next Run: the second image fails too
+            b.script.failAtCall2 = b.script.calls + 1;
+    };
+    cb.itemFinished = [&](int, const ItemResult &r) { results << r; };
+    std::atomic_bool cancel{false};
+    const BatchSummary s = runBatch({m_big, m_opaque, m_alpha}, spec(OutputFormat::Png, 2), b, cancel, cb);
+    QCOMPARE(s.succeeded, 1);
+    QCOMPARE(s.failed, 1);
+    QCOMPARE(s.notProcessed, 1);
+    QCOMPARE(retries, 1);
+    QVERIFY(results[1].fatal);
+    QVERIFY2(s.fatalError.contains(QStringLiteral("0x8007000E")), qPrintable(s.fatalError));
 }
 
 void TestPipeline::oomManualTileFailsItemOnly()
@@ -482,7 +588,7 @@ void TestPipeline::oomManualTileFailsItemOnly()
     QCOMPARE(countFiles(m_outDir), before + 1);
 }
 
-void TestPipeline::deviceLostStopsBatch()
+void TestPipeline::deviceLostManualTileStopsBatch()
 {
     FakeBackend b;
     b.script.failAtCall = 2;
@@ -492,7 +598,9 @@ void TestPipeline::deviceLostStopsBatch()
     cb.itemFinished = [&](int, const ItemResult &r) { results << r; };
     std::atomic_bool cancel{false};
     const int before = countFiles(m_outDir);
-    const BatchSummary s = runBatch({m_big, m_opaque, m_alpha}, spec(OutputFormat::Png, 2), b, cancel, cb);
+    JobSpec manual = spec(OutputFormat::Png, 2);
+    manual.inference.tile = 256;  // manual: never retried with another size
+    const BatchSummary s = runBatch({m_big, m_opaque, m_alpha}, manual, b, cancel, cb);
     QCOMPARE(s.failed, 1);
     QCOMPARE(s.succeeded, 0);
     QCOMPARE(s.notProcessed, 2);

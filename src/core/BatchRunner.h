@@ -19,8 +19,8 @@ struct BatchSummary {
     int notProcessed = 0;   // skipped because of cancel or a fatal error
     bool canceled = false;
     QString fatalError;     // shared error that stopped the batch
-    // Succeeded items made with tile 160 instead of 256 (Auto: GPU memory budget, or a
-    // retry after running out of GPU memory). The tile changes the result slightly.
+    // Succeeded items made with tile 160 instead of 256 (Auto: GPU memory budget, or the
+    // recovery after a GPU failure). The tile changes the result slightly.
     int smallerTile = 0;
 };
 
@@ -40,7 +40,9 @@ struct BatchCallbacks {
 // (sessions are shared by the items and released at the end). A failing item is
 // recorded and the batch continues; shared errors (preconditions, runtime or model
 // problems, device errors) stop the batch. After an out-of-memory failure or a
-// device error the sessions are released before anything else runs.
+// device error the sessions are released before anything else runs. With Auto tile
+// one such failure is recovered: the image is redone at the fallback tile on rebuilt
+// sessions and the rest of the batch stays there; any further GPU failure stops the batch.
 BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backend &backend,
                       const std::atomic_bool &cancel, const BatchCallbacks &cb);
 
