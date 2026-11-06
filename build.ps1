@@ -4,6 +4,9 @@
 param(
     [ValidateSet('debug', 'release')]
     [string]$Preset = 'release',
+    # AI runtime: pinned upstream ONNX Runtime + DirectML, or the Windows ML package.
+    [ValidateSet('upstream', 'windowsml')]
+    [string]$OrtFlavor = 'upstream',
     [switch]$Test,
     [switch]$Clean
 )
@@ -15,8 +18,8 @@ $CMake    = 'C:\Program Files\CMake\bin\cmake.exe'
 $CTest    = 'C:\Program Files\CMake\bin\ctest.exe'
 $Root     = $PSScriptRoot
 
-# Pinned Windows ML runtime and the hash-checked models (both skip work when already present).
-& (Join-Path $Root 'tools\fetch-runtime.ps1')
+# Pinned runtime and the hash-checked models (both skip work when already present).
+& (Join-Path $Root 'tools\fetch-runtime.ps1') -Flavor $OrtFlavor
 if ($LASTEXITCODE) { throw "fetch-runtime failed" }
 & (Join-Path $Root 'tools\fetch-models.ps1')
 if ($LASTEXITCODE) { throw "fetch-models failed" }
@@ -32,7 +35,7 @@ Write-Host "Windows SDK: $env:WindowsSDKVersion"
 Push-Location $Root
 try {
     if ($Clean -and (Test-Path "build\$Preset")) { Remove-Item "build\$Preset" -Recurse -Force }
-    & $CMake --preset $Preset
+    & $CMake --preset $Preset "-DARX_ORT_FLAVOR=$OrtFlavor"
     if ($LASTEXITCODE) { throw "configure failed" }
     & $CMake --build --preset $Preset
     if ($LASTEXITCODE) { throw "build failed" }

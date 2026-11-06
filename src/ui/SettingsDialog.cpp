@@ -17,12 +17,12 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
     m_modelGroup = new QGroupBox(this);
     auto *model = new QFormLayout(m_modelGroup);
     m_modelLabel = new QLabel(this);
-    m_modelName = new QLabel(QStringLiteral("waifu2x swin_unet/art (nunif)"), this);
+    m_modelName = new QLabel(QStringLiteral("waifu2x swin_unet_v3 / swin_unet (nunif)"), this);
     model->addRow(m_modelLabel, m_modelName);
     m_tileLabel = new QLabel(this);
     m_tile = new QComboBox(this);
     // Only tiles validated on the target GPU; 640 and larger are not offered.
-    for (int t : {0, 160, 256, 400})
+    for (int t : {0, 160, 256, 352, 448})
         m_tile->addItem(QString(), t);
     model->addRow(m_tileLabel, m_tile);
     m_tileHint = new QLabel(this);
@@ -93,10 +93,11 @@ void SettingsDialog::retranslate()
     m_tile->setItemText(0, tr("Auto"));
     m_tile->setItemText(1, QStringLiteral("160"));
     m_tile->setItemText(2, QStringLiteral("256"));
-    m_tile->setItemText(3, QStringLiteral("400"));
+    m_tile->setItemText(3, QStringLiteral("352"));
+    m_tile->setItemText(4, QStringLiteral("448"));
     m_tileHint->setText(tr("Auto uses 256, or 160 when GPU memory is short or runs out. "
-                           "Smaller tiles use less GPU memory but are slower; 400 needs about "
-                           "3 GB of GPU memory at 4x. The tile size slightly changes the result."));
+                           "Smaller tiles use less GPU memory but are slower; 448 needs about "
+                           "3 GB of GPU memory. The tile size slightly changes the result."));
     m_deviceLabel->setText(tr("Processing device:"));
     m_device->setItemText(0, tr("GPU (DirectML)"));
     m_device->setItemText(1, tr("CPU (much slower)"));

@@ -20,13 +20,13 @@ const QString kSplitterKey = QStringLiteral("window/splitter");
 // v1.2 keys that v2.0 only reads, once, when its own group is created.
 const QString kV1NoiseKey = QStringLiteral("model/noiseLevel");
 
-// v2.0 only (nunif ONNX on Windows ML). v1.2 never sees these.
+// v2.0 only (nunif ONNX on ONNX Runtime). v1.2 never sees these.
 const QString kSchemaKey = QStringLiteral("v2/schema");
 const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
 const QString kTileKey = QStringLiteral("v2/inference/tileSize");
 const QString kDeviceKey = QStringLiteral("v2/inference/device");
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
-const QString kEulaKey = QStringLiteral("v2/eula/acceptedVersion");
+const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // 2.0 RC1; removed by schema 2
 
 // "v2/progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
 // are replaced in the device name.
@@ -65,6 +65,13 @@ void AppSettings::migrate()
         if (ok && v1 >= -1 && v1 <= 3)
             m_s->setValue(kNoiseKey, v1);
     }
+    // Schema 2: tile 400 is no longer offered, 352 is the nearest size below it. The first-run
+    // agreement is gone, so its version is dropped. Both keys are v2-only.
+    if (schema < 2) {
+        if (m_s->value(kTileKey).toInt() == 400)
+            m_s->setValue(kTileKey, 352);
+        m_s->remove(kOldEulaKey);
+    }
     m_s->setValue(kSchemaKey, kSchema);
 }
 
@@ -72,17 +79,6 @@ std::optional<Language> AppSettings::storedManualLanguage()
 {
     const QSettings s;  // reading never writes
     return languageFromCode(s.value(kLanguageKey).toString());
-}
-
-QString AppSettings::acceptedEulaVersion()
-{
-    const QSettings s;
-    return s.value(kEulaKey).toString();
-}
-
-void AppSettings::setAcceptedEulaVersion(const QString &version)
-{
-    m_s->setValue(kEulaKey, version);
 }
 
 std::optional<Language> AppSettings::manualLanguage() const
@@ -111,8 +107,8 @@ void AppSettings::setNoiseLevel(int level) { m_s->setValue(kNoiseKey, level); }
 
 bool AppSettings::isValidTile(int tile)
 {
-    // Auto, or a legal swin_unet tile ((T-16) % 48 == 0) that was validated on the
-    // GTX 1060 6GB (docs/v2.0-P0-P1報告.md §12, v2.0-P2報告.md §9). 640+ is not offered.
+    // Auto, or a tile that is legal for every model and was validated on the GTX 1060 6GB
+    // (docs/v2.0-P1重做報告.md §6). 640+ is not offered.
     // Same list as the engine-side check (ProcessJob::checkOptions).
     return core::isOfferedTile(tile);
 }

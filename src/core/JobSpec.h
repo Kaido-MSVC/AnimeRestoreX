@@ -17,11 +17,11 @@ struct EncodeOptions {
 // switches a job to the CPU on its own.
 enum class ComputeDevice { Gpu = 0, Cpu = 1 };
 
-// nunif swin_unet/art model choice (models/manifest.json) and how to run it.
+// nunif waifu2x model choice (models/manifest.json) and how to run it.
 struct InferenceOptions {
     int noise = 1;     // -1..3 (-1 = no denoise)
     int scale = 2;     // 1 (denoise only, needs noise >= 0), 2 or 4
-    int tile = 0;      // 0 = Auto (256, or 160 when GPU memory is short / after OOM); 160, 256, 400
+    int tile = 0;      // 0 = Auto (256, or 160 when GPU memory is short / after OOM); 160, 256, 352, 448
     ComputeDevice device = ComputeDevice::Gpu;
 };
 

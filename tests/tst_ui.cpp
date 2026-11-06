@@ -1,12 +1,12 @@
 // Widget-level tests (run with QT_QPA_PLATFORM=offscreen). The full-batch test
-// drives the real main window and uses the Windows ML runtime and models deployed
+// drives the real main window and uses the ONNX Runtime and models deployed
 // next to the test exe by the app build.
 #include "TestImages.h"
 
 #include "ui/AboutDialog.h"
 #include "ui/CompletionDialog.h"
 #include "ui/ElidedLabel.h"
-#include "ui/EulaDialog.h"
+#include "ui/LicensesDialog.h"
 #include "ui/LanguageManager.h"
 #include "ui/WindowPlacement.h"
 #include "ui/SettingsDialog.h"
@@ -82,7 +82,7 @@ private slots:
     void windowIconFromResources();
     void aboutDialogContents();
     void aboutDialogLicenseFolder();
-    void licenseAgreement();
+    void licensesAndNotices();
     void progressResetsWhenListEmpties();
     void windowFitsCommonScreens_data();
     void windowFitsCommonScreens();
@@ -146,7 +146,7 @@ void TestUi::autoCloseNextModal(QString *captured)
             return;
         if (auto *dlg = qobject_cast<CompletionDialog *>(w))
             *captured = dlg->summaryText();
-        else if (qobject_cast<EulaDialog *>(w))
+        else if (qobject_cast<LicensesDialog *>(w))
             *captured = w->findChild<QLabel *>()->text();
         else
             *captured = w->findChild<QLabel *>(QStringLiteral("qt_msgbox_label"))
@@ -347,7 +347,7 @@ void TestUi::fullBatchThroughMainWindow()
         raw.beginGroup(devices.first());
         const QStringList keys = raw.allKeys();
         const QRegularExpression inference(
-            QStringLiteral("^nunif/swin_unet/art/noise1_scale2x@[0-9a-f]{8}/dml/t256/x2$"));
+            QStringLiteral("^nunif/swin_unet_v3/art/noise1_scale2x@[0-9a-f]{8}/dml/t256/x2$"));
         QVERIFY2(std::any_of(keys.cbegin(), keys.cend(), [&](const QString &k) { return inference.match(k).hasMatch(); }),
                  qPrintable(keys.join(QLatin1Char(' '))));
         qInfo() << "stored rate keys:" << keys;
@@ -528,7 +528,7 @@ void TestUi::denoiseOnMainWindow()
     // Only validated tiles; nothing at 640 or above.
     const QList<QComboBox *> combos = sd.findChildren<QComboBox *>();
     QComboBox *tiles = combos.first();
-    QCOMPARE(tiles->count(), 4);
+    QCOMPARE(tiles->count(), 5);
     for (int i = 0; i < tiles->count(); ++i)
         QVERIFY(arx::AppSettings::isValidTile(tiles->itemData(i).toInt()));
     // Devices: DirectML and CPU only; choosing the CPU explains that it is much slower.
@@ -841,7 +841,7 @@ void TestUi::aboutDialogContents()
     const QString text = dlg.bodyText();
     for (const QString &s : {QStringLiteral("AnimeRestoreX"), QStringLiteral(ARX_TEST_VERSION),
                              QStringLiteral("Kaido-MSVC"), QStringLiteral("MIT"),
-                             QStringLiteral("Windows ML 2.5.96"), QStringLiteral("ONNX Runtime " ARX_ORT_VERSION),
+                             QStringLiteral("ONNX Runtime " ARX_ORT_VERSION),
                              QStringLiteral("DirectML"), QStringLiteral("nagadomi/nunif"), QStringLiteral("Qt 6.12"),
                              QStringLiteral("LGPL")})
         QVERIFY2(text.contains(s), qPrintable(s));
@@ -849,6 +849,8 @@ void TestUi::aboutDialogContents()
     if (engineDeployed()) {
         QVERIFY2(text.contains(QStringLiteral("DirectML 1.15.4")), qPrintable(text));
         QVERIFY2(text.contains(QStringLiteral("waifu2x_onnx_models_20250502.zip")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("waifu2x-swin_unet_v3-art-onnx-nunif-0d3d92c.zip")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("0d3d92c")), qPrintable(text));
         QVERIFY2(text.contains(QStringLiteral("https://github.com/nagadomi/nunif")), qPrintable(text));
     }
     QVERIFY(text.contains(QStringLiteral("Processing device: not used yet in this session")));
@@ -904,97 +906,87 @@ void TestUi::aboutDialogLicenseFolder()
     QVERIFY(AboutDialog::licenseFilesPresent(dir));
 }
 
-void TestUi::licenseAgreement()
+void TestUi::licensesAndNotices()
 {
-    // Version and text: the embedded copy is the generated EULA.txt that is shipped.
-    QCOMPARE(EulaDialog::currentVersion(), QStringLiteral(ARX_TEST_EULA_VERSION));
-    const QString text = EulaDialog::agreementText();
-    QVERIFY(!text.isEmpty());
-    QFile shipped(QStringLiteral(ARX_TEST_EULA));
-    QVERIFY2(shipped.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(shipped.fileName()));
-    QCOMPARE(text, QString::fromUtf8(shipped.readAll()));
-    QVERIFY(text.contains(QStringLiteral("EULA version: " ARX_TEST_EULA_VERSION)));
-    QVERIFY(text.startsWith(QStringLiteral("AnimeRestoreX " ARX_TEST_VERSION " - End-User License Agreement")));
-    QVERIFY(!text.contains(QLatin1Char('@')));  // every @VAR@ was filled in
-    // Appendix A is the Microsoft licence, unmodified apart from line endings.
-    QFile ms(QStringLiteral(ARX_TEST_WINML_LICENSE));
-    QVERIFY(ms.open(QIODevice::ReadOnly | QIODevice::Text));
-    const QString msText = QString::fromUtf8(ms.readAll());
-    QVERIFY(msText.contains(QStringLiteral("DISTRIBUTABLE CODE")));
-    QVERIFY2(text.contains(msText.trimmed()), "Appendix A differs from licenses/WindowsML/license.txt");
-
-    QVERIFY(!EulaDialog::isAccepted(QString()));
-    QVERIFY(!EulaDialog::isAccepted(QStringLiteral("1.0.0-0")));  // an older version asks again
-    QVERIFY(EulaDialog::isAccepted(EulaDialog::currentVersion()));
-
-    // Consent: "I Agree" only after the check box; declining rejects.
+    // The list comes from the files: licence first, notices second, then licenses/ sorted.
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QDir d(tmp.path());
+    QVERIFY(d.mkpath(QStringLiteral("licenses/DirectML")));
+    QVERIFY(d.mkpath(QStringLiteral("licenses/Qt/third_party/zlib")));
+    auto put = [&](const char *name, const QByteArray &text) {
+        QFile f(d.filePath(QString::fromLatin1(name)));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(text);
+    };
+    put("LICENSE", "own licence");
+    put("THIRD_PARTY_NOTICES.md", "notices");
+    put("licenses/README.md", "not a licence");
+    put("licenses/DirectML/LICENSE.txt", "\xEF\xBB\xBF" "terms with BOM");
+    put("licenses/Qt/third_party/index.json", "[]");
+    put("licenses/Qt/third_party/zlib/LICENSE", "zlib");
+    QCOMPARE(LicensesDialog::licenseFiles(tmp.path()),
+             (QStringList{QStringLiteral("LICENSE"), QStringLiteral("THIRD_PARTY_NOTICES.md"),
+                          QStringLiteral("licenses/DirectML/LICENSE.txt"),
+                          QStringLiteral("licenses/Qt/third_party/zlib/LICENSE")}));
     {
-        EulaDialog dlg(EulaDialog::Mode::Consent);
+        LicensesDialog dlg(tmp.path());
+        QVERIFY(dlg.missingLabel()->isHidden());
+        QCOMPARE(dlg.currentFile(), QStringLiteral("LICENSE"));   // opens on a text, not on an empty pane
+        QCOMPARE(dlg.textView()->toPlainText(), QStringLiteral("own licence"));
         QVERIFY(dlg.textView()->isReadOnly());
-        QCOMPARE(dlg.textView()->toPlainText(), text);
-        QVERIFY(dlg.acceptCheck() && dlg.agreeButton() && dlg.declineButton());
-        QVERIFY(!dlg.agreeButton()->isEnabled());
-        dlg.acceptCheck()->setChecked(true);
-        QVERIFY(dlg.agreeButton()->isEnabled());
-        dlg.acceptCheck()->setChecked(false);
-        QVERIFY(!dlg.agreeButton()->isEnabled());
-        dlg.show();
-        dlg.declineButton()->click();
-        QCOMPARE(dlg.result(), int(QDialog::Rejected));
+        QVERIFY(dlg.selectFile(QStringLiteral("licenses/DirectML/LICENSE.txt")));
+        QCOMPARE(dlg.textView()->toPlainText(), QStringLiteral("terms with BOM"));
+        QVERIFY(!dlg.selectFile(QStringLiteral("licenses/README.md")));
+        // Folders only group: selecting one keeps no stale text from looking like its content.
+        QCOMPARE(dlg.fileTree()->topLevelItemCount(), 4);
+        QCOMPARE(dlg.fileTree()->topLevelItem(0)->text(0), QStringLiteral("AnimeRestoreX license"));
+        QCOMPARE(dlg.fileTree()->topLevelItem(2)->text(0), QStringLiteral("DirectML"));
+        QVERIFY(!(dlg.fileTree()->topLevelItem(2)->flags() & Qt::ItemIsSelectable));
     }
+    // Missing files: says where it looked and what to do.
     {
-        EulaDialog dlg(EulaDialog::Mode::Consent);
-        dlg.show();
-        dlg.acceptCheck()->setChecked(true);
-        dlg.agreeButton()->click();
-        QCOMPARE(dlg.result(), int(QDialog::Accepted));
-    }
-    {
-        EulaDialog dlg(EulaDialog::Mode::View);
-        QVERIFY(!dlg.acceptCheck() && !dlg.agreeButton());
-        QCOMPARE(dlg.textView()->toPlainText(), text);
+        QTemporaryDir empty;
+        LicensesDialog dlg(empty.path());
+        QVERIFY(!dlg.missingLabel()->isHidden());
+        QVERIFY(dlg.missingLabel()->text().contains(QDir::toNativeSeparators(empty.path())));
+        QVERIFY(dlg.currentFile().isEmpty());
+        QVERIFY(!dlg.fileTree()->isEnabled());
     }
 
-    // Settings: the read-only helpers write nothing; acceptance is stored under v2/.
+    // Real deployment: the shipped texts of every component are listed and readable.
+    const QString app = QCoreApplication::applicationDirPath();
+    const QStringList files = LicensesDialog::licenseFiles(app);
+    for (const char *name : {"LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/ONNXRuntime/LICENSE",
+                             "licenses/ONNXRuntime/ThirdPartyNotices.txt", "licenses/DirectML/LICENSE.txt",
+                             "licenses/DirectML/ThirdPartyNotices.txt", "licenses/nunif/LICENSE",
+                             "licenses/nunif/NOTICE", "licenses/Qt/LGPL-3.0-only.txt"})
+        QVERIFY2(files.contains(QString::fromLatin1(name)), name);
     {
-        QSettings raw;
-        raw.clear();
-        raw.sync();
+        LicensesDialog dlg(app);
+        QVERIFY(dlg.selectFile(QStringLiteral("licenses/DirectML/LICENSE.txt")));
+        QVERIFY(dlg.textView()->toPlainText().startsWith(QStringLiteral("MICROSOFT SOFTWARE LICENSE TERMS")));
     }
-    QCOMPARE(arx::AppSettings::acceptedEulaVersion(), QString());
-    QVERIFY(!arx::AppSettings::storedManualLanguage().has_value());
-    QVERIFY(QSettings().allKeys().isEmpty());
-    {
-        arx::AppSettings s;
-        s.setAcceptedEulaVersion(EulaDialog::currentVersion());
-        QVERIFY(s.sync());
-    }
-    QCOMPARE(QSettings().value(QStringLiteral("v2/eula/acceptedVersion")).toString(), EulaDialog::currentVersion());
-    QVERIFY(EulaDialog::isAccepted(arx::AppSettings::acceptedEulaVersion()));
-    for (const QString &k : QSettings().allKeys())
-        QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
 
-    // About opens it; interface text is translated, the agreement stays in English.
+    // About opens it, and no agreement is left anywhere.
     AboutDialog about;
-    QVERIFY(about.licenseAgreementButton());
-    QCOMPARE(about.licenseAgreementButton()->text(), QStringLiteral("License Agreement"));
+    QVERIFY(about.licensesButton());
+    QCOMPARE(about.licensesButton()->text(), QStringLiteral("Licenses and Notices"));
     QString captured;
     autoCloseNextModal(&captured);
-    about.licenseAgreementButton()->click();
-    QVERIFY2(captured.contains(QStringLiteral("original English")), qPrintable(captured));
+    about.licensesButton()->click();
+    QVERIFY2(captured.contains(QStringLiteral("original language")), qPrintable(captured));
 
     LanguageManager::instance().apply(arx::Language::TraditionalChinese);
     {
-        EulaDialog zh(EulaDialog::Mode::Consent);
-        QCOMPARE(zh.agreeButton()->text(), QStringLiteral("我同意"));
-        QCOMPARE(zh.textView()->toPlainText(), text);
-        QVERIFY(!zh.windowTitle().contains(QStringLiteral("License Agreement")));
+        LicensesDialog zh(app);
+        QVERIFY(!zh.windowTitle().contains(QStringLiteral("Licenses")));
+        QCOMPARE(zh.fileTree()->topLevelItem(0)->text(0), QStringLiteral("AnimeRestoreX 授權"));
     }
     LanguageManager::instance().apply(arx::Language::Japanese);
     {
-        EulaDialog ja(EulaDialog::Mode::Consent);
-        QCOMPARE(ja.agreeButton()->text(), QStringLiteral("同意する"));
-        QVERIFY(!ja.windowTitle().contains(QStringLiteral("License Agreement")));
+        LicensesDialog ja(app);
+        QVERIFY(!ja.windowTitle().contains(QStringLiteral("Licenses")));
     }
     LanguageManager::instance().apply(arx::Language::English);
 }

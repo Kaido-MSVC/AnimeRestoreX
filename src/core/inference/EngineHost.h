@@ -1,4 +1,4 @@
-// Backend on the ONNX Runtime shipped in Windows ML (DirectML EP or CPU EP).
+// Backend on ONNX Runtime (DirectML EP or CPU EP).
 // One process-wide runtime (DLLs pinned to the app folder, version checked, one Ort::Env);
 // sessions are created lazily, hash-checked first, and kept in a small LRU cache.
 // No ORT headers here; plain C++.

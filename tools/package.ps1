@@ -5,13 +5,14 @@
 #
 # Nothing is taken from build\ or dist\: the release is configured and built in
 # .package\build (deleted first), the staging folder is .package\stage (deleted first).
-# Sources: the clean build (exe, EULA.txt, THIRD_PARTY_NOTICES.md), the Qt 6.12.0 install
-# (windeployqt), the VS 2026 VC redist folder, the pinned Windows ML package
-# (third_party\windowsml\2.5.96), the hash-checked models (third_party\models, only with
-# -IncludeModels) and files tracked in git (LICENSE, README.txt, models\manifest.json, licenses\).
+# Sources: the clean build (exe, THIRD_PARTY_NOTICES.md), the Qt 6.12.0 install (windeployqt),
+# the VS 2026 VC redist folder, the pinned upstream runtime (third_party\onnxruntime\1.24.4,
+# third_party\directml\1.15.4; models\manifest.json "runtime"), the hash-checked models
+# (third_party\models, only with -IncludeModels) and files tracked in git (LICENSE, README.txt,
+# models\manifest.json, licenses\). Only the upstream runtime flavor is packaged.
 #
-# Models: not included by default. -IncludeModels adds the 14 models; while
-# models\manifest.json still says license UNRESOLVED, such a package is INTERNAL: it is
+# Models: not included by default. -IncludeModels adds the 14 models; if a source in
+# models\manifest.json says license UNRESOLVED, such a package is INTERNAL: it is
 # written to tools\winml-probe\_work\p5\ (never dist\) and its name says so.
 [CmdletBinding()]
 param(
@@ -31,8 +32,6 @@ $VcVars  = '14.51'
 $CMake   = 'C:\Program Files\CMake\bin\cmake.exe'
 $CrtDir  = Join-Path $VsRoot 'VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
 $CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
-$WinMl   = Join-Path $Root 'third_party\windowsml\2.5.96'
-$WinMlBin = Join-Path $WinMl 'runtimes\win-x64\native'
 $ModelsSrc = Join-Path $Root 'third_party\models'
 $QtSrc   = Join-Path $Root 'third_party\_download\qt-src'
 $Work    = Join-Path $Root '.package'
@@ -41,13 +40,15 @@ $Build   = Join-Path $Work 'build'
 # ---------------------------------------------------------------- version and names
 $cmakeText = Get-Content (Join-Path $Root 'CMakeLists.txt') -Raw
 $Version = [regex]::Match($cmakeText, 'project\(AnimeRestoreX VERSION ([0-9.]+)').Groups[1].Value
-$EulaVersion = [regex]::Match($cmakeText, 'set\(ARX_EULA_VERSION "([^"]+)"\)').Groups[1].Value
-if (-not $Version -or -not $EulaVersion) { throw 'Cannot read the project / EULA version from CMakeLists.txt' }
+if (-not $Version) { throw 'Cannot read the project version from CMakeLists.txt' }
 
 $ManifestPath = Join-Path $Root 'models\manifest.json'
 $Manifest = Get-Content -Raw -Encoding utf8 $ManifestPath | ConvertFrom-Json
-$ModelLicense = [string]$Manifest.source.license
-$ModelLicenseResolved = $ModelLicense -and $ModelLicense -ne 'UNRESOLVED' -and $Manifest.status -notlike 'DRAFT*'
+if ($Manifest.runtime.flavor -ne 'upstream') { throw 'models\manifest.json: only the upstream runtime is packaged' }
+$ModelSources = @($Manifest.sources.PSObject.Properties.Value)
+$ModelLicense = (@($ModelSources.license) | Sort-Object -Unique) -join ', '
+$ModelLicenseResolved = $ModelLicense -and @($ModelSources | Where-Object license -eq 'UNRESOLVED').Count -eq 0 -and
+    $Manifest.status -notlike 'DRAFT*'
 $Internal = $IncludeModels -and -not $ModelLicenseResolved
 
 $Name = "AnimeRestoreX-$Version" + $(if ($Suffix) { "-$Suffix" } else { '' }) + '-win64'
@@ -141,10 +142,9 @@ foreach ($dll in $CrtDlls) {
     Add-File (Join-Path $CrtDir $dll) $dll 'VS 2026 VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
 }
 
-# 4. Windows ML runtime: only the two DLLs the app loads (ONNX Runtime C API + DirectML).
-#    Microsoft.Windows.AI.MachineLearning.dll (WinML API / EP catalog) is not used.
+# 4. Runtime: only the two DLLs the app loads (ONNX Runtime C API + DirectML).
 foreach ($f in $Manifest.runtime.files) {
-    Add-File (Join-Path $WinMlBin $f.file) $f.file "NuGet Microsoft.Windows.AI.MachineLearning $($Manifest.runtime.package_version) runtimes\win-x64\native (unmodified)"
+    Add-File (Join-Path $Root ($f.path -replace '/', '\')) $f.file "NuGet $($f.package) $($f.version) (unmodified)"
 }
 
 # 5. Models: manifest always (it documents the models and their licence state); model files only on request
@@ -152,12 +152,12 @@ Add-File $ManifestPath 'models\manifest.json' 'this repository (models\manifest.
 if ($IncludeModels) {
     foreach ($m in $Manifest.models) {
         $rel = 'models\' + ($m.file -replace '/', '\')
-        Add-File (Join-Path $ModelsSrc ($m.file -replace '/', '\')) $rel "nunif waifu2x_onnx_models_20250502.zip, Pad->Slice rewrite (tools\fetch-models.ps1); licence $ModelLicense"
+        $zipName = Split-Path $Manifest.sources.($m.source).url -Leaf
+        Add-File (Join-Path $ModelsSrc ($m.file -replace '/', '\')) $rel "$zipName, processed by tools\fetch-models.ps1; licence $ModelLicense"
     }
 }
 
 # 6. Documents and licence texts
-Add-File (Join-Path $Build 'EULA.txt') 'EULA.txt' 'this repository (packaging\EULA.txt.in + licenses\WindowsML\license.txt, generated by CMake)'
 Add-File (Join-Path $Build 'THIRD_PARTY_NOTICES.md') 'THIRD_PARTY_NOTICES.md' 'this repository (THIRD_PARTY_NOTICES.md.in, version filled in by CMake)'
 Add-File (Join-Path $Root 'LICENSE') 'LICENSE' 'this repository'
 Add-File (Join-Path $Root 'packaging\README.txt') 'README.txt' 'this repository (packaging\README.txt)'
@@ -184,7 +184,7 @@ foreach ($p in @('AnimeRestoreX.exe', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.d
                  'platforms\qwindows.dll', 'imageformats\qjpeg.dll', 'imageformats\qwebp.dll',
                  'translations\qt_zh_TW.qm', 'translations\qt_ja.qm',
                  'onnxruntime.dll', 'DirectML.dll', 'models\manifest.json',
-                 'EULA.txt', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls) { [void]$allow.Add($p) }
+                 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls) { [void]$allow.Add($p) }
 foreach ($f in $tracked) { [void]$allow.Add(($f -replace '/', '\')) }
 if ($IncludeModels) { foreach ($m in $Manifest.models) { [void]$allow.Add('models\' + ($m.file -replace '/', '\')) } }
 $present = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -198,16 +198,17 @@ $listed = [System.Collections.Generic.HashSet[string]]::new([string[]]$entries.P
 foreach ($p in $present) { if (-not $listed.Contains($p)) { $problems.Add("no recorded origin: $p") } }
 
 # b) Old engine and unwanted files, by name (defence in depth).
-$forbiddenName = '(?i)(waifu2x|ncnn|cunet|vcomp1\d\d|\.param$|\.bin$|^Microsoft\.Windows\.AI\.MachineLearning\.dll$|opengl32sw|d3dcompiler|dxcompiler|dxil|Qt6Svg|Qt6Network|vulkan-1)'
+$forbiddenName = '(?i)(waifu2x|ncnn|cunet|vcomp1\d\d|\.param$|\.bin$|Microsoft\.Windows\.AI|WinML|onnxruntime_providers|opengl32sw|d3dcompiler|dxcompiler|dxil|Qt6Svg|Qt6Network|vulkan-1)'
 foreach ($fi in $all) {
     $rel = & $relOf $fi
     if ($rel -match $forbiddenName -and $rel -notlike 'licenses\*') { $problems.Add("forbidden file: $rel") }
+    if ($rel -like 'licenses\WindowsML*') { $problems.Add("Windows ML licence left in the package: $rel") }
 }
 if (-not $IncludeModels -and ($all | Where-Object Extension -eq '.onnx')) { $problems.Add('model files present without -IncludeModels') }
 # ...and by content of our own text files (licence texts are upstream copies and skipped).
-foreach ($p in 'README.txt', 'THIRD_PARTY_NOTICES.md', 'EULA.txt', 'models\manifest.json') {
+foreach ($p in 'README.txt', 'THIRD_PARTY_NOTICES.md', 'models\manifest.json') {
     $t = Get-Content -LiteralPath (Join-Path $Stage $p) -Raw -Encoding utf8
-    foreach ($word in 'ncnn', 'models-cunet', 'vcomp140', 'Vulkan GPU') {
+    foreach ($word in 'ncnn', 'models-cunet', 'vcomp140', 'Vulkan GPU', 'Windows ML', 'EULA') {
         if ($t.Contains($word)) { $problems.Add("$p mentions '$word'") }
     }
 }
@@ -230,8 +231,14 @@ if ($IncludeModels) {
         if ((Get-Sha $p) -ne $m.sha256) { $problems.Add("$($m.id): SHA-256 differs from models\manifest.json") }
     }
 }
-if ($ModelLicense -eq 'UNRESOLVED' -and $Manifest.status -notlike '*licence unresolved*') {
+if ($ModelLicense -match 'UNRESOLVED' -and $Manifest.status -notlike '*licence unresolved*') {
     $problems.Add('models\manifest.json: license UNRESOLVED but status does not say so')
+}
+# The notices the DLLs need: the licence terms of the runtime and their third-party notices.
+foreach ($p in 'licenses\ONNXRuntime\LICENSE', 'licenses\ONNXRuntime\ThirdPartyNotices.txt',
+               'licenses\DirectML\LICENSE.txt', 'licenses\DirectML\ThirdPartyNotices.txt',
+               'licenses\nunif\LICENSE', 'licenses\nunif\NOTICE') {
+    if (-not (Test-Path -LiteralPath (Join-Path $Stage $p))) { $problems.Add("licence text missing: $p") }
 }
 
 # d) Version and generated documents.
@@ -239,14 +246,6 @@ $notices = Get-Content -LiteralPath (Join-Path $Stage 'THIRD_PARTY_NOTICES.md') 
 if ($notices -notmatch "(?m)^# AnimeRestoreX $([regex]::Escape($Version)) " -or $notices.Contains('@PROJECT_VERSION@')) {
     $problems.Add("THIRD_PARTY_NOTICES.md does not carry version $Version")
 }
-$eula = Get-Content -LiteralPath (Join-Path $Stage 'EULA.txt') -Raw -Encoding utf8
-if (-not $eula.StartsWith("AnimeRestoreX $Version - End-User License Agreement") -or
-    -not $eula.Contains("EULA version: $EulaVersion") -or $eula.Contains('@')) {
-    $problems.Add("EULA.txt does not carry version $Version / EULA $EulaVersion")
-}
-$msLicense = (Get-Content -LiteralPath (Join-Path $Stage 'licenses\WindowsML\license.txt') -Raw -Encoding utf8) -replace "`r`n", "`n"
-if (-not $eula.Contains($msLicense.Trim())) { $problems.Add('EULA.txt Appendix A differs from licenses\WindowsML\license.txt') }
-# (The exe embeds the same generated EULA.txt as a Qt resource; tst_ui licenseAgreement checks that.)
 
 # e) Dependencies: every import of every shipped binary is shipped or provided by Windows.
 $shipped = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -271,7 +270,7 @@ if ($problems.Count) {
     $problems | ForEach-Object { Write-Host "  PROBLEM: $_" -ForegroundColor Red }
     throw "Package checks failed ($($problems.Count) problems); nothing was zipped."
 }
-Write-Host "Checks  : allowlist, forbidden files, source hashes, runtime/model hashes, versions, EULA, dependencies: OK"
+Write-Host "Checks  : allowlist, forbidden files, source hashes, runtime/model hashes, versions, licence texts, dependencies: OK"
 
 # ---------------------------------------------------------------- MANIFEST.txt
 $lines = New-Object System.Collections.Generic.List[string]

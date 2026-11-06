@@ -28,9 +28,9 @@ Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePl
     if (p.scale < 1 || p.offset < 0 || p.blendSize < 0) return Status::fail(ErrorKind::InvalidArgument, "bad model params");
     // Checked before any Run: the upstream PyTorch assert does not exist in the ONNX graph and
     // illegal sizes either fail (/unet/Add broadcast) or silently give non-upstream results.
-    if (!ModelContract::isValidTile(tile))
+    if (!ModelContract::isValidTile(p.tileRule, tile))
         return Status::fail(ErrorKind::InvalidTileSize,
-                            "tile " + std::to_string(tile) + " violates (T-16) % 48 == 0 (T > 16)");
+                            "tile " + std::to_string(tile) + " violates the tile rule of this model");
     plan.tile = tile;
     plan.inputOffset = (p.offset + p.scale - 1) / p.scale;      // math.ceil(offset / scale)
     plan.inputBlend = (p.blendSize + p.scale - 1) / p.scale;    // math.ceil(blend_size / scale)

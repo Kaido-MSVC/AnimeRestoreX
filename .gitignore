@@ -2,6 +2,8 @@
 /third_party/waifu2x/
 /third_party/_download/
 /third_party/windowsml/
+/third_party/onnxruntime/
+/third_party/directml/
 /third_party/models/
 /dist/
 *.user

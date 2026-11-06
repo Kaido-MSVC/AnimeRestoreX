@@ -15,7 +15,7 @@ public:
     // GPU (or "CPU") the engine reported in this session; empty = not used yet.
     void setDeviceName(const QString &device);
     QPushButton *openLicensesButton() const { return m_openLicenses; }
-    QPushButton *licenseAgreementButton() const { return m_eula; }
+    QPushButton *licensesButton() const { return m_licenses; }
     QPushButton *aboutQtButton() const { return m_aboutQt; }
 
     // Both LICENSE and THIRD_PARTY_NOTICES.md exist in `dir`.
@@ -32,7 +32,7 @@ private:
     QLabel *m_title = nullptr;
     QLabel *m_body = nullptr;
     QPushButton *m_openLicenses = nullptr;
-    QPushButton *m_eula = nullptr;
+    QPushButton *m_licenses = nullptr;
     QPushButton *m_aboutQt = nullptr;
     QPushButton *m_close = nullptr;
     QString m_device;

@@ -8,10 +8,7 @@ function(arx_add_test name)
     target_compile_definitions(${name} PRIVATE
         ARX_TEST_MANIFEST="${CMAKE_SOURCE_DIR}/models/manifest.json"
         ARX_TEST_VERSION="${PROJECT_VERSION}"
-        ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md"
-        ARX_TEST_EULA="${CMAKE_BINARY_DIR}/EULA.txt"
-        ARX_TEST_EULA_VERSION="${ARX_EULA_VERSION}"
-        ARX_TEST_WINML_LICENSE="${CMAKE_SOURCE_DIR}/licenses/WindowsML/license.txt")
+        ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
     add_test(NAME ${name} COMMAND ${name} ${ARX_TEST_ARGS_${name}})
     set_tests_properties(${name} PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")

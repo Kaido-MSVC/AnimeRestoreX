@@ -24,12 +24,24 @@
         <translation>第三方元件</translation>
     </message>
     <message>
-        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (Microsoft license terms, see the licenses folder).</source>
-        <translation>AI 推論執行環境；透過 DirectML 在 GPU 上執行模型，或在 CPU 上執行（Microsoft 授權條款，請見 licenses 資料夾）。</translation>
+        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (MIT License).</source>
+        <translation>AI 推論執行階段；透過 DirectML 在 GPU 上執行模型，或在 CPU 上執行（MIT 授權）。</translation>
     </message>
     <message>
-        <source>Trained models for anime-style illustrations, converted for DirectML (license being verified).</source>
-        <translation>針對動漫風格插畫訓練的模型，已轉換為 DirectML 可用的格式（授權確認中）。</translation>
+        <source>GPU acceleration for AI inference (Microsoft Software License Terms).</source>
+        <translation>AI 推論的 GPU 加速（Microsoft 軟體授權條款）。</translation>
+    </message>
+    <message>
+        <source>Trained models for anime-style illustrations, converted for DirectML (MIT License).</source>
+        <translation>針對動漫插畫訓練的模型，已轉換為適用 DirectML（MIT 授權）。</translation>
+    </message>
+    <message>
+        <source>All license terms and third-party notices are listed under Licenses and Notices.</source>
+        <translation>所有授權條款與第三方聲明都列在「授權與聲明」。</translation>
+    </message>
+    <message>
+        <source>Licenses and Notices</source>
+        <translation>授權與聲明</translation>
     </message>
     <message>
         <source>Model files: %1, exported from nunif %2; source: %3</source>
@@ -38,10 +50,6 @@
     <message>
         <source>User interface and image reading and writing (GNU LGPL v3).</source>
         <translation>使用者介面與圖片讀寫（GNU LGPL v3）。</translation>
-    </message>
-    <message>
-        <source>See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.</source>
-        <translation>完整清單與授權原文請見 THIRD_PARTY_NOTICES.md 與 licenses 資料夾。</translation>
     </message>
     <message>
         <source>AI runtime: %1</source>
@@ -58,10 +66,6 @@
     <message>
         <source>Processing device: %1</source>
         <translation>處理裝置：%1</translation>
-    </message>
-    <message>
-        <source>License Agreement</source>
-        <translation>授權合約</translation>
     </message>
     <message>
         <source>Open License Files</source>
@@ -167,39 +171,6 @@
     </message>
 </context>
 <context>
-    <name>EulaDialog</name>
-    <message>
-        <source>Your acceptance of the license agreement could not be saved. You will be asked again the next time AnimeRestoreX starts.</source>
-        <translation>無法儲存您對授權合約的同意。下次啟動 AnimeRestoreX 時會再次詢問。</translation>
-    </message>
-    <message>
-        <source>AnimeRestoreX License Agreement</source>
-        <translation>AnimeRestoreX 授權合約</translation>
-    </message>
-    <message>
-        <source>Before you use AnimeRestoreX, please read the license agreement below. It includes the Microsoft license terms for the Windows ML Runtime files (onnxruntime.dll, DirectML.dll) that come with AnimeRestoreX. The agreement is shown in its original English.
-If you do not agree, AnimeRestoreX will close.</source>
-        <translation>使用 AnimeRestoreX 之前，請閱讀下方的授權合約。其中包含 AnimeRestoreX 隨附的 Windows ML Runtime 檔案（onnxruntime.dll、DirectML.dll）的 Microsoft 授權條款。合約以英文原文顯示。
-如果不同意，AnimeRestoreX 將會關閉。</translation>
-    </message>
-    <message>
-        <source>I have read and accept the license agreement (version %1).</source>
-        <translation>我已閱讀並接受授權合約（版本 %1）。</translation>
-    </message>
-    <message>
-        <source>I Agree</source>
-        <translation>我同意</translation>
-    </message>
-    <message>
-        <source>I Do Not Agree</source>
-        <translation>我不同意</translation>
-    </message>
-    <message>
-        <source>License agreement version %1 (original English text).</source>
-        <translation>授權合約版本 %1（英文原文）。</translation>
-    </message>
-</context>
-<context>
     <name>ImageEncoder</name>
     <message>
         <source>Out of memory while preparing the output image.</source>
@@ -239,6 +210,37 @@ If you do not agree, AnimeRestoreX will close.</source>
     <message>
         <source>Out of memory while converting the image.</source>
         <translation>轉換圖片時記憶體不足。</translation>
+    </message>
+</context>
+<context>
+    <name>LicensesDialog</name>
+    <message>
+        <source>nunif (AI models)</source>
+        <translation>nunif（AI 模型）</translation>
+    </message>
+    <message>
+        <source>Licenses and Notices</source>
+        <translation>授權與聲明</translation>
+    </message>
+    <message>
+        <source>License terms and third-party notices of AnimeRestoreX and everything it includes. Each text is shown in its original language.</source>
+        <translation>AnimeRestoreX 及其包含之所有元件的授權條款與第三方聲明。各文件以原文顯示。</translation>
+    </message>
+    <message>
+        <source>AnimeRestoreX license</source>
+        <translation>AnimeRestoreX 授權</translation>
+    </message>
+    <message>
+        <source>Third-party notices</source>
+        <translation>第三方聲明</translation>
+    </message>
+    <message>
+        <source>The license files were not found in:
+%1
+Extract the whole AnimeRestoreX folder again to restore them.</source>
+        <translation>找不到授權檔案：
+%1
+請重新解壓縮整個 AnimeRestoreX 資料夾以還原。</translation>
     </message>
 </context>
 <context>
@@ -834,8 +836,8 @@ If you do not agree, AnimeRestoreX will close.</source>
         <translation>自動</translation>
     </message>
     <message>
-        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 400 needs about 3 GB of GPU memory at 4x. The tile size slightly changes the result.</source>
-        <translation>「自動」使用 256，GPU 記憶體不足或用盡時改用 160。Tile 越小越省 GPU 記憶體但越慢；400 在 4× 時約需 3 GB GPU 記憶體。Tile 大小會讓結果略有不同。</translation>
+        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 448 needs about 3 GB of GPU memory. The tile size slightly changes the result.</source>
+        <translation>「自動」使用 256，GPU 記憶體不足或用盡時改用 160。Tile 越小，用的 GPU 記憶體越少，但速度較慢；448 約需 3 GB GPU 記憶體。Tile 大小會讓結果略有不同。</translation>
     </message>
     <message>
         <source>Processing device:</source>

@@ -144,7 +144,23 @@ static void testTileRule() {
         CHECK(e.calls == 0);  // rejected before any Run
         CHECK(out.pixels.empty());
     }
-    for (int good : {64, 112, 160, 208, 256, 304, 352, 400, 640}) CHECK(ModelContract::isValidTile(good));
+    for (int good : {64, 112, 160, 208, 256, 304, 352, 400, 448, 640})
+        CHECK(ModelContract::isValidTile(TileRule::SwinUnet, good));
+    for (int bad : {48, 96, 240, 384}) CHECK(!ModelContract::isValidTile(TileRule::SwinUnet, bad));
+    for (int good : {64, 96, 160, 240, 256, 352, 384, 400, 448}) CHECK(ModelContract::isValidTile(TileRule::SwinUnetV3, good));
+    for (int bad : {0, 16, 48, 120, 408}) CHECK(!ModelContract::isValidTile(TileRule::SwinUnetV3, bad));
+    // The rule comes with the model: 240 is refused for swin_unet and runs for v3.
+    {
+        TestImage in = makeImage(300, 200, 3, 0, 2);
+        TileParams v3 = P2;
+        v3.tileRule = TileRule::SwinUnetV3;
+        FakeEngine e(v3);
+        Image8 out;
+        ProcessOptions o;
+        o.tile = 240;
+        CHECK(upscaleImage(in.view(), v3, e, nullptr, nullptr, o, out).ok());
+        CHECK(e.calls > 0);
+    }
 }
 
 static void testCancel() {
@@ -294,7 +310,15 @@ static void testManifest(const fs::path& manifest, const fs::path& scratch) {
     CHECK(mc.models().size() == 14);
     const ModelInfo* m = mc.find("swin_unet/art/noise3_scale4x");
     CHECK(m && m->scale == 4 && m->offset == 32 && m->blendSize == 16);
-    CHECK(mc.alphaModelFor(2) == "swin_unet/art/scale2x" && mc.alphaModelFor(4) == "swin_unet/art/scale4x");
+    CHECK(m && m->tileRule == TileRule::SwinUnet);
+    const ModelInfo* v3 = mc.find("swin_unet_v3/art/noise3");
+    CHECK(v3 && v3->scale == 1 && v3->offset == 8 && v3->tileRule == TileRule::SwinUnetV3);
+    const ModelInfo* v32 = mc.find("swin_unet_v3/art/noise2_scale2x");
+    CHECK(v32 && v32->scale == 2 && v32->offset == 16 && v32->blendSize == 8 && v32->tileRule == TileRule::SwinUnetV3);
+    CHECK(!mc.find("swin_unet/art/noise3") && !mc.find("swin_unet/art/scale2x"));  // replaced by v3
+    CHECK(mc.alphaModelFor(2) == "swin_unet_v3/art/scale2x" && mc.alphaModelFor(4) == "swin_unet/art/scale4x");
+    for (const ModelInfo& info : mc.models())
+        for (int t : {160, 256, 352, 448}) CHECK(ModelContract::isValidTile(info, t));
     CHECK(mc.alphaModelFor(1).empty());
     CHECK(mc.inputName() == "x" && mc.outputName() == "y");
 
@@ -311,11 +335,20 @@ static void testManifest(const fs::path& manifest, const fs::path& scratch) {
     std::string text((std::istreambuf_iterator<char>(f)), {});
     for (const char* evil : {"../evil.onnx", "C:/x.onnx", "swin_unet/../../x.onnx", "/abs.onnx"}) {
         std::string t = text;
-        const std::string from = "\"file\": \"swin_unet/art/noise0.onnx\"";
+        const std::string from = "\"file\": \"swin_unet_v3/art/noise0.onnx\"";
         t.replace(t.find(from), from.size(), std::string("\"file\": \"") + evil + "\"");
         { std::ofstream(scratch / "evil.json", std::ios::binary) << t; }
         ModelContract bad;
         CHECK(ModelContract::load(scratch / "evil.json", bad).kind == ErrorKind::ContractViolation);
+    }
+    // A model without a known tile rule is refused.
+    {
+        std::string t = text;
+        const std::string from = "\"tile_rule\": \"swin_unet_v3\"";
+        t.replace(t.find(from), from.size(), "\"tile_rule\": \"other\"");
+        { std::ofstream(scratch / "rule.json", std::ios::binary) << t; }
+        ModelContract bad;
+        CHECK(ModelContract::load(scratch / "rule.json", bad).kind == ErrorKind::ContractViolation);
     }
 }
 

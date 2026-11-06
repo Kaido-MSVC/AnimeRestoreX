@@ -1,13 +1,11 @@
 # Produce the inference models listed in models\manifest.json into third_party\models.
 #
-#   default : download the pinned nunif ONNX zip (or take it from -Cache), check its SHA-256,
-#             extract swin_unet/art and run every model through the pipeline of the manifest:
+#   default : for every entry of "sources" in the manifest (nunif's zip with the 4x models, this
+#             project's GitHub Release with the v3 exports) download the zip over HTTPS or take it
+#             from -Cache, check its SHA-256, extract it and run its models through the pipeline:
 #             rewrite_pad.py, then fix_reshape_allowzero.py, always in that order.
 #             Three-way check: source model, both script hashes, result of each step.
-#   -FromDir: copy already processed models (e.g. tools\winml-probe\_work\models-rw) and check
-#             every hash against the manifest.
-#             The "v3_pending" models go through the same pipeline from the zip of this
-#             project's GitHub Release (HTTPS, pinned SHA-256; -Cache applies here too).
+#   -FromDir: copy already processed models and check every hash against the manifest.
 #   -V3Dir  : take the v3 exports from this local folder (swin_unet_v3\art) instead of the Release.
 # Any mismatch stops the script; nothing is installed into third_party\models unless every
 # model passed (staging folder, then a single move). The script never packages anything.
@@ -117,7 +115,7 @@ function Expand-ZipFolder([string]$Zip, [string]$PathInZip, [string]$To) {
 
 if ((Test-Path $Dest) -and -not $Force -and -not $V3Dir) {
     $ok = $true
-    foreach ($m in @($Manifest.models) + @($Manifest.v3_pending.models)) {
+    foreach ($m in $Manifest.models) {
         $p = Join-Path $Dest (Get-SafeRelative $m.file)
         if (-not (Test-Path $p) -or (Get-Sha $p) -ne $m.sha256) { $ok = $false; break }
     }
@@ -137,36 +135,27 @@ if ($FromDir) {
         Copy-Item $src (Join-Path $Stage $rel)
     }
 } else {
-    $src = $Manifest.source
-    $zip = Get-PinnedZip $src.url $src.zip_sha256
-    $extract = Join-Path $Work 'nunif-onnx'
-    $srcDir = Expand-ZipFolder $zip $src.path_in_zip $extract
-
     $scripts = @(Get-PipelineScripts)
     $py = Get-PipelinePython
-    foreach ($m in $Manifest.models) {
-        $rel = Get-SafeRelative $m.file
-        Invoke-Pipeline $py $scripts (Join-Path $srcDir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
+    foreach ($source in $Manifest.sources.PSObject.Properties) {
+        $models = @($Manifest.models | Where-Object source -eq $source.Name)
+        if (-not $models) { throw "no model uses source $($source.Name)" }
+        $extract = Join-Path $Work 'models-source'
+        if ($V3Dir -and $source.Value.path_in_zip -like 'swin_unet_v3/*') {
+            $srcDir = $V3Dir
+        } else {
+            $zip = Get-PinnedZip $source.Value.url $source.Value.zip_sha256
+            $srcDir = Expand-ZipFolder $zip $source.Value.path_in_zip $extract
+        }
+        foreach ($m in $models) {
+            $rel = Get-SafeRelative $m.file
+            Invoke-Pipeline $py $scripts (Join-Path $srcDir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
+        }
+        if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
     }
-    Remove-Item $extract -Recurse -Force
 }
 
-$scripts = @(Get-PipelineScripts)
-$py = Get-PipelinePython
-$v3Dir = $V3Dir
-$v3Extract = Join-Path $Work 'v3-onnx'
-if (-not $v3Dir) {
-    $v3 = $Manifest.v3_pending.source
-    $v3Zip = Get-PinnedZip $v3.url $v3.zip_sha256
-    $v3Dir = Expand-ZipFolder $v3Zip $v3.path_in_zip $v3Extract
-}
-foreach ($m in $Manifest.v3_pending.models) {
-    $rel = Get-SafeRelative $m.file
-    Invoke-Pipeline $py $scripts (Join-Path $v3Dir (Split-Path $rel -Leaf)) (Join-Path $Stage $rel) $m
-}
-if (Test-Path $v3Extract) { Remove-Item $v3Extract -Recurse -Force }
-
-$count = @($Manifest.models).Count + @($Manifest.v3_pending.models).Count
+$count = @($Manifest.models).Count
 if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }
 Move-Item $Stage $Dest
 Write-Host "$count models verified and installed to $Dest"

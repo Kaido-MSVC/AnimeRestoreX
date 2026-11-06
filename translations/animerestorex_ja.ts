@@ -24,12 +24,24 @@
         <translation>サードパーティ製コンポーネント</translation>
     </message>
     <message>
-        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (Microsoft license terms, see the licenses folder).</source>
-        <translation>AI 推論ランタイム。DirectML を通じて GPU で、または CPU でモデルを実行します（Microsoft のライセンス条項。licenses フォルダーを参照）。</translation>
+        <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (MIT License).</source>
+        <translation>AI 推論ランタイム。DirectML で GPU 上、または CPU 上でモデルを実行します（MIT ライセンス）。</translation>
     </message>
     <message>
-        <source>Trained models for anime-style illustrations, converted for DirectML (license being verified).</source>
-        <translation>アニメ調イラスト向けに学習したモデル。DirectML 用に変換済み（ライセンス確認中）。</translation>
+        <source>GPU acceleration for AI inference (Microsoft Software License Terms).</source>
+        <translation>AI 推論の GPU アクセラレーション（Microsoft ソフトウェア ライセンス条項）。</translation>
+    </message>
+    <message>
+        <source>Trained models for anime-style illustrations, converted for DirectML (MIT License).</source>
+        <translation>アニメ調イラスト向けの学習済みモデル。DirectML 用に変換済み（MIT ライセンス）。</translation>
+    </message>
+    <message>
+        <source>All license terms and third-party notices are listed under Licenses and Notices.</source>
+        <translation>すべてのライセンス条項と第三者の通知は「ライセンスと通知」に掲載しています。</translation>
+    </message>
+    <message>
+        <source>Licenses and Notices</source>
+        <translation>ライセンスと通知</translation>
     </message>
     <message>
         <source>Model files: %1, exported from nunif %2; source: %3</source>
@@ -38,10 +50,6 @@
     <message>
         <source>User interface and image reading and writing (GNU LGPL v3).</source>
         <translation>ユーザーインターフェースと画像の読み書き（GNU LGPL v3）。</translation>
-    </message>
-    <message>
-        <source>See THIRD_PARTY_NOTICES.md and the licenses folder for the complete list and license texts.</source>
-        <translation>完全な一覧とライセンス本文は THIRD_PARTY_NOTICES.md と licenses フォルダーを参照してください。</translation>
     </message>
     <message>
         <source>AI runtime: %1</source>
@@ -58,10 +66,6 @@
     <message>
         <source>Processing device: %1</source>
         <translation>処理デバイス：%1</translation>
-    </message>
-    <message>
-        <source>License Agreement</source>
-        <translation>ライセンス契約</translation>
     </message>
     <message>
         <source>Open License Files</source>
@@ -167,39 +171,6 @@
     </message>
 </context>
 <context>
-    <name>EulaDialog</name>
-    <message>
-        <source>Your acceptance of the license agreement could not be saved. You will be asked again the next time AnimeRestoreX starts.</source>
-        <translation>ライセンス契約への同意を保存できませんでした。次回 AnimeRestoreX を起動したときに、もう一度確認します。</translation>
-    </message>
-    <message>
-        <source>AnimeRestoreX License Agreement</source>
-        <translation>AnimeRestoreX ライセンス契約</translation>
-    </message>
-    <message>
-        <source>Before you use AnimeRestoreX, please read the license agreement below. It includes the Microsoft license terms for the Windows ML Runtime files (onnxruntime.dll, DirectML.dll) that come with AnimeRestoreX. The agreement is shown in its original English.
-If you do not agree, AnimeRestoreX will close.</source>
-        <translation>AnimeRestoreX を使用する前に、以下のライセンス契約をお読みください。AnimeRestoreX に付属する Windows ML Runtime のファイル（onnxruntime.dll、DirectML.dll）に関する Microsoft のライセンス条項が含まれています。契約は英語の原文で表示されます。
-同意しない場合、AnimeRestoreX は終了します。</translation>
-    </message>
-    <message>
-        <source>I have read and accept the license agreement (version %1).</source>
-        <translation>ライセンス契約（バージョン %1）を読み、同意します。</translation>
-    </message>
-    <message>
-        <source>I Agree</source>
-        <translation>同意する</translation>
-    </message>
-    <message>
-        <source>I Do Not Agree</source>
-        <translation>同意しない</translation>
-    </message>
-    <message>
-        <source>License agreement version %1 (original English text).</source>
-        <translation>ライセンス契約 バージョン %1（英語の原文）</translation>
-    </message>
-</context>
-<context>
     <name>ImageEncoder</name>
     <message>
         <source>Out of memory while preparing the output image.</source>
@@ -239,6 +210,37 @@ If you do not agree, AnimeRestoreX will close.</source>
     <message>
         <source>Out of memory while converting the image.</source>
         <translation>画像の変換中にメモリが不足しました。</translation>
+    </message>
+</context>
+<context>
+    <name>LicensesDialog</name>
+    <message>
+        <source>nunif (AI models)</source>
+        <translation>nunif（AI モデル）</translation>
+    </message>
+    <message>
+        <source>Licenses and Notices</source>
+        <translation>ライセンスと通知</translation>
+    </message>
+    <message>
+        <source>License terms and third-party notices of AnimeRestoreX and everything it includes. Each text is shown in its original language.</source>
+        <translation>AnimeRestoreX とそれに含まれるすべてのコンポーネントのライセンス条項と第三者の通知です。各文書は原文のまま表示します。</translation>
+    </message>
+    <message>
+        <source>AnimeRestoreX license</source>
+        <translation>AnimeRestoreX のライセンス</translation>
+    </message>
+    <message>
+        <source>Third-party notices</source>
+        <translation>第三者の通知</translation>
+    </message>
+    <message>
+        <source>The license files were not found in:
+%1
+Extract the whole AnimeRestoreX folder again to restore them.</source>
+        <translation>ライセンス ファイルが見つかりません:
+%1
+AnimeRestoreX フォルダー全体を展開し直して復元してください。</translation>
     </message>
 </context>
 <context>
@@ -834,8 +836,8 @@ If you do not agree, AnimeRestoreX will close.</source>
         <translation>自動</translation>
     </message>
     <message>
-        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 400 needs about 3 GB of GPU memory at 4x. The tile size slightly changes the result.</source>
-        <translation>「自動」は 256 を使い、GPU メモリが少ないか不足したときは 160 を使います。タイルが小さいほど GPU メモリの使用量は減りますが遅くなります。400 は 4× で約 3 GB の GPU メモリが必要です。タイルサイズによって結果がわずかに変わります。</translation>
+        <source>Auto uses 256, or 160 when GPU memory is short or runs out. Smaller tiles use less GPU memory but are slower; 448 needs about 3 GB of GPU memory. The tile size slightly changes the result.</source>
+        <translation>「自動」は 256 を使い、GPU メモリが不足または枯渇すると 160 を使います。タイルが小さいほど GPU メモリの使用量は減りますが、処理は遅くなります。448 には約 3 GB の GPU メモリが必要です。タイル サイズによって結果がわずかに変わります。</translation>
     </message>
     <message>
         <source>Processing device:</source>

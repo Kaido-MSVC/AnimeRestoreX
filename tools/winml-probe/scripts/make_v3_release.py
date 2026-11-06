@@ -1,4 +1,5 @@
 """Prepares the Release attachment for the swin_unet_v3 models (dev only; uploads nothing).
+Historical: reads the pre-P2 "v3_pending" block; the attachment is published and pinned in models/manifest.json.
 
   python -I make_v3_release.py <manifest.json> <v3 exports dir> <LICENSE> <NOTICE> <out dir> <doc.md>
 

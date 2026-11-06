@@ -1,4 +1,5 @@
 """Records the two-step pipeline in models/manifest.json (dev only; run with the venv of
+Historical: wrote the pre-P2 manifest shape ("v3_pending"); P2 merged that block into "models".
 requirements.txt). Replaces "rewrite_tool" by "pipeline", adds pad_sha256 and the Reshape counts to
 every model, and adds the v3 models as "v3_pending" (ModelContract reads "models" only, so the
 app keeps using the 20250502 models until P2 moves them over).

@@ -1,6 +1,6 @@
 #include "OrtTileEngine.h"
 
-#include <winml/dml_provider_factory.h>
+#include <dml_provider_factory.h>
 
 #include <windows.h>
 #include <psapi.h>

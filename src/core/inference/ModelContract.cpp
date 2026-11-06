@@ -103,6 +103,10 @@ Status ModelContract::load(const fs::path& manifest, ModelContract& out) {
             !getInt(m, "scale", mi.scale) || !getInt(m, "offset", mi.offset) || !getInt(m, "blend_size", mi.blendSize))
             return bad("model entry missing id/file/sha256/scale/offset/blend_size");
         getInt(m, "noise_level", mi.noiseLevel);
+        std::string rule;
+        if (!getStr(m, "tile_rule", rule) || (rule != "swin_unet" && rule != "swin_unet_v3"))
+            return bad(mi.id + ": tile_rule must be swin_unet or swin_unet_v3");
+        mi.tileRule = rule == "swin_unet_v3" ? TileRule::SwinUnetV3 : TileRule::SwinUnet;
         if (mi.scale != 1 && mi.scale != 2 && mi.scale != 4) return bad(mi.id + ": scale must be 1, 2 or 4");
         if (mi.offset < 0 || mi.offset > 256 || mi.blendSize < 0 || mi.blendSize > 256)
             return bad(mi.id + ": offset / blend_size out of range");

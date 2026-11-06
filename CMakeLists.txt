@@ -18,31 +18,43 @@ if(MSVC)
     add_compile_options(/W4 /permissive- /utf-8)
 endif()
 
-# Windows ML package (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
-# Only its own build/cmake config is used, nothing from the system.
-set(ARX_WINML_DIR "${CMAKE_SOURCE_DIR}/third_party/windowsml/2.5.96"
-    CACHE PATH "Extracted Microsoft.Windows.AI.MachineLearning package")
-set(ARX_ORT_VERSION "1.28.3"
-    CACHE STRING "ONNX Runtime version the app requires from the loaded onnxruntime.dll")
-find_package(microsoft.windows.ai.machinelearning CONFIG REQUIRED
-    PATHS "${ARX_WINML_DIR}/build/cmake" NO_DEFAULT_PATH)
-message(STATUS "Windows ML package ${WINML_VERSION}: ${WINML_BINARY_DIR}")
+# AI runtime (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
+# Only these packages are used, nothing from the system.
+#   upstream  : Microsoft.ML.OnnxRuntime.DirectML 1.24.4 + Microsoft.AI.DirectML 1.15.4 (default)
+#   windowsml : Microsoft.Windows.AI.MachineLearning 2.5.96 (ONNX Runtime 1.28.3), for switching
+#               back; tools/package.ps1 refuses it, and models need checking on it first.
+set(ARX_ORT_FLAVOR "upstream" CACHE STRING "AI runtime: upstream or windowsml")
+set_property(CACHE ARX_ORT_FLAVOR PROPERTY STRINGS upstream windowsml)
+if(ARX_ORT_FLAVOR STREQUAL "upstream")
+    # ARX_ORT_VERSION: what the app requires from the loaded onnxruntime.dll.
+    set(ARX_ORT_VERSION "1.24.4")
+    set(ARX_ORT_PKG "${CMAKE_SOURCE_DIR}/third_party/onnxruntime/1.24.4"
+        CACHE PATH "Extracted Microsoft.ML.OnnxRuntime.DirectML package")
+    set(ARX_DML_PKG "${CMAKE_SOURCE_DIR}/third_party/directml/1.15.4"
+        CACHE PATH "Extracted Microsoft.AI.DirectML package")
+    # The package has no CMake config.
+    add_library(arx_ort_runtime INTERFACE)
+    target_include_directories(arx_ort_runtime INTERFACE "${ARX_ORT_PKG}/build/native/include")
+    target_link_libraries(arx_ort_runtime INTERFACE "${ARX_ORT_PKG}/runtimes/win-x64/native/onnxruntime.lib")
+    set(ARX_ORT_TARGET arx_ort_runtime)
+    set(ARX_RUNTIME_DLLS "${ARX_ORT_PKG}/runtimes/win-x64/native/onnxruntime.dll"
+                         "${ARX_DML_PKG}/bin/x64-win/DirectML.dll")
+elseif(ARX_ORT_FLAVOR STREQUAL "windowsml")
+    set(ARX_ORT_VERSION "1.28.3")
+    set(ARX_WINML_DIR "${CMAKE_SOURCE_DIR}/third_party/windowsml/2.5.96"
+        CACHE PATH "Extracted Microsoft.Windows.AI.MachineLearning package")
+    find_package(microsoft.windows.ai.machinelearning CONFIG REQUIRED
+        PATHS "${ARX_WINML_DIR}/build/cmake" NO_DEFAULT_PATH)
+    set(ARX_ORT_TARGET WindowsML::OnnxRuntime)
+    set(ARX_RUNTIME_DLLS "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}")
+else()
+    message(FATAL_ERROR "ARX_ORT_FLAVOR must be upstream or windowsml, got '${ARX_ORT_FLAVOR}'")
+endif()
+message(STATUS "AI runtime: ${ARX_ORT_FLAVOR}, ONNX Runtime ${ARX_ORT_VERSION}")
 
 # Rewritten nunif models checked against models/manifest.json; see tools/fetch-models.ps1.
 set(ARX_MODELS_DIR "${CMAKE_SOURCE_DIR}/third_party/models"
     CACHE PATH "Folder holding the models listed in models/manifest.json")
-
-# End-user licence agreement (first-run consent; shipped as EULA.txt and embedded in the app).
-# Appendix A is the Microsoft Windows ML Runtime licence, copied from licenses/WindowsML/license.txt
-# (byte-identical to the pinned package, see tools/collect-licenses.ps1); the generated file
-# uses LF line endings throughout (the licence's CRLF are normalized).
-# Raise ARX_EULA_VERSION whenever the agreement text changes: users are then asked again.
-set(ARX_EULA_VERSION "2.0.0-1")
-set(ARX_WINML_LICENSE_FILE "${CMAKE_SOURCE_DIR}/licenses/WindowsML/license.txt")
-file(READ "${ARX_WINML_LICENSE_FILE}" ARX_WINML_LICENSE_TEXT)
-string(REPLACE "\r\n" "\n" ARX_WINML_LICENSE_TEXT "${ARX_WINML_LICENSE_TEXT}")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ARX_WINML_LICENSE_FILE}")
-configure_file(packaging/EULA.txt.in "${CMAKE_BINARY_DIR}/EULA.txt" @ONLY NEWLINE_STYLE LF)
 
 add_subdirectory(src)
 

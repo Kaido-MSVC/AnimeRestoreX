@@ -1,16 +1,16 @@
 # AnimeRestoreX
 
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
-illustrations, using the waifu2x swin_unet/art models (nagadomi/nunif, ONNX) on
-Windows ML (ONNX Runtime + DirectML) and Qt 6.12 Widgets.
+illustrations, using the waifu2x swin_unet_v3 and swin_unet models (nagadomi/nunif,
+ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
 
 > This branch is v2.0 (not released yet). The latest release, v1.2, still uses
 > waifu2x-ncnn-vulkan; its requirements are listed under "Download".
 
 ## Features
 
-- AI denoising without upscaling (1x) and 2x / 4x upscaling with the waifu2x
-  swin_unet/art models; PNG, JPEG and WebP input and output (WebP lossy or lossless).
+- AI denoising without upscaling (1x) and 2x upscaling with waifu2x swin_unet_v3/art,
+  4x upscaling with swin_unet/art; PNG, JPEG and WebP input and output (WebP lossy or lossless).
 - GPU through DirectML (any DirectX 12 GPU), or the CPU when chosen in the settings.
 - Batch list with thumbnails; add images or whole folders, also by drag and drop.
 - Side-by-side preview of the original and the result (fit to window or 100%).
@@ -38,9 +38,9 @@ compatible driver. The executable is unsigned.
 | | Requirement | Basis |
 |---|---|---|
 | OS | **Windows 11 x64** (tested: 25H2, build 26200) | the only tested system |
-| | Windows 10 1903 (build 18362) or later: allowed by the components, **not tested** | Windows ML 2.5.96 package: Windows 10 19H1+; Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support) |
+| | Windows 10: **not tested** | Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support); the minimum of the upstream runtime was not checked |
 | GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 |
-| GPU memory | Auto tile 256: about 0.5 GB at 1x/2x, 0.9 GB at 4x per model (twice that for 4x with transparency); tile 400 at 4x about 2.8 GB | measured on the GTX 1060 (P1/P2) |
+| GPU memory | Auto tile 256: about 1.2 GB at 1x/2x, 0.8 GB at 4x per model (twice that with transparency); tile 448 about 3 GB | measured on the GTX 1060 (P1 redo) |
 | RAM | **8 GB recommended**. Peak private memory of the app: about 0.7 GB at 1x/2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (P3) |
 | CPU mode | works without a GPU, about 5 times slower than the GTX 1060 on the test PC | measured (P4) |
 
@@ -93,10 +93,9 @@ Publish together: the zip, the three Qt 6.12.0 source archives copied next to it
 (LGPLv3 corresponding source), and `SHA256SUMS-<package name>.txt`.
 License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md.in`, `licenses/`
 (regenerate with `tools/collect-licenses.ps1`). The build writes
-`THIRD_PARTY_NOTICES.md` and `EULA.txt` (from `packaging/EULA.txt.in`, Appendix A =
-`licenses/WindowsML/license.txt`) next to the executable; the package ships them.
-The app asks for the EULA on the first start and whenever `ARX_EULA_VERSION`
-(CMakeLists.txt) changes; the accepted version is stored as `v2/eula/acceptedVersion`.
+`THIRD_PARTY_NOTICES.md` next to the executable and copies `LICENSE` and `licenses/`
+there; the package ships them. There is no first-run agreement: Help > About >
+Licenses and Notices shows every licence and third-party notice.
 
 Icons: `resources/icons/app.svg` is the source; the committed `app.ico` and
 `app_<size>.png` are regenerated with `pwsh -File tools/make-icons.ps1`
@@ -118,9 +117,10 @@ pwsh -File build.ps1 -Preset debug -Test    # with developer tests (some use the
 `tst_ui_layout` runs the window size / layout checks on the real `windows`
 platform (windows flash briefly); the other UI tests run offscreen.
 
-The pinned Windows ML 2.5.96 package (ONNX Runtime + DirectML) is fetched and
-SHA-256-checked by `tools/fetch-runtime.ps1`; the nunif swin_unet/art models are
-fetched, rewritten and checked against `models/manifest.json` by
+The pinned ONNX Runtime 1.24.4 and DirectML 1.15.4 packages are fetched and
+SHA-256-checked by `tools/fetch-runtime.ps1` (`build.ps1 -OrtFlavor windowsml` builds
+against the Windows ML 2.5.96 package instead; `tools/package.ps1` does not package
+it); the nunif models are fetched, converted and checked against `models/manifest.json` by
 `tools/fetch-models.ps1`. Neither is stored in git.
 
 Specification: `設計規劃.md`, `docs/可行性評估.md`; build/decision log: `docs/開發記錄.md`.

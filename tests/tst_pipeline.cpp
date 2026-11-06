@@ -1,6 +1,6 @@
 // Pipeline tests (ProcessJob + BatchRunner) on a fake Backend: the real models/manifest.json,
 // a nearest-neighbour "model" and scripted engine errors (OOM, device lost, cancel), so the
-// error handling runs without a GPU. One extra test uses the real Windows ML runtime and
+// error handling runs without a GPU. One extra test uses the real ONNX Runtime and
 // models next to the test exe and is skipped when they are not deployed.
 #include "TestImages.h"
 
@@ -246,7 +246,7 @@ void TestPipeline::png2xOpaque()
     QCOMPARE(r.tileChoice, TileChoice::Default);
     QCOMPARE(testimg::sha256(m_opaque), before);  // source untouched
     // Opaque input: only the RGB model is used.
-    QCOMPARE(b.acquired, (std::vector<std::string>{"swin_unet/art/noise1_scale2x"}));
+    QCOMPARE(b.acquired, (std::vector<std::string>{"swin_unet_v3/art/noise1_scale2x"}));
     QCOMPARE(b.maxSessions, 2);  // plenty of GPU memory: RGB and alpha may stay open together
 
     // The nearest-neighbour model makes the 2x output a pixel-doubled input.
@@ -658,7 +658,7 @@ void TestPipeline::oneXDenoiseOnly()
     QVERIFY(out.hasAlphaChannel());
     QCOMPARE(qAlpha(out.pixel(5, 30)), 0);     // 1x keeps the alpha as is
     QCOMPARE(qAlpha(out.pixel(30, 30)), 128);
-    QCOMPARE(b.acquired, (std::vector<std::string>{"swin_unet/art/noise1"}));
+    QCOMPARE(b.acquired, (std::vector<std::string>{"swin_unet_v3/art/noise1"}));
 
     // 1x without denoise is refused up front (nothing would be done).
     JobSpec s = spec(OutputFormat::Png, 1);
@@ -668,7 +668,7 @@ void TestPipeline::oneXDenoiseOnly()
 
 void TestPipeline::realRuntime2x()
 {
-    // Real Windows ML runtime + models deployed next to the test exe by the app build.
+    // Real ONNX Runtime + models deployed next to the test exe by the app build.
     const QDir app(QCoreApplication::applicationDirPath());
     if (!QFileInfo::exists(app.filePath(QStringLiteral("onnxruntime.dll"))) ||
         !QFileInfo::exists(app.filePath(QStringLiteral("models/manifest.json"))))

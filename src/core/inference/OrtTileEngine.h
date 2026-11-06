@@ -1,8 +1,8 @@
-// ITileEngine on the ONNX Runtime shipped in Windows ML (DirectML EP or CPU EP).
+// ITileEngine on ONNX Runtime (DirectML EP or CPU EP).
 // Compile with ORT_API_MANUAL_INIT (the target defines it); call initOrtRuntime() first.
 #pragma once
 
-#include <winml/onnxruntime_cxx_api.h>
+#include <onnxruntime_cxx_api.h>
 
 #include <filesystem>
 #include <memory>

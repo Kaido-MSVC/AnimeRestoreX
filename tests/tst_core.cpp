@@ -534,6 +534,40 @@ void TestCore::settingsMigrateFromSchema1()
         QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
     QCOMPARE(raw.value(QStringLiteral("v2/schema")).toInt(), AppSettings::kSchema);
 
+    // 2.0 RC1 settings (schema 1): tile 400 becomes 352 once, the agreement key goes, the rest stays.
+    raw.clear();
+    raw.setValue(QStringLiteral("v2/schema"), 1);
+    raw.setValue(QStringLiteral("v2/inference/tileSize"), 400);
+    raw.setValue(QStringLiteral("v2/model/noiseLevel"), 3);
+    raw.setValue(QStringLiteral("v2/eula/acceptedVersion"), QStringLiteral("2.0.0-1"));
+    raw.setValue(QStringLiteral("model/tileSize"), 200);
+    raw.sync();
+    {
+        AppSettings s;
+        QCOMPARE(s.tileSize(), 352);
+        QCOMPARE(s.noiseLevel(), 3);
+        QVERIFY(s.sync());
+    }
+    QCOMPARE(raw.value(QStringLiteral("v2/inference/tileSize")).toInt(), 352);
+    QVERIFY(!raw.contains(QStringLiteral("v2/eula/acceptedVersion")));
+    QCOMPARE(raw.value(QStringLiteral("model/tileSize")).toInt(), 200);
+    QCOMPARE(raw.value(QStringLiteral("v2/schema")).toInt(), AppSettings::kSchema);
+    // Other sizes are kept; a hand-edited 400 after the migration falls back to Auto.
+    raw.clear();
+    raw.setValue(QStringLiteral("v2/schema"), 1);
+    raw.setValue(QStringLiteral("v2/inference/tileSize"), 160);
+    raw.sync();
+    {
+        AppSettings s;
+        QCOMPARE(s.tileSize(), 160);
+    }
+    raw.setValue(QStringLiteral("v2/inference/tileSize"), 400);
+    raw.sync();
+    {
+        AppSettings s;
+        QCOMPARE(s.tileSize(), 0);
+    }
+
     // An empty store (no v1.2): defaults, and still nothing outside v2/.
     raw.clear();
     raw.sync();
@@ -566,14 +600,14 @@ void TestCore::modelIdAndOptions()
     o.noise = 1;
     o.scale = 2;
     QVERIFY(ProcessJob::checkOptions(o).isEmpty());
-    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise1_scale2x"));
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet_v3/art/noise1_scale2x"));
     o.scale = 4;
     QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise1_scale4x"));
     o.noise = -1;  // upscale only: one model, denoise never runs twice
     QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/scale4x"));
     o.noise = 3;
     o.scale = 1;   // 1x = denoise-only model
-    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet/art/noise3"));
+    QCOMPARE(ProcessJob::modelId(o), QStringLiteral("swin_unet_v3/art/noise3"));
 
     // 1x without denoise does nothing and is rejected before the engine is touched.
     o.noise = -1;
@@ -587,14 +621,14 @@ void TestCore::modelIdAndOptions()
     QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
     // Tiles: Auto and the offered sizes pass; anything the model cannot take is refused.
     o = InferenceOptions{};
-    for (int t : {0, 160, 256, 400}) {
+    for (int t : {0, 160, 256, 352, 448}) {
         o.tile = t;
         QVERIFY2(ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
     }
     // Refused even if the settings file was edited by hand: sizes that break the model's
     // tile rule (100, 200, 300 run silently with wrong results, 250 fails in the model),
-    // legal sizes that are not offered (64, 112, 640, 1024), and nonsense values.
-    for (int t : {100, 200, 250, 300, 64, 112, 640, 1024, 16, 1, -1, -256, std::numeric_limits<int>::max()}) {
+    // legal sizes that are not offered (64, 112, 400, 640, 1024), and nonsense values.
+    for (int t : {100, 200, 250, 300, 64, 112, 400, 640, 1024, 16, 1, -1, -256, std::numeric_limits<int>::max()}) {
         o.tile = t;
         QVERIFY2(!ProcessJob::checkOptions(o).isEmpty(), qPrintable(QString::number(t)));
         QVERIFY(ProcessJob::modelId(o).isEmpty());
@@ -604,7 +638,7 @@ void TestCore::modelIdAndOptions()
         QVERIFY(!ProcessJob::checkPreconditions(js).isEmpty());  // the batch never starts
         QVERIFY(!AppSettings::isValidTile(t));                    // same list as the settings
     }
-    for (int t : {0, 160, 256, 400})
+    for (int t : {0, 160, 256, 352, 448})
         QVERIFY(AppSettings::isValidTile(t));
     QCOMPARE(limits::check({10, 10}, 1, OutputFormat::Png), limits::SizeCheck::Ok);
 
@@ -632,13 +666,18 @@ void TestCore::tilePolicy()
     QCOMPARE(d.reason, TileReason::Auto);
 
     // Budget just below 256's need + margin: 160, no retry (nothing smaller).
-    d = core::chooseTile(0, 4, false, 920 + 256 - 1);
+    d = core::chooseTile(0, 4, false, 772 + 256 - 1);
     QCOMPARE(d.tile, 160);
     QVERIFY(!d.allowOomRetry);
     QCOMPARE(d.reason, TileReason::AutoVram);
-    d = core::chooseTile(0, 4, false, 920 + 256);
+    d = core::chooseTile(0, 4, false, 772 + 256);
     QCOMPARE(d.tile, 256);
-    QVERIFY(!d.alphaTogether);  // 2 x 920 + 256 does not fit
+    QVERIFY(!d.alphaTogether);  // 2 x 772 + 256 does not fit
+    // The v3 models need more at 256 than the 4x graph.
+    d = core::chooseTile(0, 2, false, 1146 + 256 - 1);
+    QCOMPARE(d.tile, 160);
+    d = core::chooseTile(0, 2, false, 1146 + 256);
+    QCOMPARE(d.tile, 256);
 
     // Unknown budget: keep 256, but schedule the alpha session after the RGB one.
     d = core::chooseTile(0, 2, false, 0);
@@ -646,8 +685,8 @@ void TestCore::tilePolicy()
     QVERIFY(!d.alphaTogether);
 
     // Manual sizes are used as is and never retried, even when the budget looks short.
-    d = core::chooseTile(400, 4, false, 1000);
-    QCOMPARE(d.tile, 400);
+    d = core::chooseTile(448, 4, false, 1000);
+    QCOMPARE(d.tile, 448);
     QVERIFY(!d.allowOomRetry);
     QCOMPARE(d.reason, TileReason::Manual);
 
@@ -689,7 +728,7 @@ void TestCore::progressPlanFollowsStages()
     spec.inference.device = ComputeDevice::Cpu;
     plan = ProcessJob::progressPlan(img, spec);
     QCOMPARE(plan.stages.size(), 3);
-    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet/art/noise1/cpu/t160/x1"));
+    QCOMPARE(plan.stages[1].rateKey, QStringLiteral("nunif/swin_unet_v3/art/noise1/cpu/t160/x1"));
     QCOMPARE(plan.weight, 0.02);
     QVERIFY(plan.stages[1].overheadKey.isEmpty());
 
@@ -698,7 +737,7 @@ void TestCore::progressPlanFollowsStages()
     spec.inference.scale = 2;
     PlanContext ctx{QStringLiteral("afa6a24c72be8588"), 160, true};
     plan = ProcessJob::progressPlan(img, spec, &ctx);
-    const QString key = QStringLiteral("nunif/swin_unet/art/noise1_scale2x@afa6a24c/dml/t160/x2");
+    const QString key = QStringLiteral("nunif/swin_unet_v3/art/noise1_scale2x@afa6a24c/dml/t160/x2");
     QCOMPARE(plan.stages[1].rateKey, key);
     QCOMPARE(plan.stages[1].overheadKey, key + QStringLiteral("#cold"));
     QVERIFY(plan.stages[1].overheadSec > 0);

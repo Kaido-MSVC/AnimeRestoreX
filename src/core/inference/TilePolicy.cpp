@@ -5,9 +5,10 @@ namespace arx::core {
 uint64_t sessionVramMiB(int scale, int tile) {
     const bool x4 = scale == 4;
     switch (tile) {
-    case 160: return x4 ? 402 : 224;
-    case 256: return x4 ? 920 : 470;
-    case 400: return x4 ? 2802 : 1392;
+    case 160: return x4 ? 376 : 424;
+    case 256: return x4 ? 772 : 1146;
+    case 352: return x4 ? 1484 : 2218;
+    case 448: return x4 ? 2909 : 3025;
     default: return 0;
     }
 }

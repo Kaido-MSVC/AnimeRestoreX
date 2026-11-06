@@ -2,15 +2,14 @@ AnimeRestoreX 2.0
 =================
 
 動漫插畫 AI 降噪與 1×（只降噪）/ 2× / 4× 放大工具
-（waifu2x swin_unet/art 模型，Windows ML：ONNX Runtime + DirectML）。
+（waifu2x swin_unet_v3 / swin_unet 模型，ONNX Runtime + DirectML）。
 AI denoising and 1x (denoise only) / 2x / 4x upscaling for anime illustrations
-(waifu2x swin_unet/art models on Windows ML: ONNX Runtime + DirectML).
+(waifu2x swin_unet_v3 / swin_unet models on ONNX Runtime + DirectML).
 
 
 系統需求 / Requirements
 -----------------------
-- Windows 11 x64（實測：25H2 build 26200）。
-  Windows 10 1903（build 18362）以上為元件允許的範圍，但未測試。
+- Windows 11 x64（實測：25H2 build 26200）。Windows 10 未測試。
 - DirectX 12 顯示卡與最新驅動程式；已實測的只有 NVIDIA GeForce GTX 1060 6GB。
   沒有合適 GPU 時可在「設定」選擇 CPU（在測試電腦上約慢 5 倍）。
 - 建議 8 GB 記憶體（4× 有透明時程式約用 2.1 GB）。
@@ -22,31 +21,17 @@ AI denoising and 1x (denoise only) / 2x / 4x upscaling for anime illustrations
 
 AI 模型 / AI models
 -------------------
-本程式使用 nagadomi/nunif 的 waifu2x swin_unet/art 模型（14 個 .onnx 檔，放在
-models\swin_unet\art\）。這批模型權重的授權尚待上游確認，因此
+本程式使用 nagadomi/nunif 的 waifu2x 模型（MIT 授權）：1×、2× 是 swin_unet_v3/art，
+4× 是 swin_unet/art，共 14 個 .onnx 檔，放在 models\ 底下。
 **未附模型的版本**（models 資料夾裡只有 manifest.json）無法處理圖片，
 處理時會顯示「缺少 AI 模型檔」。取得含模型的版本後，把它的 models 資料夾
 整個複製到 AnimeRestoreX.exe 旁邊即可；程式會用 models\manifest.json 中的
 SHA256 檢查每個模型檔，不符就拒絕使用。
 
-The model weights' licence is still being confirmed upstream. A package without
-models (only models\manifest.json) cannot process images and says that the AI
-model files are missing. Copy the complete "models" folder of a package that
-includes them next to AnimeRestoreX.exe; every file is checked against the
-SHA256 in models\manifest.json.
-
-
-第一次啟動 / First start
-------------------------
-第一次啟動（以及授權合約版本變更後）會顯示授權合約（EULA.txt，英文原文，
-包含 Microsoft Windows ML Runtime 的授權條款）。勾選並按「我同意」後才能使用；
-選「我不同意」會直接關閉程式，不寫入任何設定。
-之後可在「說明 → 關於 AnimeRestoreX → 授權合約」再次查看。
-
-On the first start (and after the agreement changes) AnimeRestoreX shows its
-license agreement (EULA.txt, including the Microsoft Windows ML Runtime license
-terms). Tick the box and press "I Agree" to continue; "I Do Not Agree" closes
-the program without writing any setting.
+The models are MIT licensed. A package without models (only models\manifest.json)
+cannot process images and says that the AI model files are missing. Copy the
+complete "models" folder of a package that includes them next to AnimeRestoreX.exe;
+every file is checked against the SHA256 in models\manifest.json.
 
 
 使用方式
@@ -60,7 +45,7 @@ the program without writing any setting.
    「不放大（1×）」只做降噪，必須選擇降噪強度。
 4. 完成後會依「失敗 / 未處理 / 成功」列出每個項目，可直接開啟輸出資料夾。
 
-- 「工具 → 設定」：Tile 大小（自動 / 160 / 256 / 400）、處理裝置（GPU / CPU）、
+- 「工具 → 設定」：Tile 大小（自動 / 160 / 256 / 352 / 448）、處理裝置（GPU / CPU）、
   介面語言（繁體中文 / 日本語 / English）。
 - 快捷鍵：Ctrl+O 匯入圖片、Ctrl+Shift+O 匯入資料夾、Ctrl+Enter 開始處理、
   Delete 移除選取項目、Ctrl+, 設定。
@@ -106,13 +91,12 @@ AnimeRestoreX (shared with AnimeRestoreX 1.x; the 2.0-only settings are under "v
 
 授權 / License
 --------------
-- 使用條件：EULA.txt（含 Microsoft Windows ML Runtime 授權條款全文）。
-  轉送給他人時，請保持整個資料夾完整、不做修改（含 EULA.txt、LICENSE、
-  THIRD_PARTY_NOTICES.md 與 licenses 資料夾）；不得單獨散布 onnxruntime.dll、
-  DirectML.dll。
+- 所有授權與第三方聲明可在「說明 → 關於 AnimeRestoreX → 授權與聲明」查看。
+  轉送給他人時，請保持整個資料夾完整、不做修改（含 LICENSE、
+  THIRD_PARTY_NOTICES.md 與 licenses 資料夾）；不得單獨散布 DirectML.dll。
 - AnimeRestoreX: MIT License, Copyright (c) 2026 Kaido-MSVC（LICENSE）
-- 第三方元件（Qt 6.12.0 LGPLv3、Windows ML Runtime、Visual C++ 執行階段、模型等）
-  各自適用原授權，詳見 THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
+- 第三方元件（Qt 6.12.0 LGPLv3、ONNX Runtime MIT、DirectML、Visual C++ 執行階段、
+  模型等）各自適用原授權，詳見 THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
 - Qt 6.12.0 對應原始碼（qtbase / qtimageformats / qttranslations，未修改）
   與本 zip 一同發布於同一位置；檔名與 SHA256 見 THIRD_PARTY_NOTICES.md §2。
 - 各檔案的 SHA256 見 MANIFEST.txt。

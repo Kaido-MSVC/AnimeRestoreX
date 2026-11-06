@@ -3,7 +3,7 @@
 AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026 Kaido-MSVC）。
 **MIT 只涵蓋 AnimeRestoreX 自身**；本發行包內的第三方元件、模型與執行階段各自適用原授權。授權與版權原文放在 `licenses/`，本文件中的摘要不能取代原文。
 
-使用本程式前須同意 `EULA.txt`（含 Microsoft Windows ML Runtime 授權條款全文，見 §3）。
+程式內可在「說明 → 關於 AnimeRestoreX → 授權與聲明」查看所有授權與第三方聲明的全文。
 
 每個檔案的大小與 SHA256 列在發行包內的 `MANIFEST.txt`。
 
@@ -17,14 +17,15 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `imageformats/qjpeg.dll` | Qt JPEG 外掛（內含 libjpeg-turbo） | 6.12.0 | LGPL-3.0-only；libjpeg-turbo：IJG AND BSD-3-Clause | 同上 |
 | `imageformats/qwebp.dll` | Qt WebP 外掛（內含 libwebp 1.6.0） | 6.12.0 | LGPL-3.0-only；libwebp：BSD-3-Clause | 同上 |
 | `translations/qt_zh_TW.qm`、`translations/qt_ja.qm` | Qt 內建字串翻譯 | 6.12.0 | LGPL-3.0-only | windeployqt 由 Qt 6.12.0 的 `qtbase_zh_TW.qm`／`qtbase_ja.qm` 合併產生（qttranslations） |
-| `onnxruntime.dll` | ONNX Runtime（Microsoft Windows ML Runtime 內附） | 1.28.3 | Microsoft Software License Terms – Microsoft Windows ML Runtime（見 §3） | NuGet `Microsoft.Windows.AI.MachineLearning` 2.5.96 `runtimes/win-x64/native/`，未修改 |
-| `DirectML.dll` | DirectML（同上） | 1.15.4 | 同上 | 同上 |
+| `onnxruntime.dll` | ONNX Runtime | 1.24.4 | MIT（見 §3） | NuGet `Microsoft.ML.OnnxRuntime.DirectML` 1.24.4 `runtimes/win-x64/native/`，未修改 |
+| `DirectML.dll` | DirectML | 1.15.4 | Microsoft Software License Terms – DirectML（見 §3） | NuGet `Microsoft.AI.DirectML` 1.15.4 `bin/x64-win/`，未修改 |
 | `msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` | Microsoft Visual C++ 執行階段 | 14.51.36247.0 | Microsoft Visual Studio「Distributable Code」條款（見 §5） | VS 2026 `VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT`（與建置工具集 14.51 相同；app-local） |
 | `models/manifest.json` | 模型清單（來源、雜湊、I/O 契約） | — | 本專案 | 本專案 `models/manifest.json` |
-| `models/swin_unet/art/*.onnx` | waifu2x swin_unet/art 模型（14 個，Pad→Slice 改寫版） | nunif 20250502 | **待確認**（見 §4） | **只在以 `-IncludeModels` 建立的封裝中**；預設封裝不含模型 |
-| `EULA.txt`、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案（`EULA.txt` 附錄 A 為 Microsoft 條款原文） |
+| `models/swin_unet_v3/art/*.onnx` | waifu2x swin_unet_v3/art 模型（1×、2×，9 個，經轉換） | nunif `0d3d92c` | MIT（見 §4） | **只在以 `-IncludeModels` 建立的封裝中**；預設封裝不含模型 |
+| `models/swin_unet/art/*.onnx` | waifu2x swin_unet/art 模型（4×，5 個，經轉換） | nunif 20250502 | MIT（見 §4） | 同上 |
+| `LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.txt`、`MANIFEST.txt`、`licenses/` | 文件 | — | — | 本專案 |
 
-不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組；Windows ML 套件中的 `Microsoft.Windows.AI.MachineLearning.dll`（Windows ML API／EP catalog，本程式只使用 ONNX Runtime C API，不載入它）；廠商執行提供者（EP）。
+不包含：其他 Qt 影像外掛（gif、ico、svg、tiff 等）、`opengl32sw.dll`、D3D/DXC 編譯器、其他 Qt 模組；ONNX Runtime 套件中的 `onnxruntime_providers_shared.dll`（本程式不需要）；廠商執行提供者（EP）。
 
 不散布、由系統提供：Universal CRT（`api-ms-win-crt-*`）、Direct3D 12（`d3d12.dll`）、DXGI（`dxgi.dll`）、ICU（`icuuc.dll`）、DirectWrite 等 Windows 元件。
 
@@ -78,21 +79,22 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
   | xserverhelper、xsvg | X Server helper、XSVG | — | X11 AND HPND、HPND-sell-variant |
   | zlib | zlib | 1.3.2 | Zlib |
 
-## 3. Microsoft Windows ML Runtime 2.5.96（ONNX Runtime 1.28.3、DirectML 1.15.4）
+## 3. ONNX Runtime 1.24.4、DirectML 1.15.4
 
-- 來源：NuGet 套件 `Microsoft.Windows.AI.MachineLearning` 2.5.96（<https://www.nuget.org/packages/Microsoft.Windows.AI.MachineLearning/2.5.96>），`.nupkg` SHA256 `35d6e84feb4142e8cecaf36704fa3ab0fc8251d892850fb80e8341f7d09653a3`（`tools/fetch-runtime.ps1` 固定並檢查）。散布的是套件 `runtimes/win-x64/native/` 中的 `onnxruntime.dll` 與 `DirectML.dll`，**未修改**。
-- 授權：Microsoft Software License Terms – Microsoft Windows ML Runtime，原文在 `licenses/WindowsML/license.txt`，並以附錄 A 全文收錄在 `EULA.txt`。這兩個檔案依該條款 §3「Distributable Code」隨本程式散布；第一次啟動時須在程式中同意 `EULA.txt` 才能使用。
-- 第三方通知：`licenses/WindowsML/ThirdPartyNotices.txt`（套件原檔，涵蓋 ONNX Runtime 及其相依元件）。
-- 限制（摘自條款，以原文為準）：不得單獨散布這兩個 DLL 或作為獨立產品提供（§4(e)）；不得移除 Microsoft 或其供應商的通知（§4(c)）；該軟體可能收集資料並傳送給 Microsoft（§2(a)）。
-- 本程式只使用 ONNX Runtime C API、DirectML 與 CPU 執行提供者；不使用 Windows ML 的 EP catalog，也不下載廠商執行提供者。DLL 只從程式資料夾載入，啟動時檢查 ONNX Runtime 版本必須是 1.28.3。
+- 來源：NuGet 套件 `Microsoft.ML.OnnxRuntime.DirectML` 1.24.4（`.nupkg` SHA256 `57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681`）與 `Microsoft.AI.DirectML` 1.15.4（`.nupkg` SHA256 `4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9`），由 `tools/fetch-runtime.ps1` 固定並檢查。散布的 `onnxruntime.dll` 與 `DirectML.dll` **未修改**。
+- ONNX Runtime 授權：MIT，Copyright (c) Microsoft Corporation，原文在 `licenses/ONNXRuntime/LICENSE`。第三方通知：`licenses/ONNXRuntime/ThirdPartyNotices.txt`。
+- DirectML 授權：Microsoft Software License Terms – Microsoft DirectX Machine Learning (DirectML)，原文在 `licenses/DirectML/LICENSE.txt`，依其 §1(a) 隨本程式散布。第三方通知：`licenses/DirectML/ThirdPartyNotices.txt`。
+- DirectML 的限制（摘自條款，以原文為準）：只能在 Windows 與 Xbox 上使用；不得單獨散布 `DirectML.dll` 或作為獨立產品提供（§3(e)）；不得移除 Microsoft 或其供應商的通知（§3(c)）；該軟體可能收集資料並傳送給 Microsoft（§2(a)）。
+- 本程式只使用 ONNX Runtime C API、DirectML 與 CPU 執行提供者，不下載廠商執行提供者。DLL 只從程式資料夾載入，啟動時檢查 ONNX Runtime 版本必須是 1.24.4。
 - 「Microsoft」、「Windows」、「DirectML」為 Microsoft 的商標；本程式與 Microsoft 沒有隸屬關係，也未獲其背書。
 
-## 4. waifu2x swin_unet/art 模型（nagadomi/nunif）— 授權待確認
+## 4. waifu2x 模型（nagadomi/nunif）
 
-- 來源：<https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_onnx_models_20250502.zip>（SHA256 `4d531e299884f8895df82947939f85c5ff6fca15236b9b72f1aa8ea476132e08`）中的 `onnx_models/swin_unet/art/`，由 nunif commit `31c0137` 匯出。
-- 修改：為了讓 DirectML 正確執行，負值 `Pad` 以 `tools/winml-probe/scripts/rewrite_pad.py` 改寫成等價的 `Slice`，權重未變。每個檔案的原始與改寫後 SHA256、改寫工具版本與 I/O 契約記錄在 `models/manifest.json`。
-- **授權：待確認。** nunif 倉庫的程式碼採 MIT（`licenses/nunif/LICENSE`，Copyright (C) 2019-2023 nagadomi；另附 `licenses/nunif/NOTICE`），但上游沒有明確說明這批權重檔的授權（GitHub 倉庫標示 MIT，Hugging Face 上的 nunif/waifu2x 標示 agpl-3.0），已向上游詢問。`models/manifest.json` 的 `license` 欄為 `UNRESOLVED`。
-- **預設的發行包不含模型檔**；只有以 `tools/package.ps1 -IncludeModels` 建立的內部測試封裝會放入模型。授權釐清之前，含模型的封裝不得對外散布。
+- 授權：MIT，Copyright (C) 2019-2023 nagadomi，原文在 `licenses/nunif/LICENSE`，另附 `licenses/nunif/NOTICE`（nunif commit `0d3d92c`）。作者已確認 waifu2x 模型採 MIT：<https://github.com/nagadomi/nunif/discussions/751>。
+- 1×、2×：`swin_unet_v3/art`，由 nunif commit `0d3d92c` 以 torch 2.14.1+cpu、onnx 1.23.2、onnxscript 0.7.2 自行匯出。原始匯出檔與轉換說明放在本專案的 Release：<https://github.com/Kaido-MSVC/AnimeRestoreX/releases/tag/models-v3-nunif-0d3d92c>。
+- 4×：`swin_unet/art`，來源 <https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_onnx_models_20250502.zip>（SHA256 `4d531e299884f8895df82947939f85c5ff6fca15236b9b72f1aa8ea476132e08`）中的 `onnx_models/swin_unet/art/`，由 nunif commit `31c0137` 匯出。
+- 修改：為了讓 DirectML 正確執行，以 `tools/winml-probe/scripts/rewrite_pad.py` 把負值 `Pad` 改寫成等價的 `Slice`，再以 `fix_reshape_allowzero.py` 調整 `Reshape` 的 `allowzero` 屬性（4× 圖不受影響）。**權重未變**。每個檔案的原始與轉換後 SHA256、轉換工具版本與 I/O 契約記錄在 `models/manifest.json`。
+- 預設的發行包不含模型檔；以 `tools/package.ps1 -IncludeModels` 建立的封裝才會放入模型。
 - 「waifu2x」等名稱屬於各自作者；本程式與上述專案沒有隸屬關係。
 
 ## 5. Microsoft Visual C++ 執行階段

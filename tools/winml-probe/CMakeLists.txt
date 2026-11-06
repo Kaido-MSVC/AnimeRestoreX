@@ -106,7 +106,7 @@ add_custom_command(TARGET tile_runner POST_BUILD
 # Same sources as tile_runner; only the tile check of makeTilePlan is widened to what the v3 graph
 # itself needs (T/2 must be a multiple of window 8). src/ stays unchanged; never shipped.
 file(READ "${ARX_INF}/TileProcessor.cpp" ARX_TP_SRC)
-string(REPLACE "if (!ModelContract::isValidTile(tile))" "if (tile < 64 || tile % 16 != 0)" ARX_TP_ANY "${ARX_TP_SRC}")
+string(REPLACE "if (!ModelContract::isValidTile(p.tileRule, tile))" "if (tile < 64 || tile % 16 != 0)" ARX_TP_ANY "${ARX_TP_SRC}")
 if(ARX_TP_ANY STREQUAL ARX_TP_SRC)
     message(FATAL_ERROR "TileProcessor.cpp: tile check not found, tile_runner_anytile is out of date")
 endif()

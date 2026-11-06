@@ -38,12 +38,6 @@ Original implementation Fast Fourier Convolution https://github.com/pkumivision/
 Lu Chi / Apache License Version 2.0
 
 ---
-iw3/training/sbs/stereoimage_generation.py
-is copied from https://github.com/thygate/stable-diffusion-webui-depthmap-script/blob/2838dc5fa24ac9f9e24b34ff61f2d2c169b634a1/scripts/stereoimage_generation.py
-Bob Thiry / MIT License
-And contributors https://github.com/thygate/stable-diffusion-webui-depthmap-script/graphs/contributors
-
----
 iw3 uses forked version of ZoeDepth and MiDaS as its core logic
 https://github.com/isl-org/MiDaS
 https://github.com/isl-org/ZoeDepth
@@ -55,19 +49,9 @@ https://github.com/LiheYoung/Depth-Anything
 Lihe Yang / Apache License Version 2.0
 
 ---
-iw3 can use U-2-Net's pretrained model via rembg module.
-https://github.com/xuebinqin/U-2-Net
-xuebinqin / Apache License Version 2.0
-
----
-iw3 can use DIS's pretrained model via rembg module.
-https://github.com/xuebinqin/DIS
-xuebinqin / Apache License Version 2.0
-
----
-iw3 can anime-segmentation's pretrained model via rembg module.
-https://github.com/SkyTNT/anime-segmentation
-SkyTNT / Apache License Version 2.0
+iw3.cli and training code(synthetic data) uses forked version of Depth Pro
+https://github.com/apple/ml-depth-pro
+Apple Inc. / https://github.com/apple/ml-depth-pro/blob/main/LICENSE
 
 ---
 nunif/modules/lpips.py
@@ -75,5 +59,58 @@ nunif/modules/lpips.py
 https://github.com/facebookresearch/NeuralCompression
 Meta Platforms, Inc. and affiliates / MIT License
 
+---
+nunif/utils/superpoint.py
+From SuperPoint https://github.com/rpautrat/SuperPoint/
+Paul-Edouard Sarlin & Rémi Pautrat / MIT License
+
+---
+nunif/modules/norm.py: FastLayerNorm
+From timm https://github.com/huggingface/pytorch-image-models
+Ross Wightman / Apache License Version 2.0
+
+---
+nunif/utils/transnetv2.py
+From TransNetV2 https://github.com/soCzech/TransNetV2
+Tomáš Souček / MIT License
+
+---
+iw3 can load Distill Any Depth checkpoints
+https://github.com/Westlake-AGI-Lab/Distill-Any-Depth
+AGI Lab, Westlake University / Apache License Version 2.0
+
+---
+iw3 uses forked version of Video-Depth-Anything
+https://github.com/DepthAnything/Video-Depth-Anything
+DepthAnything / Apache License 2.0
+
+---
+iw3 uses forked version of Depth-Anything-3
+https://github.com/ByteDance-Seed/Depth-Anything-3
+ByteDance Ltd. and/or its affiliates / Apache License 2.0
+
+--
+nunif/utils/u2netp.py: U2NETP
+From U2-Net https://github.com/xuebinqin/U-2-Net
+Xuebin Qin / Apache License, Version 2.0
+
+---
+iw3/player includes a modified version of Tabler Icons
+https://github.com/tabler/tabler-icons
+Paweł Kun / MIT License
+
+Other license files are included in each asset directory.
+
+---
+nunif/utils/repvgg.py: RepVGG
+Code and Weights from https://github.com/DingXiaoH/RepVGG
+DingXiaoH / MIT License
+
+---
+nunif/modules/dct.py
+Adapted from dctorch https://github.com/GallagherCommaJack/dctorch
+Jack Gallagher / MIT License
+
 ----
 Other libraries used are listed in `requirements.txt`.
+

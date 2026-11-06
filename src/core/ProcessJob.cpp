@@ -125,8 +125,9 @@ QString ProcessJob::checkOptions(const InferenceOptions &o)
     if (o.scale == 1 && o.noise < 0)
         return tr("\"No upscaling (1x)\" only denoises: choose a denoise level.");
     // Defence in depth: the settings file may have been edited by hand, so the job itself
-    // accepts only Auto / 160 / 256 / 400 (all of them legal for the model's tile rule).
-    if (!core::isOfferedTile(o.tile) || (o.tile != 0 && !core::ModelContract::isValidTile(o.tile)))
+    // accepts only Auto / 160 / 256 / 352 / 448 (legal for every model; checked against the
+    // model's own rule again once the model is known).
+    if (!core::isOfferedTile(o.tile))
         return tr("Tile size %1 is not valid for this model.").arg(o.tile);
     return {};
 }
@@ -135,7 +136,8 @@ QString ProcessJob::modelId(const InferenceOptions &o)
 {
     if (!checkOptions(o).isEmpty())
         return {};
-    const QString base = QStringLiteral("swin_unet/art/");
+    // 1x / 2x: swin_unet_v3. 4x: the 20250502 swin_unet graph (v3 has no 4x weights).
+    const QString base = o.scale == 4 ? QStringLiteral("swin_unet/art/") : QStringLiteral("swin_unet_v3/art/");
     if (o.scale == 1)
         return base + QStringLiteral("noise%1").arg(o.noise);
     const QString scale = QStringLiteral("scale%1x").arg(o.scale);
@@ -247,10 +249,12 @@ QString ProcessJob::prepare(const JobSpec &spec, core::Backend &backend, Prepare
     job.device = cpu ? core::ExecutionDevice::Cpu : core::ExecutionDevice::Dml;
     job.vramMiB = cpu ? 0 : backend.availableVramMiB();
     job.tile = core::chooseTile(o.tile, o.scale, cpu, job.vramMiB);
-    if (!core::ModelContract::isValidTile(job.tile.tile) ||
-        (job.tile.allowOomRetry && !core::ModelContract::isValidTile(job.tile.fallbackTile)))
-        return fail(tr("Tile size %1 is not valid for this model.").arg(job.tile.tile),
-                    core::Status::fail(core::ErrorKind::InvalidTileSize, std::to_string(job.tile.tile)));
+    for (const core::ModelInfo *m : {job.rgbModel, job.alphaModel}) {
+        if (m && (!core::ModelContract::isValidTile(*m, job.tile.tile) ||
+                  (job.tile.allowOomRetry && !core::ModelContract::isValidTile(*m, job.tile.fallbackTile))))
+            return fail(tr("Tile size %1 is not valid for this model.").arg(job.tile.tile),
+                        core::Status::fail(core::ErrorKind::InvalidTileSize, std::to_string(job.tile.tile)));
+    }
     s = backend.beginJob(job.device, job.tile.alphaTogether ? 2 : 1);
     if (!s.ok())
         return fail(engineErrorMessage(s), s);

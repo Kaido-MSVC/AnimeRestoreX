@@ -1,5 +1,5 @@
-# Python 3.13 packages for tools/fetch-models.ps1 (Pad -> Slice rewrite of the nunif ONNX
-# models). Same versions as recorded in models/manifest.json "rewrite_tool".
+# Python 3.13 packages for tools/fetch-models.ps1 (rewrite_pad.py and fix_reshape_allowzero.py on the nunif ONNX
+# models). Same versions as recorded in models/manifest.json "pipeline".
 ml_dtypes==0.6.0
 numpy==2.5.4
 onnx==1.23.2

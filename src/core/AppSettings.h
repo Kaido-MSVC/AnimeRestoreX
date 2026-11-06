@@ -24,19 +24,16 @@ namespace arx {
 // The first v2.0 start copies the v1.2 denoise level into v2/; the tile starts at Auto.
 class AppSettings {
 public:
-    static constexpr int kSchema = 1;  // "v2/schema"
+    static constexpr int kSchema = 2;  // "v2/schema"
     static constexpr int kDefaultNoise = 1;
     static constexpr int kDefaultTile = 0;   // auto: 256, 160 when VRAM is short or after OOM
 
     AppSettings();
     ~AppSettings();
 
-    // Read-only access before the licence agreement is accepted: these do not create an
-    // AppSettings object, so nothing (not even the schema migration) is written.
+    // Read-only access at start-up: does not create an AppSettings object, so nothing (not
+    // even the schema migration) is written before the language is applied.
     static std::optional<Language> storedManualLanguage();
-    static QString acceptedEulaVersion();   // "v2/eula/acceptedVersion"; empty if never accepted
-    // Recorded only after the user accepted the agreement of that version.
-    void setAcceptedEulaVersion(const QString &version);
 
     // Only a valid, explicitly chosen language is returned.
     std::optional<Language> manualLanguage() const;
