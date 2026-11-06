@@ -172,7 +172,7 @@ void TestUi::dialogMixedCounts()
                           Item{Item::Succeeded, QStringLiteral("b.png"), QStringLiteral("b_2x.png"), 160}});
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Succeeded: 2")));
     QVERIFY(dlg.summaryText().contains(QStringLiteral("Failed: 1")));
-    QVERIFY(dlg.summaryText().contains(QStringLiteral("smaller tile size 160 (GPU memory): 1")));
+    QVERIFY(dlg.summaryText().contains(QStringLiteral("smaller tile size 160: 1")));
     QVERIFY(!dlg.summaryText().contains(QStringLiteral("Not processed")));
     QVERIFY(dlg.openFolderButton());
     QVERIFY(dlg.findChild<QPlainTextEdit *>(QStringLiteral("itemList")));

@@ -1040,7 +1040,8 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
     if (!item)
         return;
     const bool smaller = r.ok && (r.tileChoice == arx::TileChoice::SmallerForVram ||
-                                  r.tileChoice == arx::TileChoice::OomRetry);
+                                  r.tileChoice == arx::TileChoice::OomRetry ||
+                                  r.tileChoice == arx::TileChoice::AfterGpuError);
     item->setData(ColFile, kRoleSmallerTile, smaller ? r.tileUsed : 0);
     if (r.ok) {
         item->setData(ColFile, kRoleOutput, r.outputPath);
@@ -1050,6 +1051,8 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
             detail += tr(" (tile %1: not enough GPU memory for 256)").arg(r.tileUsed);
         else if (r.tileChoice == arx::TileChoice::OomRetry)
             detail += tr(" (tile %1: redone after a GPU error)").arg(r.tileUsed);
+        else if (r.tileChoice == arx::TileChoice::AfterGpuError)
+            detail += tr(" (tile %1: switched after a GPU error)").arg(r.tileUsed);
         setItemState(item, ItemState::Done, detail);
     } else if (r.canceled) {
         setItemState(item, ItemState::NotProcessed, tr("Canceled"));

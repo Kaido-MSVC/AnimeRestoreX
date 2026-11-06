@@ -90,6 +90,7 @@ TileChoice tileChoice(const core::TileDecision &d, int attempts)
     switch (d.reason) {
     case core::TileReason::Manual: return TileChoice::Manual;
     case core::TileReason::AutoVram: return TileChoice::SmallerForVram;
+    case core::TileReason::AutoRecovered: return TileChoice::AfterGpuError;
     case core::TileReason::Auto:
     case core::TileReason::Cpu: break;
     }
@@ -440,8 +441,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         if (retried || (job.recovered && gpuFailure)) {
             if (gpuFailure)
                 r = fail(tr("The GPU still failed after the AI engine was restarted, at tile size %1 "
-                            "(error %2). Choose a smaller tile size or the CPU in the settings, then "
-                            "try again.")
+                            "(error %2). Close other programs that use the GPU or switch to the CPU "
+                            "in the settings, then try again.")
                              .arg(tileUsed)
                              .arg(s.hresult ? hex(s.hresult) : QString::fromLatin1(core::errorKindName(s.kind))));
             r.fatal = true;

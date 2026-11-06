@@ -111,8 +111,8 @@
         <translation>未処理：%1</translation>
     </message>
     <message>
-        <source>Made with the smaller tile size %1 (GPU memory): %2</source>
-        <translation>小さいタイルサイズ %1 で処理（GPU メモリ）：%2</translation>
+        <source>Made with the smaller tile size %1: %2</source>
+        <translation>小さいタイルサイズ %1 で処理：%2</translation>
     </message>
     <message>
         <source>Processing stopped: %1</source>
@@ -143,8 +143,8 @@
         <translation>成功（%1）：</translation>
     </message>
     <message>
-        <source>Auto had to use the smaller tile size %1 (not enough GPU memory). The tile size changes the result slightly.</source>
-        <translation>GPU メモリが不足したため、「自動」で小さいタイルサイズ %1 を使用しました。タイルサイズによって結果がわずかに変わります。</translation>
+        <source>Auto had to use the smaller tile size %1 because of a GPU memory shortage or a GPU error. The tile size changes the result slightly.</source>
+        <translation>GPU メモリ不足または GPU エラーのため、「自動」で小さいタイルサイズ %1 を使用しました。タイルサイズによって結果がわずかに変わります。</translation>
     </message>
     <message>
         <source>Open Output Folder</source>
@@ -484,6 +484,10 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>（タイル %1：256 には GPU メモリが不足）</translation>
     </message>
     <message>
+        <source> (tile %1: switched after a GPU error)</source>
+        <translation>（GPU エラー後にタイル %1 へ変更）</translation>
+    </message>
+    <message>
         <source> (tile %1: redone after a GPU error)</source>
         <translation>（タイル %1：GPU エラーのため再処理）</translation>
     </message>
@@ -785,8 +789,8 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>画像の変換中にメモリが不足しました。</translation>
     </message>
     <message>
-        <source>The GPU still failed after the AI engine was restarted, at tile size %1 (error %2). Choose a smaller tile size or the CPU in the settings, then try again.</source>
-        <translation>AI エンジンを再起動した後も、タイルサイズ %1 で GPU エラーが発生しました（エラー %2）。設定で小さいタイルサイズか CPU を選んで、もう一度お試しください。</translation>
+        <source>The GPU still failed after the AI engine was restarted, at tile size %1 (error %2). Close other programs that use the GPU or switch to the CPU in the settings, then try again.</source>
+        <translation>AI エンジンを再起動した後も、タイルサイズ %1 で GPU エラーが発生しました（エラー %2）。GPU を使用している他のプログラムを閉じるか、設定で CPU に切り替えて、もう一度お試しください。</translation>
     </message>
     <message>
         <source>Not enough GPU memory to process this image with tile size %1. Choose a smaller tile size or Auto in the settings.</source>

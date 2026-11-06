@@ -460,7 +460,7 @@ void TestPipeline::oomRetriesWithSmallerTile()
     QCOMPARE(results[0].tileUsed, 160);
     QCOMPARE(results[0].tileChoice, TileChoice::OomRetry);
     QCOMPARE(results[1].tileUsed, 160);   // the rest of the batch stays on the fallback tile
-    QCOMPARE(results[1].tileChoice, TileChoice::SmallerForVram);
+    QCOMPARE(results[1].tileChoice, TileChoice::AfterGpuError);
     QCOMPARE(b.script.tiles.front(), 256);
     for (size_t i = 1; i < b.script.tiles.size(); ++i)
         QCOMPARE(b.script.tiles[i], 160);
@@ -532,7 +532,8 @@ void TestPipeline::recoveryFailureStopsBatch()
     const QString code = QString::number(hresult, 16).toUpper();
     QVERIFY2(s.fatalError.contains(code), qPrintable(s.fatalError));
     QVERIFY2(s.fatalError.contains(QStringLiteral("CPU")), qPrintable(s.fatalError));
-    QVERIFY2(s.fatalError.contains(QStringLiteral("smaller tile size")), qPrintable(s.fatalError));
+    QVERIFY2(s.fatalError.contains(QStringLiteral("other programs")), qPrintable(s.fatalError));
+    QVERIFY2(!s.fatalError.contains(QStringLiteral("smaller tile")), qPrintable(s.fatalError));
 }
 
 void TestPipeline::failureAfterRecoveryStopsBatch()

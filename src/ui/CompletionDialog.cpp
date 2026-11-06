@@ -24,7 +24,7 @@ CompletionDialog::CompletionDialog(const arx::BatchSummary &s, const QString &ou
     if (s.notProcessed > 0)
         lines << tr("Not processed: %1").arg(s.notProcessed);
     if (s.smallerTile > 0)
-        lines << tr("Made with the smaller tile size %1 (GPU memory): %2")
+        lines << tr("Made with the smaller tile size %1: %2")
                      .arg(arx::core::kFallbackTile)
                      .arg(s.smallerTile);
     m_summary = new QLabel(lines.join(QLatin1Char('\n')), this);
@@ -78,8 +78,8 @@ CompletionDialog::CompletionDialog(const arx::BatchSummary &s, const QString &ou
         layout->addWidget(m_items);
         if (s.smallerTile > 0) {
             auto *note = new QLabel(tr("[tile %1]").arg(arx::core::kFallbackTile) + QLatin1Char(' ') +
-                                        tr("Auto had to use the smaller tile size %1 (not enough GPU memory). "
-                                           "The tile size changes the result slightly.")
+                                        tr("Auto had to use the smaller tile size %1 because of a GPU memory "
+                                           "shortage or a GPU error. The tile size changes the result slightly.")
                                             .arg(arx::core::kFallbackTile),
                                     this);
             note->setWordWrap(true);

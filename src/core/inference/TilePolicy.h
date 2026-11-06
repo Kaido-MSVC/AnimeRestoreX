@@ -31,7 +31,8 @@ enum class TileReason {
     Manual,      // chosen in the settings
     Auto,        // Auto, default size
     AutoVram,    // Auto, smaller size because the GPU memory budget is short
-    Cpu,         // CPU device: no GPU memory budget applies
+    AutoRecovered,  // Auto, smaller size kept after this batch recovered from a GPU failure
+    Cpu,        // CPU device: no GPU memory budget applies
 };
 
 struct TileDecision {

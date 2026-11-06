@@ -51,6 +51,7 @@ const char *choiceName(TileChoice c)
     case TileChoice::Manual: return "manual";
     case TileChoice::SmallerForVram: return "smaller_for_vram";
     case TileChoice::OomRetry: return "oom_retry";
+    case TileChoice::AfterGpuError: return "after_gpu_error";
     }
     return "?";
 }

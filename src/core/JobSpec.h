@@ -37,8 +37,9 @@ struct JobSpec {
 enum class TileChoice {
     Default,        // Auto at 256, or the CPU default
     Manual,         // chosen in the settings
-    SmallerForVram, // Auto at 160: too little GPU memory for 256 (budget, or an earlier recovery)
+    SmallerForVram, // Auto at 160: the GPU memory budget was too small for 256
     OomRetry,       // Auto: GPU failure at 256, the sessions were rebuilt, the image was redone at 160
+    AfterGpuError,  // Auto at 160: an earlier image of this batch recovered from a GPU failure
 };
 
 struct ItemResult {
