@@ -41,8 +41,8 @@ compatible driver. The executable is unsigned.
 | | Windows 10: **not tested** | Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support); the minimum of the upstream runtime was not checked |
 | GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 |
 | GPU memory | Auto tile 256: about 1.2 GB at 1x/2x, 0.8 GB at 4x per model (twice that with transparency); tile 448 about 3 GB | measured on the GTX 1060 (P1 redo) |
-| RAM | **8 GB recommended**. Peak private memory of the app: about 0.7 GB at 1x/2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (P3) |
-| CPU mode | works without a GPU, about 5 times slower than the GTX 1060 on the test PC | measured (P4) |
+| RAM | **8 GB recommended**. Peak private memory of the app: about 1.3 GB at 1x, 1.7 GB at 2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (1x/2x P1 close, 4x P3) |
+| CPU mode | works without a GPU, about 3 to 10 times slower than the GTX 1060 on the test PC, depending on the scale | measured (P2 redo) |
 
 Not tested: AMD and Intel GPUs, GPUs with less than 6 GB, more than one GPU (the
 Windows default adapter is always used), Windows 10, ARM64, remote desktop and
