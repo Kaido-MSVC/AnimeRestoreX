@@ -5,3 +5,10 @@ licenses/** -text
 # Dev scripts whose SHA-256 is recorded in models/manifest.json: keep LF on every
 # checkout so the recorded hash stays valid with core.autocrlf=true.
 tools/winml-probe/scripts/*.py text eol=lf
+# Text files that tools/package.ps1 copies into the package as they are: CRLF on every
+# checkout, so the package does not depend on core.autocrlf. Anchored exact paths only: a
+# later pattern overrides an earlier one, so a bare "LICENSE" would also match every
+# licenses/**/LICENSE and a wider pattern could reach the hashed scripts. Blobs stay LF.
+/LICENSE text eol=crlf
+packaging/README.txt text eol=crlf
+models/manifest.json text eol=crlf
