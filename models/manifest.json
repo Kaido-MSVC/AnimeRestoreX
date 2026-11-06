@@ -61,6 +61,7 @@
         "package": "Microsoft.ML.OnnxRuntime.DirectML",
         "product": "ONNX Runtime",
         "version": "1.24.4",
+        "file_version": "1.24.20260316.9.2d92497",
         "sha256": "e7eedec6a6f26dc39dc948276a75ef6d2bee3fff944d874ceed0bbd3b97bff40"
       },
       {
@@ -69,6 +70,7 @@
         "package": "Microsoft.AI.DirectML",
         "product": "DirectML",
         "version": "1.15.4",
+        "file_version": "1.15.4+241025-1615.1.dml-1.15.fac7597",
         "sha256": "9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1"
       }
     ]

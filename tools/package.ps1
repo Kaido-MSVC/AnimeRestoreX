@@ -220,9 +220,9 @@ foreach ($e in $entries) {
 }
 foreach ($f in $Manifest.runtime.files) {
     $p = Join-Path $Stage $f.file
-    $ver = (Get-Item -LiteralPath $p).VersionInfo
-    $fileVer = '{0}.{1}.{2}' -f $ver.ProductMajorPart, $ver.ProductMinorPart, $ver.ProductBuildPart
-    if ($fileVer -ne $f.version) { $problems.Add("$($f.file): version $fileVer, manifest says $($f.version)") }
+    # onnxruntime.dll carries a build-date version (1.24.20260316...), so compare the whole string.
+    $fileVer = (Get-Item -LiteralPath $p).VersionInfo.FileVersion
+    if ($fileVer -ne $f.file_version) { $problems.Add("$($f.file): file version $fileVer, manifest says $($f.file_version)") }
     if ((Get-Sha $p) -ne $f.sha256) { $problems.Add("$($f.file): SHA-256 differs from models\manifest.json") }
 }
 if ($IncludeModels) {
