@@ -382,13 +382,12 @@ void MainWindow::requestThumbnail(const QString &path)
         // Header first, then decode at (about) the thumbnail size.
         QImageReader reader(path);
         reader.setAutoTransform(true);
-        QSize size = reader.size();
+        // The scaled size applies before the orientation is applied (Qt 6.12), so it is
+        // computed from the stored size; the square box keeps the result within px either way.
+        const QSize stored = reader.size();
         const int px = int(std::ceil(side * dpr));
-        if (size.isValid()) {
-            if (reader.transformation() & QImageIOHandler::TransformationRotate90)
-                size.transpose();
-            reader.setScaledSize(size.scaled(px, px, Qt::KeepAspectRatio));
-        }
+        if (stored.isValid())
+            reader.setScaledSize(stored.scaled(px, px, Qt::KeepAspectRatio));
         const QImage img = reader.read();
         QImage tile(px, px, QImage::Format_ARGB32_Premultiplied);
         tile.fill(Qt::transparent);

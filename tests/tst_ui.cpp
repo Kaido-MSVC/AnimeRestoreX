@@ -98,6 +98,7 @@ private slots:
     void previewRejectsOversizedImages();
     void previewDecodesScaledThenFull();
     void previewSkipsStaleRequests();
+    void listThumbnailOfRotatedImage();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -1378,6 +1379,41 @@ void TestUi::previewSkipsStaleRequests()
     QTest::qWait(500);
     QCOMPARE(shown.size(), 0);
     QVERIFY(!src->hasImage());
+}
+
+void TestUi::listThumbnailOfRotatedImage()
+{
+    // Stored 300 x 100 with EXIF orientation 6: shown 100 x 300 (portrait). The thumbnail
+    // must be portrait with the same 1:3 aspect ratio, not squashed or turned sideways.
+    const QString rotated = m_dir.filePath(QStringLiteral("thumb 回転.jpg"));
+    {
+        QBuffer buf;
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        QVERIFY(testimg::make(300, 100, false).convertToFormat(QImage::Format_RGB32).save(&buf, "jpeg", 90));
+        QFile f(rotated);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(withExifOrientation6(buf.data()));
+    }
+    MainWindow w;
+    w.show();
+    QCOMPARE(w.addFiles({rotated}), 1);
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QTreeWidgetItem *item = list->topLevelItem(0);
+    // Bounding box of the drawn (non-transparent) thumbnail inside the square tile.
+    auto drawnRect = [&] {
+        const QImage img = item->icon(0).pixmap(list->iconSize()).toImage().convertToFormat(QImage::Format_ARGB32);
+        QRect r;
+        for (int y = 0; y < img.height(); ++y)
+            for (int x = 0; x < img.width(); ++x)
+                if (qAlpha(img.pixel(x, y)) > 0)
+                    r |= QRect(x, y, 1, 1);
+        return r;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(drawnRect().isValid(), 5000);
+    const QRect r = drawnRect();
+    QVERIFY2(r.height() > r.width(), qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
+    const double aspect = double(r.height()) / r.width();
+    QVERIFY2(qAbs(aspect - 3.0) < 0.35, qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
 }
 
 QTEST_MAIN(TestUi)
