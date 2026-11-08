@@ -60,6 +60,15 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backe
         if (cb.itemFinished)
             cb.itemFinished(i, r);
 
+        // Recorded whether or not the item itself succeeded: an output step after the
+        // redone inference may have failed, but the sessions are already rebuilt.
+        if (r.gpuRecovered) {
+            // Stay on the rebuilt sessions and the fallback tile, no second retry.
+            job.tile.tile = job.tile.fallbackTile;
+            job.tile.allowOomRetry = false;
+            job.tile.reason = core::TileReason::AutoRecovered;
+            job.recovered = true;
+        }
         if (r.canceled) {
             s.canceled = true;
             s.notProcessed = total - i;  // the interrupted item counts as not processed
@@ -70,13 +79,6 @@ BatchSummary runBatch(const QStringList &files, const JobSpec &spec, core::Backe
             if (r.tileChoice == TileChoice::SmallerForVram || r.tileChoice == TileChoice::OomRetry ||
                 r.tileChoice == TileChoice::AfterGpuError)
                 ++s.smallerTile;
-            if (r.tileChoice == TileChoice::OomRetry) {
-                // Recovered: stay on the rebuilt sessions and the fallback tile, no second retry.
-                job.tile.tile = job.tile.fallbackTile;
-                job.tile.allowOomRetry = false;
-                job.tile.reason = core::TileReason::AutoRecovered;
-                job.recovered = true;
-            }
             continue;
         }
         ++s.failed;

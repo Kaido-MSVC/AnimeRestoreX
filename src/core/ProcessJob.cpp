@@ -335,8 +335,10 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     QString step;
     QString engineDetail;
     int tileUsed = 0;
+    bool gpuRecovered = false;  // set once the redone inference succeeded
     auto fail = [&](const QString &msg) {
         ItemResult r = failure(msg);
+        r.gpuRecovered = gpuRecovered;
         r.diagnostics = QStringLiteral("step: %1\nmodel: %2\ndevice: %3\ntile: %4")
                             .arg(step,
                                  job.rgbModel ? QString::fromStdString(job.rgbModel->id) : QString(),
@@ -451,12 +453,18 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         r.tileUsed = 0;
         return r;
     }
+    gpuRecovered = retried;
+    auto canceledAfterInference = [&] {
+        ItemResult r = canceled();
+        r.gpuRecovered = gpuRecovered;
+        return r;
+    };
     const QSize expected(inSize.width() * scale, inSize.height() * scale);
     if (QSize(out.width, out.height) != expected)
         return fail(tr("The AI output has an unexpected size (%1 x %2, expected %3 x %4).")
                         .arg(out.width).arg(out.height).arg(expected.width()).arg(expected.height()));
     if (cancel.load())
-        return canceled();
+        return canceledAfterInference();
 
     // 3. Encode into a temporary file inside the output folder. The QImage wraps the
     //    result buffer (no copy); `out` outlives it.
@@ -482,7 +490,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         return fail(tr("Failed to write the output file: %1").arg(tmp.errorString()));
 
     if (cancel.load())
-        return canceled();
+        return canceledAfterInference();
 
     // 4. Commit under the final, non-overwriting name. After this point the item is a
     //    success even if a cancel arrives (the commit is the completion boundary).
@@ -498,6 +506,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     ok.outputPath = finalPath;
     ok.tileUsed = tileUsed;
     ok.tileChoice = tileChoice(job.tile, stats.attempts);
+    ok.gpuRecovered = gpuRecovered;
     ok.diagnostics = QStringLiteral("model: %1\ndevice: %2\ntile: %3 (attempts %4%5)")
                          .arg(QString::fromStdString(job.rgbModel->id), job.deviceName)
                          .arg(tileUsed)

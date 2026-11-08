@@ -54,6 +54,11 @@ struct ItemResult {
     // The engine should release its sessions before the next item (after an
     // out-of-memory failure or a device error).
     bool resetEngine = false;
+    // The GPU failed at the first tile, the sessions were rebuilt and the inference was
+    // redone at the fallback tile successfully. Reported separately from `ok`: a later
+    // step (output file, encoding, commit, cancel) may still fail, and the batch must
+    // keep the rebuilt sessions and the fallback tile either way.
+    bool gpuRecovered = false;
     // Not shown in the UI: the step that failed, error kind, HRESULT, model,
     // device and tile, for tests and troubleshooting. No image content.
     QString diagnostics;

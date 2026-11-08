@@ -161,6 +161,7 @@ private slots:
     void recoveryFailureStopsBatch_data();
     void recoveryFailureStopsBatch();
     void failureAfterRecoveryStopsBatch();
+    void outputFailureAfterRecoveryKeepsFallback();
     void oomManualTileFailsItemOnly();
     void deviceLostManualTileStopsBatch();
     void smallGpuBudgetUses160();
@@ -558,6 +559,60 @@ void TestPipeline::failureAfterRecoveryStopsBatch()
     QCOMPARE(retries, 1);
     QVERIFY(results[1].fatal);
     QVERIFY2(s.fatalError.contains(QStringLiteral("0x8007000E")), qPrintable(s.fatalError));
+}
+
+void TestPipeline::outputFailureAfterRecoveryKeepsFallback()
+{
+    // The GPU recovery succeeds on the first image, but its output file cannot be created
+    // (the output folder disappears during encoding). The batch must still keep the rebuilt
+    // sessions and tile 160, and a later GPU failure must stop it instead of recovering again.
+    FakeBackend b;
+    b.script.failAtCall = 1;
+    b.script.failWith = core::Status::fail(core::ErrorKind::OutOfMemory, "E_OUTOFMEMORY", 0x8007000E);
+    const QString dir = m_root.filePath(QStringLiteral("復原後 出力"));
+    QVERIFY(QDir().mkpath(dir));
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = dir;
+    int retries = 0;
+    QList<ItemResult> results;
+    BatchCallbacks cb;
+    cb.retrying = [&](int, int) { ++retries; };
+    cb.stageStarted = [&](int i, const StageEvent &e) {
+        if (i == 0 && e.stage == Stage::Encode)
+            QVERIFY(QDir(dir).removeRecursively());
+    };
+    cb.itemStarted = [&](int i) {
+        if (i == 1)
+            QVERIFY(QDir().mkpath(dir));
+        if (i == 2)  // the third image fails on the GPU again
+            b.script.failAtCall2 = b.script.calls + 1;
+    };
+    cb.itemFinished = [&](int, const ItemResult &r) { results << r; };
+    std::atomic_bool cancel{false};
+    const BatchSummary sum = runBatch({m_big, m_opaque, m_alpha}, s, b, cancel, cb);
+
+    QCOMPARE(results.size(), 3);
+    QVERIFY(!results[0].ok);
+    QVERIFY(!results[0].fatal);
+    QVERIFY(results[0].gpuRecovered);  // reported although the item failed
+    QVERIFY2(results[0].diagnostics.startsWith(QStringLiteral("step: encode")), qPrintable(why(results[0])));
+    QVERIFY2(results[1].ok, qPrintable(why(results[1])));
+    QCOMPARE(results[1].tileUsed, 160);
+    QCOMPARE(results[1].tileChoice, TileChoice::AfterGpuError);
+    QVERIFY(!results[1].gpuRecovered);
+    QVERIFY(results[2].fatal);           // no second recovery in this batch
+    QVERIFY(!results[2].gpuRecovered);
+    QCOMPARE(retries, 1);
+    QCOMPARE(b.sessionsCreated, 2);      // rebuilt once, then reused
+    QCOMPARE(b.script.tiles.front(), 256);
+    for (size_t i = 1; i < b.script.tiles.size(); ++i)
+        QCOMPARE(b.script.tiles[i], 160);
+    QCOMPARE(sum.succeeded, 1);
+    QCOMPARE(sum.failed, 2);
+    QVERIFY2(sum.fatalError.contains(QStringLiteral("0x8007000E")), qPrintable(sum.fatalError));
+    // Only the second image was written, through the temp file and commit.
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden),
+             QStringList{QStringLiteral("線畫 テスト_2x.png")});
 }
 
 void TestPipeline::oomManualTileFailsItemOnly()
