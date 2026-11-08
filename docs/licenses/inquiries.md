@@ -7,7 +7,8 @@
 | # | 對象 | 連結 | 發出日期 | 狀態 |
 |---|---|---|---|---|
 | 1 | nagadomi/nunif（模型授權） | <https://github.com/nagadomi/nunif/discussions/751> | 2026-11-03 | 已回覆／結案（2026-11-03） |
-| 2 | microsoft/WindowsML（runtime 散布） | <https://github.com/microsoft/WindowsML/issues/27> | 2026-11-04 | 等待回覆 |
+| 2 | microsoft/WindowsML（runtime 散布） | <https://github.com/microsoft/WindowsML/issues/27> | 2026-11-04 | 未回覆；改在 #3 詢問 |
+| 3 | microsoft/WindowsAppSDK（runtime 散布、EULA） | <https://github.com/microsoft/WindowsAppSDK/issues/6950> | 2026-11-05 | 部分回覆，EULA 待答（2026-11-06） |
 
 ---
 
@@ -68,7 +69,7 @@
 
 - **連結**：<https://github.com/microsoft/WindowsML/issues/27>
 - **發出日期**：2026-11-04
-- **狀態**：等待回覆（不阻擋 P0／P1；正式發布前必須取得或確認，見交接文件 §3 的發布檢查清單）
+- **狀態**：未回覆（2026-11-07 確認無任何留言）。同一組問題已改在 microsoft/WindowsAppSDK #6950 詢問，回覆見 §3。v2.0 改用上游 ORT + DirectML 發布，這則詢問不再阻擋發布
 - **對象檔案**：NuGet `Microsoft.Windows.AI.MachineLearning` 2.5.96 的 `runtimes/win-x64/native/onnxruntime.dll`（ORT 1.28.3）與 `DirectML.dll`（1.15.4），未修改，隨免安裝 ZIP 一起散布。不散布 `Microsoft.Windows.AI.MachineLearning.dll`。
 - **條款**：套件內的 `license.txt`（Microsoft Software License Terms – Microsoft Windows ML Runtime，SHA-256 `66395f8c…0c376814`）；條文摘錄與逐條對照見 `docs/v2.0-P5報告.md` §2。
 
@@ -92,3 +93,47 @@
 ### 結論
 
 （待定）
+
+---
+
+## 3. Windows ML runtime 散布與 EULA（WindowsAppSDK）
+
+- **連結**：<https://github.com/microsoft/WindowsAppSDK/issues/6950>
+- **標題**：[Question] Redistribution of onnxruntime.dll / DirectML.dll from Microsoft.Windows.AI.MachineLearning in an unpackaged ZIP app
+- **發出日期**：2026-11-05
+- **狀態**：部分回覆，EULA 待答（第 1、2 題已答，第 3 題 EULA 待答）
+- **對象檔案**：NuGet `Microsoft.Windows.AI.MachineLearning` 的 `onnxruntime.dll` 與 `DirectML.dll`，隨免安裝 ZIP 散布（同 §2）。
+
+### 問了哪些問題
+
+1. 套件中的 `onnxruntime.dll` 與 `DirectML.dll` 是否屬於 Distributable Code，可以放進 ZIP 散布？
+2. app 不呼叫任何 Windows ML API 時，只散布這兩個 DLL、不附 `Microsoft.Windows.AI.MachineLearning.dll`，是否為支援的配置？
+3. 沒有安裝程式的 ZIP 散布，在第一次啟動、載入 DLL 之前顯示 EULA，是否滿足 §3(b)(ii)？
+
+### 等待哪項決定
+
+- 是否把 runtime 從上游 ORT 1.24.4 + DirectML 1.15.4 換回 Windows ML 套件。v2.0 已用上游 runtime 發布，這則詢問只影響之後的版本。
+- 換回的條件是 EULA 不要求使用者同意。如果要求使用者同意，會和 v2.0 移除首次同意畫面的決策衝突，維持上游 runtime。
+- 換回時要重做的項目：`dumpbin /dependents` 確認 DLL 依賴、重跑 P0／P1、更新 `fetch-runtime.ps1`、`licenses/`、封裝 allowlist 與「關於」。
+
+### 回覆原文
+
+- **回覆者**：andrewleader（Contributor）
+- **日期**：2026-11-06（GitHub 顯示日期；台北時間 2026-11-07 上午收到）
+- **連結**：<https://github.com/microsoft/WindowsAppSDK/issues/6950#issuecomment-6699096918>
+
+> Hey @Kaido-MSVC, thanks for asking these questions!
+>
+> 1. Yes, `onnxruntime.dll` and `DirectML.dll` from the `Microsoft.Windows.AI.MachineLearning` NuGet packages are considered Distributable Code and can be included in your ZIP.
+> 2. We do not officially support excluding the `Microsoft.Windows.AI.MachineLearning.dll` binary. It's very likely you can do this, and there probably won't be any issues, however it's not an officially supported scenario, so we can't make any guarantees that doing this won't cause breaking changes in the future in your app. Therefore, before updating to new NuGet packages, I'd recommend thoroughly testing your app.
+> 3. We're still working on getting an answer for your EULA question.
+
+本專案的回覆（2026-11-07，<https://github.com/microsoft/WindowsAppSDK/issues/6950#issuecomment-6704446235>）：
+
+> Thanks for the clear answers on 1 and 2 — that helps a lot. I’ll keep `Microsoft.Windows.AI.MachineLearning.dll` in the package to stay within the supported scenario. Looking forward to the EULA answer whenever it’s ready.
+
+### 結論（暫定，EULA 待答）
+
+- `onnxruntime.dll`、`DirectML.dll` 可以放進 ZIP 散布。
+- 如果換回 Windows ML，`Microsoft.Windows.AI.MachineLearning.dll` 一起散布，維持在官方支援的配置；更新 NuGet 套件前要完整測試。這推翻 §2「不散布 `Microsoft.Windows.AI.MachineLearning.dll`」的做法。
+- EULA 答覆前不換 runtime，也不修改任何程式或封裝檔案。
