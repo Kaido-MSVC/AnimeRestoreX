@@ -1,5 +1,17 @@
 # AnimeRestoreX
 
+## 繁體中文介紹
+
+AnimeRestoreX 是為動畫風格插畫設計的 Windows x64 桌面工具。它使用 waifu2x 模型，可在原尺寸進行 AI 降噪（1×），也可將圖片放大至 2× 或 4×。v2.0 以 ONNX Runtime 和 DirectML 使用 GPU，也可在設定中選擇 CPU 處理。
+
+- 支援 PNG、JPEG 和 WebP 讀寫，WebP 可選有損或無損輸出。
+- 可拖放圖片或整個資料夾進行批次處理。工作清單顯示縮圖，並提供原圖與結果並排預覽、單張和整批進度及預估剩餘時間。
+- 介面支援繁體中文、日文與英文，並可隨 Windows 切換淺色或深色外觀。
+
+各版本與下載請見 [Releases](https://github.com/Kaido-MSVC/AnimeRestoreX/releases)。v2.0 的實測平台與硬體列於下方[系統需求](#system-requirements-v20)，模型與第三方元件的散布注意事項見[發行封裝說明](#release-package)。
+
+## English overview
+
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using the waifu2x swin_unet_v3 and swin_unet models (nagadomi/nunif,
 ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
