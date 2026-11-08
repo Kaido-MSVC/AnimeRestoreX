@@ -99,6 +99,7 @@ private slots:
     void previewDecodesScaledThenFull();
     void previewSkipsStaleRequests();
     void listThumbnailOfRotatedImage();
+    void listThumbnailOfOversizedImage();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -1229,11 +1230,13 @@ QByteArray pngHeaderOnly(QSize size)
 // JPEG `jpeg` with an EXIF orientation tag (6 = rotate 90° clockwise) inserted after SOI.
 QByteArray withExifOrientation6(const QByteArray &jpeg)
 {
-    const QByteArray tiff("MM\x00\x2a\x00\x00\x00\x08"          // big-endian TIFF, IFD at 8
-                          "\x00\x01"                              // one entry
-                          "\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00"  // Orientation = 6
-                          "\x00\x00\x00\x00", 30);                // no next IFD
-    const QByteArray payload = QByteArray("Exif\x00\x00", 6) + tiff;
+    static const char tiff[] = "MM\x00\x2a\x00\x00\x00\x08"                     // big-endian TIFF, IFD at 8
+                               "\x00\x01"                                         // one entry
+                               "\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00" // Orientation = 6
+                               "\x00\x00\x00\x00";                                // no next IFD
+    static const char exif[] = "Exif\x00\x00";
+    static_assert(sizeof(tiff) - 1 == 26 && sizeof(exif) - 1 == 6);
+    const QByteArray payload = QByteArray(exif, sizeof(exif) - 1) + QByteArray(tiff, sizeof(tiff) - 1);
     QByteArray app1("\xFF\xE1", 2);
     const quint16 len = quint16(payload.size() + 2);
     app1 += char(len >> 8);
@@ -1414,6 +1417,43 @@ void TestUi::listThumbnailOfRotatedImage()
     QVERIFY2(r.height() > r.width(), qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
     const double aspect = double(r.height()) / r.width();
     QVERIFY2(qAbs(aspect - 3.0) < 0.35, qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
+}
+
+void TestUi::listThumbnailOfOversizedImage()
+{
+    // Header claims 3000 x 1600 = 4.8 MP (> 4.5 MP): the thumbnail request must not decode
+    // it and shows the placeholder (a frame with an empty middle).
+    const QString big = m_dir.filePath(QStringLiteral("thumb 過大.png"));
+    {
+        QFile f(big);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(pngHeaderOnly(QSize(3000, 1600)));
+    }
+    MainWindow w;
+    w.show();
+    QCOMPARE(w.addFiles({big}), 1);
+    auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+    QTreeWidgetItem *item = list->topLevelItem(0);
+    auto icon = [&] {
+        return item->icon(0).pixmap(list->iconSize()).toImage().convertToFormat(QImage::Format_ARGB32);
+    };
+    auto drawn = [](const QImage &img) {
+        for (int y = 0; y < img.height(); ++y)
+            for (int x = 0; x < img.width(); ++x)
+                if (qAlpha(img.pixel(x, y)) > 0)
+                    return true;
+        return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(drawn(icon()), 5000);  // the placeholder replaced the blank icon
+    const QImage placeholder = icon();
+    QCOMPARE(qAlpha(placeholder.pixel(placeholder.width() / 2, placeholder.height() / 2)), 0);
+    QCOMPARE(w.thumbnailDecodeCount(), 0);
+
+    // An image within the limit is still decoded.
+    const QString ok = m_dir.filePath(QStringLiteral("thumb ok.png"));
+    QVERIFY(testimg::make(300, 120, false).save(ok, "png"));
+    QCOMPARE(w.addFiles({ok}), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(w.thumbnailDecodeCount(), 1, 5000);
 }
 
 QTEST_MAIN(TestUi)

@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QThreadPool>
 
+#include <atomic>
 #include <memory>
 
 namespace Ui { class MainWindow; }
@@ -33,6 +34,8 @@ public:
 
     // Adds files to the list (skips duplicates / unsupported). Returns number added.
     int addFiles(const QStringList &files);
+    // List thumbnails decoded so far (oversized or unreadable images are not); for tests.
+    int thumbnailDecodeCount() const { return m_thumbDecodes.load(); }
 
     // Start folder for the import dialogs (restored from settings).
     QString sourceFolder() const { return m_sourceDir; }
@@ -125,6 +128,7 @@ private:
     void setItemProgressVisible(bool visible);
     // List thumbnails, decoded off the GUI thread.
     QThreadPool m_thumbPool;
+    std::atomic_int m_thumbDecodes{0};
     int thumbnailSide() const;  // logical px
     void requestThumbnail(const QString &path);
     int m_vramTile = 0;     // job: Auto chose this smaller tile (GPU memory), else 0

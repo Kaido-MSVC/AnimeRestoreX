@@ -21,6 +21,13 @@ qint64 pixelCount(QSize s)
     return qint64(s.width()) * qint64(s.height());
 }
 
+HeaderCheck checkHeader(QSize declared, qint64 maxPixels)
+{
+    if (!declared.isValid() || declared.isEmpty())
+        return HeaderCheck::UnknownSize;
+    return pixelCount(declared) > maxPixels ? HeaderCheck::TooLarge : HeaderCheck::Ok;
+}
+
 SizeCheck check(QSize in, int scale, OutputFormat format)
 {
     if (in.width() <= 0 || in.height() <= 0 || (scale != 1 && scale != 2 && scale != 4))

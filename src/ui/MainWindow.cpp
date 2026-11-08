@@ -3,6 +3,7 @@
 
 #include "core/AppSettings.h"
 #include "core/FolderScanner.h"
+#include "core/ImageLimits.h"
 #include "core/ProcessJob.h"
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
@@ -382,16 +383,32 @@ void MainWindow::requestThumbnail(const QString &path)
         // Header first, then decode at (about) the thumbnail size.
         QImageReader reader(path);
         reader.setAutoTransform(true);
-        // The scaled size applies before the orientation is applied (Qt 6.12), so it is
-        // computed from the stored size; the square box keeps the result within px either way.
+        // Same check as the preview of an original: an image over the processing limit or
+        // without a readable size is not decoded (PNG is decoded at full size before
+        // the scaling), and gets a placeholder instead.
         const QSize stored = reader.size();
         const int px = int(std::ceil(side * dpr));
-        if (stored.isValid())
+        QImage img;
+        if (arx::limits::checkHeader(stored, arx::limits::kMaxInputPixels) == arx::limits::HeaderCheck::Ok) {
+            // The scaled size applies before the orientation is applied (Qt 6.12), so it is
+            // computed from the stored size; the square box keeps the result within px either way.
             reader.setScaledSize(stored.scaled(px, px, Qt::KeepAspectRatio));
-        const QImage img = reader.read();
+            img = reader.read();
+            ++m_thumbDecodes;
+        }
         QImage tile(px, px, QImage::Format_ARGB32_Premultiplied);
         tile.fill(Qt::transparent);
-        if (!img.isNull()) {
+        if (img.isNull()) {
+            // Placeholder: an empty dashed frame (the preview and the Details column give
+            // the reason when the image is selected or processed).
+            QPainter p(&tile);
+            p.setRenderHint(QPainter::Antialiasing);
+            const qreal radius = 6 * dpr;
+            const qreal inset = std::round(px * 0.12);
+            p.setPen(QPen(frame, dpr, Qt::DashLine));
+            p.drawRoundedRect(QRectF(0, 0, px, px).adjusted(inset + 0.5, inset + 0.5, -inset - 0.5, -inset - 0.5),
+                              radius, radius);
+        } else {
             QPainter p(&tile);
             p.setRenderHint(QPainter::Antialiasing);
             p.setRenderHint(QPainter::SmoothPixmapTransform);

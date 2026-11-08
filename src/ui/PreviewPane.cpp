@@ -337,7 +337,8 @@ PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path, qint64 maxP
 
     // Header only: nothing is decoded before the size is known to be within the limit.
     const QSize stored = reader.size();  // as stored in the file, before its orientation
-    if (!stored.isValid()) {
+    const arx::limits::HeaderCheck check = arx::limits::checkHeader(stored, maxPixels);
+    if (check == arx::limits::HeaderCheck::UnknownSize) {
         l.error = reader.canRead() ? tr("Unknown image size") : reader.errorString();
         return l;
     }
@@ -345,7 +346,7 @@ PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path, qint64 maxP
                            ? stored.transposed()
                            : stored;
     l.size = size;
-    if (arx::limits::pixelCount(size) > maxPixels) {
+    if (check == arx::limits::HeaderCheck::TooLarge) {
         l.tooLarge = true;
         return l;
     }

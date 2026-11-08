@@ -24,6 +24,12 @@ SizeCheck check(QSize in, int scale, OutputFormat format);
 
 qint64 pixelCount(QSize s);
 
+// Check before decoding an image only to display it (preview, list thumbnail): the size
+// declared in the file header (QImageReader::size()) against a pixel limit, so that an
+// oversized or unreadable image is never decoded. Originals use kMaxInputPixels.
+enum class HeaderCheck { Ok, UnknownSize, TooLarge };
+HeaderCheck checkHeader(QSize declared, qint64 maxPixels);
+
 // "30.8" for 30,800,000 pixels (decimal megapixels, one decimal place).
 QString megapixels(qint64 pixels);
 
