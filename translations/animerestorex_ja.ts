@@ -630,6 +630,14 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>プレビューを読み込めません：%1</translation>
     </message>
     <message>
+        <source>No preview: the image is too large (%1 x %2 = %3 MP &gt; %4 MP preview limit).</source>
+        <translation>プレビューなし：画像が大きすぎます（%1 x %2 = %3 MP &gt; プレビュー上限 %4 MP）。</translation>
+    </message>
+    <message>
+        <source>Unknown image size</source>
+        <translation>画像サイズを取得できません</translation>
+    </message>
+    <message>
         <source>Loading...</source>
         <translation>読み込み中…</translation>
     </message>

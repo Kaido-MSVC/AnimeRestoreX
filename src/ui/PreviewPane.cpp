@@ -1,5 +1,7 @@
 #include "ui/PreviewPane.h"
 
+#include "core/ImageLimits.h"
+
 #include <QComboBox>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -75,12 +77,21 @@ ImageCanvas::ImageCanvas(QWidget *parent) : QWidget(parent)
     setAttribute(Qt::WA_OpaquePaintEvent, false);
 }
 
-void ImageCanvas::setImage(const QImage &full, const QImage &thumb)
+void ImageCanvas::setImage(const QImage &image, QSize size)
 {
-    m_full = full;
-    m_thumb = thumb;
+    m_thumb = image;
+    m_full = image.size() == size ? image : QImage();
+    m_size = size;
     m_message.clear();
     updateGeometry();
+    update();
+}
+
+void ImageCanvas::setFullImage(const QImage &full)
+{
+    if (!hasImage() || full.size() != m_size)
+        return;
+    m_full = full;
     update();
 }
 
@@ -88,6 +99,7 @@ void ImageCanvas::setMessage(const QString &text)
 {
     m_full = QImage();
     m_thumb = QImage();
+    m_size = QSize();
     m_message = text;
     updateGeometry();
     update();
@@ -143,9 +155,9 @@ void ImageCanvas::paintEvent(QPaintEvent *event)
 
     if (m_fit) {
         const QRectF target = fittedRect();
-        if (m_full.hasAlphaChannel())
+        if (m_thumb.hasAlphaChannel())
             p.fillRect(target, checkerBrush());
-        const QImage &src = (target.width() <= m_thumb.width()) ? m_thumb : m_full;
+        const QImage &src = (target.width() <= m_thumb.width() || m_full.isNull()) ? m_thumb : m_full;
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         p.drawImage(target, src);
         return;
@@ -155,14 +167,16 @@ void ImageCanvas::paintEvent(QPaintEvent *event)
     const QRect exposed = event->rect().intersected(QRect(QPoint(0, 0), m_logical));
     if (exposed.isEmpty())
         return;
-    if (m_full.hasAlphaChannel())
+    // Until the full-size pixels arrive, the scaled-down image stands in (smoothed).
+    const QImage &src = m_full.isNull() ? m_thumb : m_full;
+    if (src.hasAlphaChannel())
         p.fillRect(exposed, checkerBrush());
-    const double sx = double(m_full.width()) / m_logical.width();
-    const double sy = double(m_full.height()) / m_logical.height();
+    const double sx = double(src.width()) / m_logical.width();
+    const double sy = double(src.height()) / m_logical.height();
     const QRectF source(exposed.x() * sx, exposed.y() * sy, exposed.width() * sx,
                         exposed.height() * sy);
-    p.setRenderHint(QPainter::SmoothPixmapTransform, false);  // show real pixels
-    p.drawImage(QRectF(exposed), m_full, source);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, m_full.isNull());  // full: show real pixels
+    p.drawImage(QRectF(exposed), src, source);
 }
 
 // ---------------------------------------------------------------- PreviewPane
@@ -261,6 +275,14 @@ void PreviewPane::refreshMessages()
             return tr("Loading...");
         case ViewState::Error:
             return tr("Cannot load the preview: %1").arg(error);
+        case ViewState::TooLarge: {
+            const QSize s = isResult ? m_resSize : m_srcSize;
+            return tr("No preview: the image is too large (%1 x %2 = %3 MP > %4 MP preview limit).")
+                .arg(s.width())
+                .arg(s.height())
+                .arg(arx::limits::megapixels(arx::limits::pixelCount(s)),
+                     arx::limits::megapixels(isResult ? maxResultPixels() : maxSourcePixels()));
+        }
         case ViewState::Loaded:
             return {};
         case ViewState::Empty:
@@ -297,11 +319,43 @@ void PreviewPane::resizeEvent(QResizeEvent *event)
     updateNote();
 }
 
-PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path)
+qint64 PreviewPane::maxSourcePixels()
+{
+    return arx::limits::kMaxInputPixels;
+}
+
+qint64 PreviewPane::maxResultPixels()
+{
+    return arx::limits::kMaxOutputPixels;
+}
+
+PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path, qint64 maxPixels, bool full)
 {
     Loaded l;
     QImageReader reader(path);
     reader.setAutoTransform(true);
+
+    // Header only: nothing is decoded before the size is known to be within the limit.
+    const QSize stored = reader.size();  // as stored in the file, before its orientation
+    if (!stored.isValid()) {
+        l.error = reader.canRead() ? tr("Unknown image size") : reader.errorString();
+        return l;
+    }
+    const QSize size = (reader.transformation() & QImageIOHandler::TransformationRotate90)
+                           ? stored.transposed()
+                           : stored;
+    l.size = size;
+    if (arx::limits::pixelCount(size) > maxPixels) {
+        l.tooLarge = true;
+        return l;
+    }
+
+    // Fit mode needs no more than the thumbnail: let the decoder scale down. The scaled
+    // size applies before the orientation is applied (Qt 6.12), so it uses the stored size.
+    l.isFull = full || (size.width() <= kThumbSide && size.height() <= kThumbSide);
+    if (!l.isFull)
+        reader.setScaledSize(stored.scaled(kThumbSide, kThumbSide, Qt::KeepAspectRatio));
+
     QImage img = reader.read();
     if (img.isNull()) {
         l.error = reader.errorString();
@@ -313,11 +367,9 @@ PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path)
         l.error = tr("Out of memory");
         return l;
     }
-    if (img.width() > kThumbSide || img.height() > kThumbSide)
-        l.thumb = img.scaled(kThumbSide, kThumbSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    else
-        l.thumb = img;
-    l.full = std::move(img);
+    if (l.isFull && img.size() != size)  // header and data disagree: keep what was decoded
+        l.size = img.size();
+    l.image = std::move(img);
     return l;
 }
 
@@ -332,6 +384,8 @@ void PreviewPane::setHasItems(bool hasItems)
 void PreviewPane::clear()
 {
     ++m_generation;
+    m_pool.clear();  // drop requests that have not started; running ones are discarded later
+    m_srcFullRequested = m_resFullRequested = false;
     m_sourcePath.clear();
     m_resultPath.clear();
     m_hint = ResultHint::NotYet;
@@ -350,46 +404,81 @@ void PreviewPane::showItem(const QString &sourcePath, const QString &resultPath,
         return;
     }
     m_hint = hint;
-    const quint64 gen = ++m_generation;
+    ++m_generation;
+    m_pool.clear();  // drop requests that have not started; running ones are discarded later
+    m_srcFullRequested = m_resFullRequested = false;
     m_sourcePath = sourcePath;
     m_resultPath = resultPath;
 
-    auto load = [this, gen](const QString &path, bool isResult) {
-        m_pool.start([this, gen, path, isResult] {
-            Loaded l = loadForPreview(path);
-            QMetaObject::invokeMethod(this, [this, gen, isResult, l = std::move(l)] {
-                if (gen != m_generation)
-                    return;  // selection changed meanwhile
-                ImageCanvas *c = isResult ? m_res : m_src;
-                ViewState &state = isResult ? m_resState : m_srcState;
-                if (l.full.isNull()) {
-                    state = ViewState::Error;
-                    (isResult ? m_resError : m_srcError) = l.error;
-                } else {
-                    state = ViewState::Loaded;
-                    c->setImage(l.full, l.thumb);
-                }
-                refreshMessages();
-                applyMode();
-            }, Qt::QueuedConnection);
-        });
-    };
-
+    const bool full = m_mode->currentIndex() == 1;  // 100% mode needs the full-size pixels
     m_srcState = ViewState::Loading;
-    load(sourcePath, false);
+    requestLoad(sourcePath, false, full);
+    m_srcFullRequested = full;
     if (resultPath.isEmpty()) {
         m_resState = ViewState::Empty;
     } else {
         m_resState = ViewState::Loading;
-        load(resultPath, true);
+        requestLoad(resultPath, true, full);
+        m_resFullRequested = full;
     }
     refreshMessages();
     applyMode();
 }
 
+void PreviewPane::requestLoad(const QString &path, bool isResult, bool full)
+{
+    const quint64 gen = m_generation.load();
+    const qint64 maxPixels = isResult ? maxResultPixels() : maxSourcePixels();
+    m_pool.start([this, gen, path, isResult, full, maxPixels] {
+        if (gen != m_generation.load())
+            return;  // the selection changed before this request started: do not decode
+        Loaded l = loadForPreview(path, maxPixels, full);
+        if (!l.image.isNull())
+            ++m_decodes;
+        QMetaObject::invokeMethod(this, [this, gen, path, isResult, l = std::move(l)] {
+            if (gen != m_generation.load())
+                return;  // selection changed meanwhile
+            ImageCanvas *c = isResult ? m_res : m_src;
+            ViewState &state = isResult ? m_resState : m_srcState;
+            if (state == ViewState::Loaded) {
+                // Full-size pixels for 100% mode of an image already shown scaled down.
+                if (l.isFull && !l.image.isNull()) {
+                    c->setFullImage(l.image);
+                    emit imageShown(path, isResult);
+                }
+                return;
+            }
+            if (l.tooLarge) {
+                state = ViewState::TooLarge;
+                (isResult ? m_resSize : m_srcSize) = l.size;
+            } else if (l.image.isNull()) {
+                state = ViewState::Error;
+                (isResult ? m_resError : m_srcError) = l.error;
+            } else {
+                state = ViewState::Loaded;
+                c->setImage(l.image, l.size);
+                emit imageShown(path, isResult);
+            }
+            refreshMessages();
+            applyMode();
+        }, Qt::QueuedConnection);
+    });
+}
+
 void PreviewPane::applyMode()
 {
     const bool fit = m_mode->currentIndex() != 1;
+    // 100% mode: images shown scaled down get their full-size pixels (once per selection).
+    if (!fit) {
+        if (m_srcState == ViewState::Loaded && !m_src->hasFullImage() && !m_srcFullRequested) {
+            m_srcFullRequested = true;
+            requestLoad(m_sourcePath, false, true);
+        }
+        if (m_resState == ViewState::Loaded && !m_res->hasFullImage() && !m_resFullRequested) {
+            m_resFullRequested = true;
+            requestLoad(m_resultPath, true, true);
+        }
+    }
     const QSize logical = m_res->hasImage() ? m_res->imageSize() : m_src->imageSize();
     for (auto [area, canvas] : {std::pair{m_srcArea, m_src}, std::pair{m_resArea, m_res}}) {
         canvas->setLogicalSize(logical);

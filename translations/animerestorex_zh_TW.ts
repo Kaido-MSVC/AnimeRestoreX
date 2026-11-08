@@ -630,6 +630,14 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
         <translation>無法載入預覽：%1</translation>
     </message>
     <message>
+        <source>No preview: the image is too large (%1 x %2 = %3 MP &gt; %4 MP preview limit).</source>
+        <translation>不顯示預覽：圖片過大（%1 x %2 = %3 MP &gt; 預覽上限 %4 MP）。</translation>
+    </message>
+    <message>
+        <source>Unknown image size</source>
+        <translation>無法取得圖片尺寸</translation>
+    </message>
+    <message>
         <source>Loading...</source>
         <translation>載入中…</translation>
     </message>

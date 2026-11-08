@@ -32,6 +32,8 @@
 #include <QApplication>
 #include <QDir>
 #include <QImageReader>
+#include <QBuffer>
+#include <QtEndian>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -93,6 +95,9 @@ private slots:
     void themeStyleSheetIsComplete();
     void themeFollowsColorScheme();
     void listShowsThumbnails();
+    void previewRejectsOversizedImages();
+    void previewDecodesScaledThenFull();
+    void previewSkipsStaleRequests();
 
 private:
     // Closes the next modal widget (message box / dialog) and returns its text.
@@ -1188,6 +1193,191 @@ void TestUi::listShowsThumbnails()
         return center.alpha() > 0;
     }(), 5000);
     QVERIFY(list->iconSize().height() >= 32);
+}
+
+namespace {
+
+// A PNG that holds only a header claiming `size` (no image data): the preview must
+// reject it from the header alone. Decoding it would fail with a read error instead.
+QByteArray pngHeaderOnly(QSize size)
+{
+    auto be32 = [](quint32 v) {
+        QByteArray b(4, '\0');
+        qToBigEndian(v, b.data());
+        return b;
+    };
+    auto crc32 = [](const QByteArray &data) {
+        quint32 c = 0xFFFFFFFFu;
+        for (char ch : data) {
+            c ^= quint8(ch);
+            for (int k = 0; k < 8; ++k)
+                c = (c & 1) ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+        }
+        return c ^ 0xFFFFFFFFu;
+    };
+    auto chunk = [&](const QByteArray &typeAndData) {
+        return be32(quint32(typeAndData.size() - 4)) + typeAndData + be32(crc32(typeAndData));
+    };
+    QByteArray ihdr = QByteArray("IHDR") + be32(quint32(size.width())) + be32(quint32(size.height()));
+    ihdr += QByteArray("\x08\x06\x00\x00\x00", 5);  // 8-bit RGBA, no interlace
+    // The header read stops at the first IDAT; its few bytes are not a valid image.
+    return QByteArray("\x89PNG\r\n\x1a\n", 8) + chunk(ihdr) + chunk(QByteArray("IDAT\x78\x9c\x03\x00", 8)) +
+           chunk(QByteArray("IEND"));
+}
+
+// JPEG `jpeg` with an EXIF orientation tag (6 = rotate 90° clockwise) inserted after SOI.
+QByteArray withExifOrientation6(const QByteArray &jpeg)
+{
+    const QByteArray tiff("MM\x00\x2a\x00\x00\x00\x08"          // big-endian TIFF, IFD at 8
+                          "\x00\x01"                              // one entry
+                          "\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00"  // Orientation = 6
+                          "\x00\x00\x00\x00", 30);                // no next IFD
+    const QByteArray payload = QByteArray("Exif\x00\x00", 6) + tiff;
+    QByteArray app1("\xFF\xE1", 2);
+    const quint16 len = quint16(payload.size() + 2);
+    app1 += char(len >> 8);
+    app1 += char(len & 0xFF);
+    app1 += payload;
+    return jpeg.left(2) + app1 + jpeg.mid(2);
+}
+
+ImageCanvas *previewCanvas(PreviewPane &p, int index)
+{
+    const auto canvases = p.findChildren<ImageCanvas *>();
+    return canvases.size() == 2 ? canvases.at(index) : nullptr;  // 0 = original, 1 = result
+}
+
+} // namespace
+
+void TestUi::previewRejectsOversizedImages()
+{
+    // Original over the processing limit (4.5 MP): a real image, rejected from its header.
+    const QString big = m_dir.filePath(QStringLiteral("preview 過大.png"));
+    QVERIFY(testimg::make(3000, 1600, false).save(big, "png"));
+    // Result over the output limit (75 MP): header only.
+    const QString huge = m_dir.filePath(QStringLiteral("preview huge_4x.png"));
+    {
+        QFile f(huge);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(pngHeaderOnly(QSize(10000, 8000)));
+    }
+    PreviewPane p;
+    p.resize(800, 500);
+    p.show();
+    QSignalSpy shown(&p, &PreviewPane::imageShown);
+    ImageCanvas *src = previewCanvas(p, 0);
+    ImageCanvas *res = previewCanvas(p, 1);
+    QVERIFY(src && res);
+
+    p.showItem(big, huge);
+    QTRY_VERIFY(src->message().contains(QStringLiteral("too large")));
+    QTRY_VERIFY(res->message().contains(QStringLiteral("too large")));
+    QVERIFY2(src->message().contains(QStringLiteral("3000 x 1600 = 4.8 MP > 4.5 MP")), qPrintable(src->message()));
+    QVERIFY2(res->message().contains(QStringLiteral("10000 x 8000 = 80.0 MP > 75.0 MP")), qPrintable(res->message()));
+    QVERIFY(!src->hasImage());
+    QVERIFY(!res->hasImage());
+    QCOMPARE(p.decodeCount(), 0);  // nothing was decoded
+    QCOMPARE(shown.size(), 0);
+
+    // 100% mode does not load them either.
+    p.findChild<QComboBox *>()->setCurrentIndex(1);
+    QTest::qWait(200);
+    QCOMPARE(p.decodeCount(), 0);
+
+    // An image within the limit right after still shows normally.
+    const QString ok = m_dir.filePath(QStringLiteral("preview ok.png"));
+    QVERIFY(testimg::make(640, 480, true).save(ok, "png"));
+    p.showItem(ok, QString());
+    QTRY_VERIFY(src->hasImage());
+    QCOMPARE(src->imageSize(), QSize(640, 480));
+    QVERIFY(src->hasFullImage());
+    QVERIFY(src->message().isEmpty());
+}
+
+void TestUi::previewDecodesScaledThenFull()
+{
+    // A large image within the limit, stored rotated (EXIF orientation 90°): fit mode
+    // decodes it scaled down in the right orientation, 100% mode adds the full pixels.
+    const QString rotated = m_dir.filePath(QStringLiteral("preview 回転.jpg"));
+    {
+        QBuffer buf;
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        QVERIFY(testimg::make(3000, 1000, false).convertToFormat(QImage::Format_RGB32).save(&buf, "jpeg", 80));
+        QFile f(rotated);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(withExifOrientation6(buf.data()));
+    }
+    QCOMPARE(QImageReader(rotated).transformation(), QImageIOHandler::TransformationRotate90);
+    // A small image: decoded once at full size, same as before.
+    const QString small = m_dir.filePath(QStringLiteral("preview small.png"));
+    QVERIFY(testimg::make(400, 300, false).save(small, "png"));
+
+    PreviewPane p;
+    p.resize(800, 500);
+    p.show();
+    ImageCanvas *src = previewCanvas(p, 0);
+    ImageCanvas *res = previewCanvas(p, 1);
+    QVERIFY(src && res);
+
+    p.showItem(small, rotated);
+    QTRY_VERIFY(src->hasImage() && res->hasImage());
+    QCOMPARE(src->imageSize(), QSize(400, 300));
+    QVERIFY(src->hasFullImage());
+    QCOMPARE(res->imageSize(), QSize(1000, 3000));     // size after orientation
+    QCOMPARE(res->decodedSize(), QSize(682, 2048));    // scaled while decoding, not distorted
+    QVERIFY(!res->hasFullImage());
+    QCOMPARE(p.decodeCount(), 2);
+
+    QSignalSpy shown(&p, &PreviewPane::imageShown);
+    p.findChild<QComboBox *>()->setCurrentIndex(1);    // 100% (output pixels)
+    QTRY_VERIFY(res->hasFullImage());
+    QCOMPARE(shown.size(), 1);                         // only the scaled-down view reloads
+    QCOMPARE(shown.at(0).at(1).toBool(), true);
+    QCOMPARE(p.decodeCount(), 3);
+
+    // Selecting it again in 100% mode decodes at full size directly.
+    p.clear();
+    p.showItem(rotated, QString());
+    QTRY_VERIFY(src->hasImage());
+    QVERIFY(src->hasFullImage());
+    QCOMPARE(src->decodedSize(), QSize(1000, 3000));
+    QCOMPARE(p.decodeCount(), 4);
+}
+
+void TestUi::previewSkipsStaleRequests()
+{
+    QStringList files;
+    for (int i = 0; i < 8; ++i) {
+        files << m_dir.filePath(QStringLiteral("preview switch %1.png").arg(i));
+        QVERIFY(testimg::make(2000, 2000 - i, false).save(files.last(), "png"));
+    }
+    PreviewPane p;
+    p.resize(800, 500);
+    p.show();
+    ImageCanvas *src = previewCanvas(p, 0);
+    QVERIFY(src);
+    QSignalSpy shown(&p, &PreviewPane::imageShown);
+
+    // Fast switching: only the last selection reaches the view; requests that had not
+    // started are dropped, the ones already running (at most one per pool thread) are
+    // finished and discarded.
+    for (const QString &f : files)
+        p.showItem(f, QString());
+    QTRY_VERIFY(src->hasImage());
+    QTest::qWait(300);  // any stale decode still running has finished by now
+    QCOMPARE(shown.size(), 1);
+    QCOMPARE(shown.at(0).at(0).toString(), files.last());
+    QCOMPARE(src->imageSize(), QSize(2000, 2000 - 7));
+    QVERIFY2(p.decodeCount() <= 3, qPrintable(QString::number(p.decodeCount())));
+
+    // Clearing the list drops the pending request: nothing is shown afterwards.
+    shown.clear();
+    p.showItem(files.first(), QString());
+    p.showItem(files.at(1), QString());
+    p.clear();
+    QTest::qWait(500);
+    QCOMPARE(shown.size(), 0);
+    QVERIFY(!src->hasImage());
 }
 
 QTEST_MAIN(TestUi)
