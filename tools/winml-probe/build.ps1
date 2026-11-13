@@ -1,5 +1,5 @@
 # Build winml_probe + tile_runner (Release) in a VS 2026 x64 developer environment with the
-# same MSVC toolset as the main project (14.51). Changes only this process.
+# same MSVC toolset as the main project (14.52). Changes only this process.
 #   -Runtime upstream : ORT 1.24.4 + DirectML 1.15.4, output in build-upstream (default)
 #   -Runtime winml    : Windows ML 2.5.96 (ORT 1.28.3), output in build
 [CmdletBinding()]
@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $VsRoot = 'C:\Program Files\Microsoft Visual Studio\18\Community'
-$VcVars = '14.51'
+$VcVars = '14.52'
 $CMake  = 'C:\Program Files\CMake\bin\cmake.exe'
 $Ninja  = 'C:\Users\max00\AppData\Local\Microsoft\WinGet\Packages\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe\ninja.exe'
 $Root   = $PSScriptRoot

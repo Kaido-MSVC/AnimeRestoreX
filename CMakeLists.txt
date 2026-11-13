@@ -3,7 +3,14 @@ cmake_minimum_required(VERSION 3.26)
 
 project(AnimeRestoreX VERSION 2.0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+# CMake 4.4.4 maps C++23 on MSVC to -std:c++latest; MSVC 19.52 has -std:c++23.
+# Remove this once CMake maps C++23 to -std:c++23 natively.
+if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.52)
+    set(CMAKE_CXX23_STANDARD_COMPILE_OPTION "-std:c++23")
+    set(CMAKE_CXX23_EXTENSION_COMPILE_OPTION "-std:c++23")
+endif()
+
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

@@ -1,4 +1,4 @@
-# Build AnimeRestoreX inside a VS 2026 x64 developer environment (MSVC 14.51).
+# Build AnimeRestoreX inside a VS 2026 x64 developer environment (MSVC 14.52).
 # The environment change only affects this PowerShell process.
 [CmdletBinding()]
 param(
@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $VsRoot   = 'C:\Program Files\Microsoft Visual Studio\18\Community'
-$VcVars   = '14.51'
+$VcVars   = '14.52'
 $CMake    = 'C:\Program Files\CMake\bin\cmake.exe'
 $CTest    = 'C:\Program Files\CMake\bin\ctest.exe'
 $Root     = $PSScriptRoot

@@ -1,5 +1,5 @@
 # Inference core (v2.0 P2 module): manifest / model contract, SHA-256, tiling, seam
-# blending and alpha flow. Plain C++20, no Qt and no ONNX Runtime.
+# blending and alpha flow. Plain C++23, no Qt and no ONNX Runtime.
 add_library(arxinfer STATIC
     core/inference/Status.h
     core/inference/Json.h core/inference/Json.cpp

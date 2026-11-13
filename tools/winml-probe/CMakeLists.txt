@@ -3,7 +3,14 @@
 cmake_minimum_required(VERSION 3.21)
 project(winml_probe LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+# Same C++23 mapping as the main project: CMake 4.4.4 maps C++23 on MSVC to -std:c++latest.
+# Remove this once CMake maps C++23 to -std:c++23 natively.
+if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.52)
+    set(CMAKE_CXX23_STANDARD_COMPILE_OPTION "-std:c++23")
+    set(CMAKE_CXX23_EXTENSION_COMPILE_OPTION "-std:c++23")
+endif()
+
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Which ORT package the headers and import library come from (see fetch-deps.ps1):
