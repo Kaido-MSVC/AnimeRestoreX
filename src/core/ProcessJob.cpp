@@ -296,15 +296,17 @@ ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec
     QString model = modelId(o);
     if (context && !context->modelHash.isEmpty())
         model += QLatin1Char('@') + context->modelHash.left(8);
-    const QString key = QStringLiteral("nunif/%1/%2/%3/x%4")
+    // TTA renders the RGB image 8 times: its own speed group ("/tta"), 8x the RGB work.
+    const QString key = QStringLiteral("nunif/%1/%2/%3/x%4%5")
                             .arg(model, cpu ? QStringLiteral("cpu") : QStringLiteral("dml"),
                                  tile ? QStringLiteral("t%1").arg(tile) : QStringLiteral("auto"))
-                            .arg(scale);
+                            .arg(scale)
+                            .arg(o.tta ? QStringLiteral("/tta") : QString());
     // Cold start: session creation (and the hash check) before the first tile; about 4 s
     // per DML session on the GTX 1060 (P2/P3 measurements), less on the CPU.
     const bool cold = context && context->cold;
     const double coldSec = cold ? (cpu ? 1.0 : 4.0) : 0.0;
-    plan.stages << StagePlan{Stage::Inference, 0, key, plan.weight, rate, coldSec,
+    plan.stages << StagePlan{Stage::Inference, 0, key, plan.weight * (o.tta ? 8 : 1), rate, coldSec,
                              cold ? key + QStringLiteral("#cold") : QString()};
 
     QString encKey;
@@ -339,11 +341,12 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     auto fail = [&](const QString &msg) {
         ItemResult r = failure(msg);
         r.gpuRecovered = gpuRecovered;
-        r.diagnostics = QStringLiteral("step: %1\nmodel: %2\ndevice: %3\ntile: %4")
+        r.diagnostics = QStringLiteral("step: %1\nmodel: %2\ndevice: %3\ntile: %4\ntta: %5")
                             .arg(step,
                                  job.rgbModel ? QString::fromStdString(job.rgbModel->id) : QString(),
                                  job.deviceName)
-                            .arg(tileUsed ? tileUsed : job.tile.tile);
+                            .arg(tileUsed ? tileUsed : job.tile.tile)
+                            .arg(spec.inference.tta ? QStringLiteral("on") : QStringLiteral("off"));
         if (!engineDetail.isEmpty())
             r.diagnostics += QStringLiteral("\nengine: ") + engineDetail;
         return r;
@@ -383,6 +386,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
 
     core::ProcessOptions opt;
     opt.tile = job.tile.tile;
+    opt.tta = spec.inference.tta;
     opt.allowOomRetry = job.tile.allowOomRetry;
     opt.fallbackTile = job.tile.fallbackTile;
     opt.maxOutputPixels = quint64(limits::kMaxOutputPixels);
@@ -507,11 +511,13 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     ok.tileUsed = tileUsed;
     ok.tileChoice = tileChoice(job.tile, stats.attempts);
     ok.gpuRecovered = gpuRecovered;
-    ok.diagnostics = QStringLiteral("model: %1\ndevice: %2\ntile: %3 (attempts %4%5)")
+    ok.tta = stats.tta;
+    ok.diagnostics = QStringLiteral("model: %1\ndevice: %2\ntile: %3 (attempts %4%5)\ntta: %6")
                          .arg(QString::fromStdString(job.rgbModel->id), job.deviceName)
                          .arg(tileUsed)
                          .arg(stats.attempts)
-                         .arg(stats.alphaPassed ? QStringLiteral(", alpha model") : QString());
+                         .arg(stats.alphaPassed ? QStringLiteral(", alpha model") : QString(),
+                              stats.tta ? QStringLiteral("on (8 runs)") : QStringLiteral("off"));
     return ok;
 }
 

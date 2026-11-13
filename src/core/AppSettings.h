@@ -50,6 +50,8 @@ public:
     void setTileSize(int tile);
     ComputeDevice computeDevice() const;  // invalid -> Gpu
     void setComputeDevice(ComputeDevice device);
+    bool tta() const;            // TTA (8 runs averaged); missing or invalid -> off
+    void setTta(bool on);
 
     // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
     QByteArray windowGeometry() const;

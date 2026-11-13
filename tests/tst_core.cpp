@@ -427,6 +427,8 @@ void TestCore::settingsSeparateKeysAndValidation()
     {
         AppSettings s;
         QVERIFY(!s.manualLanguage().has_value());  // nothing stored yet
+        QVERIFY(!s.tta());                          // missing (older files): off
+        s.setTta(true);
         s.setSourceDir(a);
         s.setOutputDir(b);
         s.setNoiseLevel(3);
@@ -443,7 +445,10 @@ void TestCore::settingsSeparateKeysAndValidation()
         QCOMPARE(s.tileSize(), 160);
         QCOMPARE(s.computeDevice(), ComputeDevice::Cpu);
         QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
+        QVERIFY(s.tta());
+        s.setTta(false);
     }
+    QVERIFY(!AppSettings().tta());
     for (int t : {100, 200, 640, 300})  // old engine values, 640+, illegal tiles
         QVERIFY(!AppSettings::isValidTile(t));
     QSettings raw;
@@ -458,8 +463,10 @@ void TestCore::settingsSeparateKeysAndValidation()
     raw.setValue(QStringLiteral("v2/inference/tileSize"), QStringLiteral("abc"));
     raw.setValue(QStringLiteral("v2/inference/device"), QStringLiteral("npu"));
     raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
+    raw.setValue(QStringLiteral("v2/inference/tta"), QStringLiteral("yes"));
     raw.sync();
     AppSettings s;
+    QVERIFY(!s.tta());
     QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
     QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
     QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);
@@ -746,6 +753,15 @@ void TestCore::progressPlanFollowsStages()
     QCOMPARE(plan.stages[1].rateKey, key);  // warm items share the speed
     QVERIFY(plan.stages[1].overheadKey.isEmpty());
     QCOMPARE(plan.stages[1].overheadSec, 0.0);
+
+    // TTA: its own speed group, 8x the RGB work; the item weight (output pixels) is unchanged.
+    const double plainWork = plan.stages[1].megapixels;
+    spec.inference.tta = true;
+    plan = ProcessJob::progressPlan(img, spec, &ctx);
+    QCOMPARE(plan.stages[1].rateKey, key + QStringLiteral("/tta"));
+    QCOMPARE(plan.stages[1].megapixels, 8 * plainWork);
+    QCOMPARE(plan.weight, plainWork);
+    spec.inference.tta = false;
 
     // Unreadable header: size unknown, the estimator uses an average weight.
     plan = ProcessJob::progressPlan(m_dir.filePath(QStringLiteral("missing.png")), spec);

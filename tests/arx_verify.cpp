@@ -3,7 +3,7 @@
 // DirectML.dll, models/) and writes one JSON line per item and per job: result, tile,
 // time, private bytes after the item, and cancel latency.
 //
-//   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu]]]... FILE...
+//   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu|gpu][:tta]]]... FILE...
 //              [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]
 //              [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]
 //   FORMAT: png | jpeg | webp | webpl (lossless). Jobs run in order over all files,
@@ -74,7 +74,12 @@ bool parseJob(const QString &text, const QString &outDir, JobSpec &s)
         return false;
     s.encode.quality = 90;
     s.inference.tile = p.size() > 3 ? p[3].toInt() : 0;
-    s.inference.device = p.size() > 4 && p[4] == QLatin1String("cpu") ? ComputeDevice::Cpu : ComputeDevice::Gpu;
+    // After the tile: "cpu" / "gpu" and "tta", in any order.
+    for (qsizetype i = 4; i < p.size(); ++i) {
+        if (p[i] == QLatin1String("cpu")) s.inference.device = ComputeDevice::Cpu;
+        else if (p[i] == QLatin1String("tta")) s.inference.tta = true;
+        else if (p[i] != QLatin1String("gpu")) return false;
+    }
     return true;
 }
 
@@ -194,7 +199,7 @@ int main(int argc, char **argv)
         else files << a;
     }
     if (outDir.isEmpty() || jsonPath.isEmpty() || files.isEmpty()) {
-        std::fputs("usage: arx_verify --out DIR --json LOG [--job S:N:FMT[:TILE[:cpu]]]... FILE...\n"
+        std::fputs("usage: arx_verify --out DIR --json LOG [--job S:N:FMT[:TILE[:cpu|gpu][:tta]]]... FILE...\n"
                    "       [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]\n"
                    "       [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]\n", stderr);
         return 64;

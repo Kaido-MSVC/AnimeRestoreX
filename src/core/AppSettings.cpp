@@ -25,6 +25,7 @@ const QString kSchemaKey = QStringLiteral("v2/schema");
 const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
 const QString kTileKey = QStringLiteral("v2/inference/tileSize");
 const QString kDeviceKey = QStringLiteral("v2/inference/device");
+const QString kTtaKey = QStringLiteral("v2/inference/tta");  // 2.1; missing in older files = off
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
 const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // early 2.0 test builds; removed by schema 2
 
@@ -133,6 +134,14 @@ void AppSettings::setComputeDevice(ComputeDevice device)
     m_s->setValue(kDeviceKey, device == ComputeDevice::Cpu ? QStringLiteral("cpu")
                                                            : QStringLiteral("gpu"));
 }
+
+bool AppSettings::tta() const
+{
+    // Only an explicit "true" turns it on: a missing or garbled value keeps the 8x slower mode off.
+    return m_s->value(kTtaKey).toString() == QLatin1String("true");
+}
+
+void AppSettings::setTta(bool on) { m_s->setValue(kTtaKey, on); }
 
 QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey).toByteArray(); }
 void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }

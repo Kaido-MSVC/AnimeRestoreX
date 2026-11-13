@@ -147,6 +147,7 @@ private slots:
     void initTestCase();
     void init();
     void png2xOpaque();
+    void ttaThroughTheJob();
     void webp4xLossyAlpha();
     void webpLosslessAndJpeg();
     void sameNameGetsNumbered();
@@ -269,6 +270,29 @@ void TestPipeline::png2xOpaque()
     const QImage out = QImage(r.outputPath).convertToFormat(QImage::Format_RGB888);
     QCOMPARE(out.pixel(11, 7), src.pixel(5, 3));
     QCOMPARE(out.pixel(191, 127), src.pixel(95, 63));
+}
+
+void TestPipeline::ttaThroughTheJob()
+{
+    // The job passes InferenceOptions::tta to the tiler and reports it; with the nearest fake
+    // model the TTA mean of an opaque image equals the plain result.
+    FakeBackend plainBackend, ttaBackend;
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = QDir(m_outDir).filePath(QStringLiteral("tta"));  // keeps the shared names for later tests
+    QVERIFY(QDir().mkpath(s.outputDir));
+    const ItemResult plain = runOne(m_opaque, s, plainBackend);
+    QVERIFY2(plain.ok, qPrintable(why(plain)));
+    QVERIFY(!plain.tta);
+    QVERIFY2(plain.diagnostics.contains(QStringLiteral("\ntta: off")), qPrintable(plain.diagnostics));
+    s.inference.tta = true;
+    const ItemResult tta = runOne(m_opaque, s, ttaBackend);
+    QVERIFY2(tta.ok, qPrintable(why(tta)));
+    QVERIFY(tta.tta);
+    QVERIFY2(tta.diagnostics.contains(QStringLiteral("\ntta: on")), qPrintable(tta.diagnostics));
+    QCOMPARE(tta.tileUsed, 256);
+    QCOMPARE(ttaBackend.script.calls, 8 * plainBackend.script.calls);  // square tiles, 96x64 input
+    QCOMPARE(QImage(tta.outputPath).convertToFormat(QImage::Format_RGB888),
+             QImage(plain.outputPath).convertToFormat(QImage::Format_RGB888));
 }
 
 void TestPipeline::webp4xLossyAlpha()

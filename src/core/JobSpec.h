@@ -23,6 +23,8 @@ struct InferenceOptions {
     int scale = 2;     // 1 (denoise only, needs noise >= 0), 2 or 4
     int tile = 0;      // 0 = Auto (256, or 160 when GPU memory is short / after a GPU failure); 160, 256, 352, 448
     ComputeDevice device = ComputeDevice::Gpu;
+    // Test-time augmentation (nunif --tta): 8 flipped / rotated runs averaged, about 8x the time.
+    bool tta = false;
 };
 
 // Snapshot of all parameters for one job; copied into the worker so that
@@ -51,6 +53,7 @@ struct ItemResult {
     // Tile actually used for the result (0 if inference did not finish) and why.
     int tileUsed = 0;
     TileChoice tileChoice = TileChoice::Default;
+    bool tta = false;    // the result is the TTA mean of 8 runs (set when ok)
     // The engine should release its sessions before the next item (after an
     // out-of-memory failure or a device error).
     bool resetEngine = false;
