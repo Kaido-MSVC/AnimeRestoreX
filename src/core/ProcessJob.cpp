@@ -401,15 +401,14 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
 
     const core::ImageView view{input.constBits(), input.width(), input.height(), loaded.hasAlpha ? 4 : 3,
                                std::ptrdiff_t(input.bytesPerLine())};
-    core::Image8 out;
     core::ProcessStats stats;
-    const core::Status s = core::upscaleImage(view, rgbParams, rgbEngine,
-                                              job.alphaModel ? &alphaParams : nullptr,
-                                              job.alphaModel ? &alphaEngine : nullptr, opt, out, &stats);
+    auto upscaled = core::upscaleImage(view, rgbParams, rgbEngine, job.alphaModel ? &alphaParams : nullptr,
+                                       job.alphaModel ? &alphaEngine : nullptr, opt, &stats);
     input = QImage();
     const bool retried = stats.firstAttemptError.kind != core::ErrorKind::None;
     tileUsed = stats.tileUsed ? stats.tileUsed : (retried ? job.tile.fallbackTile : job.tile.tile);
-    if (!s.ok()) {
+    if (!upscaled) {
+        const core::Status &s = upscaled.error();
         // A CPU Run aborted by SetTerminate fails with an engine error: it is a cancel.
         if (s.kind == core::ErrorKind::Cancelled || cancel.load())
             return canceled();
@@ -453,6 +452,7 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         r.tileUsed = 0;
         return r;
     }
+    core::Image8 &out = *upscaled;
     gpuRecovered = retried;
     auto canceledAfterInference = [&] {
         ItemResult r = canceled();

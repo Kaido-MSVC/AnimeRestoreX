@@ -99,22 +99,21 @@ static void testCoverage() {
             for (const Case& c : sizes) {
                 TestImage in = makeImage(c.w, c.h, 3, 5, (unsigned)(c.w * 31 + c.h + tile));
                 FakeEngine e(p);
-                Image8 out;
                 ProcessOptions o;
                 o.tile = tile;
                 uint64_t lastDone = 0, total = 0;
                 int progressCalls = 0;
                 o.progress = [&](const Progress& pr) { lastDone = pr.donePixels; total = pr.totalPixels; ++progressCalls; };
                 ProcessStats st;
-                Status s = upscaleImage(in.view(), p, e, nullptr, nullptr, o, out, &st);
-                CHECK(s.ok());
-                const bool eq = equalsNearest(in, out, p.scale, false);
+                const auto out = upscaleImage(in.view(), p, e, nullptr, nullptr, o, &st);
+                CHECK(out.has_value());
+                if (!out) continue;
+                const bool eq = equalsNearest(in, *out, p.scale, false);
                 if (!eq) std::printf("  coverage failed: scale %d tile %d size %dx%d\n", p.scale, tile, c.w, c.h);
                 CHECK(eq);
-                TilePlan plan;
-                makeTilePlan(c.w, c.h, p, tile, plan);
-                CHECK(e.calls == plan.tiles());
-                CHECK(progressCalls == plan.tiles());
+                const auto plan = makeTilePlan(c.w, c.h, p, tile);
+                CHECK(plan && e.calls == plan->tiles());
+                CHECK(plan && progressCalls == plan->tiles());
                 CHECK(lastDone == total && total == (uint64_t)c.w * c.h * p.scale * p.scale);
             }
 }
@@ -122,27 +121,32 @@ static void testCoverage() {
 static void testPlanMatchesUpstream() {
     // Values from SeamBlending.create_config (seam_blending.py) computed by hand:
     // 1x tile 256, 640x480: input_offset 8, blend 4, step 236; h: 256,492,728>=496 -> 3 blocks.
-    TilePlan p;
-    CHECK(makeTilePlan(640, 480, P1, 256, p).ok());
+    const auto r1 = makeTilePlan(640, 480, P1, 256);
+    CHECK(r1.has_value());
+    const TilePlan p = r1.value_or(TilePlan{});
     CHECK(p.inputOffset == 8 && p.inputBlend == 4 && p.stepIn == 236 && p.tileOut == 240);
     CHECK(p.hBlocks == 3 && p.wBlocks == 3);  // w: 256,492,728 >= 656
     CHECK(p.padLeft == 8 && p.padRight == 728 - (640 + 8) && p.padTop == 8 && p.padBottom == 728 - (480 + 8));
-    CHECK(makeTilePlan(640, 480, P4, 256, p).ok());
-    CHECK(p.inputOffset == 8 && p.inputBlend == 4 && p.stepOut == 944 && p.tileOut == 960);
-    CHECK(p.outWidth == 2560 && p.outHeight == 1920);
+    const auto r4 = makeTilePlan(640, 480, P4, 256);
+    CHECK(r4.has_value());
+    const TilePlan q = r4.value_or(TilePlan{});
+    CHECK(q.inputOffset == 8 && q.inputBlend == 4 && q.stepOut == 944 && q.tileOut == 960);
+    CHECK(q.outWidth == 2560 && q.outHeight == 1920);
+    // Errors carry only the Status (no plan).
+    const auto bad = makeTilePlan(640, 480, P1, 250);
+    CHECK(!bad && bad.error().kind == ErrorKind::InvalidTileSize);
+    CHECK(!makeTilePlan(0, 480, P1, 256) && makeTilePlan(0, 480, P1, 256).error().kind == ErrorKind::InvalidArgument);
 }
 
 static void testTileRule() {
     TestImage in = makeImage(50, 50, 3, 0, 1);
     for (int bad : {0, 16, 63, 100, 128, 200, 250, 300, 512}) {
         FakeEngine e(P2);
-        Image8 out;
         ProcessOptions o;
         o.tile = bad;
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::InvalidTileSize);
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+        CHECK(!out && out.error().kind == ErrorKind::InvalidTileSize);
         CHECK(e.calls == 0);  // rejected before any Run
-        CHECK(out.pixels.empty());
     }
     for (int good : {64, 112, 160, 208, 256, 304, 352, 400, 448, 640})
         CHECK(ModelContract::isValidTile(TileRule::SwinUnet, good));
@@ -155,10 +159,9 @@ static void testTileRule() {
         TileParams v3 = P2;
         v3.tileRule = TileRule::SwinUnetV3;
         FakeEngine e(v3);
-        Image8 out;
         ProcessOptions o;
         o.tile = 240;
-        CHECK(upscaleImage(in.view(), v3, e, nullptr, nullptr, o, out).ok());
+        CHECK(upscaleImage(in.view(), v3, e, nullptr, nullptr, o).has_value());
         CHECK(e.calls > 0);
     }
 }
@@ -169,14 +172,12 @@ static void testCancel() {
     FakeEngine e(P2);
     e.cancelAt = &cancel;
     e.cancelAfterCalls = 3;
-    Image8 out;
     ProcessOptions o;
     o.tile = 160;
     o.cancel = &cancel;
-    Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-    CHECK(s.kind == ErrorKind::Cancelled);
+    const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+    CHECK(!out && out.error().kind == ErrorKind::Cancelled);  // no partial image
     CHECK(e.calls == 3);  // stops before the 4th tile
-    CHECK(out.pixels.empty() && out.width == 0);
 }
 
 static void testOomRetryAndDeviceLost() {
@@ -185,18 +186,17 @@ static void testOomRetryAndDeviceLost() {
         FakeEngine e(P2);
         e.failAtCall = 2;
         e.failWith = Status::fail(ErrorKind::OutOfMemory, "E_OUTOFMEMORY", 0x8007000E);
-        Image8 out;
         ProcessOptions o;
         o.tile = 256;
         int callsAtRebuild = -1;
         o.beforeRetry = [&] { callsAtRebuild = e.calls; };
         ProcessStats st;
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out, &st);
-        CHECK(s.ok());
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, &st);
+        CHECK(out.has_value());
         CHECK(st.attempts == 2 && st.tileUsed == 160 && st.firstAttemptError.kind == ErrorKind::OutOfMemory);
         CHECK(e.tiles[0] == 256 && e.tiles[1] == 256 && e.tiles[2] == 160);
         CHECK(callsAtRebuild == 2);  // released after the failed Run, before any Run at 160
-        CHECK(equalsNearest(in, out, 2, false));
+        CHECK(out && equalsNearest(in, *out, 2, false));
     }
     {  // OOM twice -> fail after the single retry
         struct TwiceOom : FakeEngine {
@@ -208,56 +208,51 @@ static void testOomRetryAndDeviceLost() {
                 return Status::fail(ErrorKind::OutOfMemory, "oom", 0x8007000E);
             }
         } e(P2);
-        Image8 out;
         ProcessOptions o;
         int rebuilds = 0;
         o.beforeRetry = [&] { ++rebuilds; };
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::OutOfMemory && e.calls == 2 && out.pixels.empty());
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+        CHECK(!out && out.error().kind == ErrorKind::OutOfMemory && e.calls == 2);
         CHECK(rebuilds == 1);
     }
     {  // manual tile: no retry
         FakeEngine e(P2);
         e.failAtCall = 1;
         e.failWith = Status::fail(ErrorKind::OutOfMemory, "oom", 0x8007000E);
-        Image8 out;
         ProcessOptions o;
         o.allowOomRetry = false;
         int rebuilds = 0;
         o.beforeRetry = [&] { ++rebuilds; };
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::OutOfMemory && e.calls == 1 && rebuilds == 0);
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+        CHECK(!out && out.error().kind == ErrorKind::OutOfMemory && e.calls == 1 && rebuilds == 0);
     }
     for (uint32_t hr : {0x887A0005u, 0x887A0006u, 0x887A0007u, 0x887A0020u}) {  // recovered like OOM
         FakeEngine e(P2);
         e.failAtCall = 2;
         e.failWith = Status::fail(ErrorKind::DeviceLost, "device", hr);
-        Image8 out;
         ProcessOptions o;
         int rebuilds = 0;
         o.beforeRetry = [&] { ++rebuilds; };
         ProcessStats st;
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out, &st);
-        CHECK(s.ok() && st.tileUsed == 160 && rebuilds == 1 && st.firstAttemptError.hresult == hr);
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, &st);
+        CHECK(out && st.tileUsed == 160 && rebuilds == 1 && st.firstAttemptError.hresult == hr);
     }
     for (uint32_t hr : {0x887A0005u, 0x887A0006u, 0x887A0007u, 0x887A0020u}) {  // manual: no retry
         FakeEngine e(P2);
         e.failAtCall = 2;
         e.failWith = Status::fail(ErrorKind::DeviceLost, "device", hr);
-        Image8 out;
         ProcessOptions o;
         o.allowOomRetry = false;
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::DeviceLost && s.hresult == hr && e.calls == 2 && out.pixels.empty());
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+        CHECK(!out && out.error().kind == ErrorKind::DeviceLost && out.error().hresult == hr && e.calls == 2);
     }
     {  // any other engine error: no retry
         FakeEngine e(P2);
         e.failAtCall = 1;
         e.failWith = Status::fail(ErrorKind::EngineFailure, "engine");
-        Image8 out;
         ProcessOptions o;
-        Status s = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out);
-        CHECK(s.kind == ErrorKind::EngineFailure && e.calls == 1);
+        const auto out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+        CHECK(!out && out.error().kind == ErrorKind::EngineFailure && e.calls == 1);
     }
 }
 
@@ -265,10 +260,9 @@ static void testAlpha() {
     {  // blank alpha (all 255) at 2x: alpha model never used, alpha nearest = 255
         TestImage in = makeImage(90, 70, 4, 3, 4, true);
         FakeEngine e(P2);
-        Image8 out;
         ProcessOptions o;
         ProcessStats st;
-        CHECK(upscaleImage(in.view(), P2, e, nullptr, nullptr, o, out, &st).ok());
+        const Image8 out = upscaleImage(in.view(), P2, e, nullptr, nullptr, o, &st).value_or(Image8{});
         CHECK(!st.alphaPassed && out.channels == 4);
         bool all255 = true;
         for (size_t i = 0; i < (size_t)out.width * out.height; ++i) all255 &= out.pixels[i * 4 + 3] == 255;
@@ -278,9 +272,11 @@ static void testAlpha() {
     {  // 1x: alpha unchanged
         TestImage in = makeImage(90, 70, 4, 0, 5);
         FakeEngine e(P1);
-        Image8 out;
         ProcessOptions o;
-        CHECK(upscaleImage(in.view(), P1, e, nullptr, nullptr, o, out).ok());
+        const auto r = upscaleImage(in.view(), P1, e, nullptr, nullptr, o);
+        CHECK(r.has_value());
+        if (!r) return;
+        const Image8& out = *r;
         bool same = true;
         for (int y = 0; y < in.h; ++y)
             for (int x = 0; x < in.w; ++x) same &= out.pixels[((size_t)y * out.width + x) * 4 + 3] == in.at(x, y, 3);
@@ -290,10 +286,12 @@ static void testAlpha() {
     {  // non-blank alpha at 4x: alpha pass through the alpha engine, mean of 3 equal channels
         TestImage in = makeImage(130, 61, 4, 1, 6);
         FakeEngine e(P4), ea(P4);
-        Image8 out;
         ProcessOptions o;
         ProcessStats st;
-        CHECK(upscaleImage(in.view(), P4, e, &P4, &ea, o, out, &st).ok());
+        const auto r = upscaleImage(in.view(), P4, e, &P4, &ea, o, &st);
+        CHECK(r.has_value());
+        if (!r) return;
+        const Image8& out = *r;
         CHECK(st.alphaPassed && ea.calls > 0);
         bool alphaNearest = true;
         for (int y = 0; y < out.height; ++y)
@@ -301,8 +299,8 @@ static void testAlpha() {
                 alphaNearest &= out.pixels[((size_t)y * out.width + x) * 4 + 3] == in.at(x / 4, y / 4, 3);
         CHECK(alphaNearest);
         CHECK(equalsNearest(in, out, 4, true));
-        Image8 out2;  // missing alpha engine -> error, no output
-        CHECK(upscaleImage(in.view(), P4, e, nullptr, nullptr, o, out2).kind == ErrorKind::InvalidArgument);
+        const auto missing = upscaleImage(in.view(), P4, e, nullptr, nullptr, o);  // no alpha engine -> error
+        CHECK(!missing && missing.error().kind == ErrorKind::InvalidArgument);
     }
 }
 

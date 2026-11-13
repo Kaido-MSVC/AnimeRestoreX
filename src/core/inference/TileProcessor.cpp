@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <limits>
 #include <new>
 
@@ -22,22 +23,24 @@ uint8_t quantize256(float v) {
     return (uint8_t)t;
 }
 
-Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePlan& plan) {
-    plan = TilePlan{};
-    if (width < 1 || height < 1) return Status::fail(ErrorKind::InvalidArgument, "empty image");
-    if (p.scale < 1 || p.offset < 0 || p.blendSize < 0) return Status::fail(ErrorKind::InvalidArgument, "bad model params");
+std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TileParams& p, int tile) {
+    TilePlan plan;
+    if (width < 1 || height < 1) return std::unexpected(Status::fail(ErrorKind::InvalidArgument, "empty image"));
+    if (p.scale < 1 || p.offset < 0 || p.blendSize < 0)
+        return std::unexpected(Status::fail(ErrorKind::InvalidArgument, "bad model params"));
     // Checked before any Run: the upstream PyTorch assert does not exist in the ONNX graph and
     // illegal sizes either fail (/unet/Add broadcast) or silently give non-upstream results.
+    // tools/winml-probe/CMakeLists.txt (tile_runner_anytile) rewrites the next line verbatim.
     if (!ModelContract::isValidTile(p.tileRule, tile))
-        return Status::fail(ErrorKind::InvalidTileSize,
-                            "tile " + std::to_string(tile) + " violates the tile rule of this model");
+        return std::unexpected(Status::fail(ErrorKind::InvalidTileSize,
+                                            std::format("tile {} violates the tile rule of this model", tile)));
     plan.tile = tile;
     plan.inputOffset = (p.offset + p.scale - 1) / p.scale;      // math.ceil(offset / scale)
     plan.inputBlend = (p.blendSize + p.scale - 1) / p.scale;    // math.ceil(blend_size / scale)
     plan.stepIn = tile - (plan.inputOffset * 2 + plan.inputBlend);
     plan.tileOut = tile * p.scale - p.offset * 2;
     if (plan.stepIn <= 0 || plan.tileOut - 2 * p.blendSize < 0)
-        return Status::fail(ErrorKind::InvalidTileSize, "tile too small for this model");
+        return std::unexpected(Status::fail(ErrorKind::InvalidTileSize, "tile too small for this model"));
     plan.stepOut = plan.stepIn * p.scale;
 
     // while input_h < x_h + input_offset * 2: input_h = h_blocks * step + tile; h_blocks += 1
@@ -56,7 +59,7 @@ Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePl
     if (!mulOk((uint64_t)width, (uint64_t)p.scale, ow) || !mulOk((uint64_t)height, (uint64_t)p.scale, oh) ||
         ow > (uint64_t)std::numeric_limits<int>::max() || oh > (uint64_t)std::numeric_limits<int>::max() ||
         hb > std::numeric_limits<int>::max() || wb > std::numeric_limits<int>::max())
-        return Status::fail(ErrorKind::SizeOverflow, "output size overflows");
+        return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "output size overflows"));
     plan.hBlocks = (int)hb;
     plan.wBlocks = (int)wb;
     plan.padLeft = plan.inputOffset;
@@ -65,7 +68,7 @@ Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePl
     plan.padBottom = (int)(inputH - (height + plan.inputOffset));
     plan.outWidth = (int)ow;   // y_w = floor(x_w * scale)
     plan.outHeight = (int)oh;  // y_h
-    return Status::success();
+    return plan;
 }
 
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations) {
@@ -154,8 +157,8 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
         tileIn.resize((size_t)3 * T * T);
         tileOut.reserve((size_t)3 * Ho * Ho);
     } catch (const std::bad_alloc&) {
-        return Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the blend accumulators (" +
-                                                         std::to_string(on) + " output pixels)");
+        return Status::fail(ErrorKind::SizeOverflow,
+                            std::format("host allocation failed for the blend accumulators ({} output pixels)", on));
     }
 
     std::vector<int> sx(T);
@@ -180,8 +183,7 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
             }
             if (tileOut.size() != (size_t)3 * Ho * Ho)
                 return Status::fail(ErrorKind::ContractViolation,
-                                    "model output has " + std::to_string(tileOut.size()) + " values, expected 3x" +
-                                        std::to_string(Ho) + "x" + std::to_string(Ho));
+                                    std::format("model output has {} values, expected 3x{}x{}", tileOut.size(), Ho, Ho));
             for (float v : tileOut)
                 if (!std::isfinite(v)) return Status::fail(ErrorKind::EngineFailure, "non-finite model output");
             ++ctx.tilesRun;
@@ -231,25 +233,25 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
 
 }  // namespace
 
-Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine& rgbEngine,
-                    const TileParams* alphaModel, ITileEngine* alphaEngine, const ProcessOptions& opt,
-                    Image8& out, ProcessStats* stats) {
-    out.clear();
+std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine& rgbEngine,
+                                           const TileParams* alphaModel, ITileEngine* alphaEngine,
+                                           const ProcessOptions& opt, ProcessStats* stats) {
     ProcessStats local;
     ProcessStats& st = stats ? *stats : local;
     st = ProcessStats{};
     if (!in.data || in.width < 1 || in.height < 1 || (in.channels != 3 && in.channels != 4) ||
         in.stride < (std::ptrdiff_t)in.width * in.channels)
-        return Status::fail(ErrorKind::InvalidArgument, "input must be 8-bit RGB or RGBA with stride >= width*channels");
+        return std::unexpected(Status::fail(ErrorKind::InvalidArgument,
+                                            "input must be 8-bit RGB or RGBA with stride >= width*channels"));
 
     uint64_t outPixels = 0, outBytes = 0, sumBytes = 0;
     if (!mulOk((uint64_t)in.width * rgbModel.scale, (uint64_t)in.height * rgbModel.scale, outPixels) ||
         !mulOk(outPixels, (uint64_t)in.channels, outBytes) || !mulOk(outPixels, 16, sumBytes) ||
         sumBytes > (uint64_t)std::numeric_limits<size_t>::max())
-        return Status::fail(ErrorKind::SizeOverflow, "output size overflows");
+        return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "output size overflows"));
     if (outPixels > opt.maxOutputPixels)
-        return Status::fail(ErrorKind::SizeOverflow, "output " + std::to_string(outPixels) + " px exceeds limit " +
-                                                         std::to_string(opt.maxOutputPixels));
+        return std::unexpected(Status::fail(
+            ErrorKind::SizeOverflow, std::format("output {} px exceeds limit {}", outPixels, opt.maxOutputPixels)));
 
     // to_tensor: uint8 -> float32 / 255 (pil_io.py:232-240). Planar RGB + separate alpha.
     const size_t n = (size_t)in.width * in.height;
@@ -259,7 +261,7 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
         rgb.resize(3 * n);
         if (hasAlpha) alpha.resize(n);
     } catch (const std::bad_alloc&) {
-        return Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the input planes");
+        return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the input planes"));
     }
     for (int y = 0; y < in.height; ++y) {
         const uint8_t* r = in.data + y * in.stride;
@@ -276,23 +278,31 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
     const bool alphaPass = hasAlpha && !blankAlpha && rgbModel.scale > 1;
     if (alphaPass) {
         if (!alphaModel || !alphaEngine)
-            return Status::fail(ErrorKind::InvalidArgument, "non-blank alpha at scale > 1 needs the alpha model");
+            return std::unexpected(
+                Status::fail(ErrorKind::InvalidArgument, "non-blank alpha at scale > 1 needs the alpha model"));
         if (alphaModel->scale != rgbModel.scale)
-            return Status::fail(ErrorKind::ContractViolation, "alpha model scale differs from the RGB model");
+            return std::unexpected(
+                Status::fail(ErrorKind::ContractViolation, "alpha model scale differs from the RGB model"));
     }
     if (hasAlpha && !blankAlpha) alphaBorderPadding(rgb.data(), alpha.data(), in.width, in.height, rgbModel.offset);
 
+    Image8 out;
     int tile = opt.tile;
     for (int attempt = 1;; ++attempt) {
         out.clear();
-        TilePlan plan, aplan;
-        Status s = makeTilePlan(in.width, in.height, rgbModel, tile, plan);
-        if (s.ok() && alphaPass) s = makeTilePlan(in.width, in.height, *alphaModel, tile, aplan);
-        if (!s.ok()) return s;
+        const auto rgbPlan = makeTilePlan(in.width, in.height, rgbModel, tile);
+        if (!rgbPlan) return std::unexpected(rgbPlan.error());
+        const TilePlan& plan = *rgbPlan;
+        TilePlan aplan;
+        if (alphaPass) {
+            const auto a = makeTilePlan(in.width, in.height, *alphaModel, tile);
+            if (!a) return std::unexpected(a.error());
+            aplan = *a;
+        }
         try {
             out.pixels.assign((size_t)outBytes, 0);
         } catch (const std::bad_alloc&) {
-            return Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the output image");
+            return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the output image"));
         }
         out.width = plan.outWidth;
         out.height = plan.outHeight;
@@ -305,7 +315,7 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
         st.tilesRun = 0;
         RenderCtx ctx{opt, prog, st.tilesRun};
 
-        s = tiledRender(rgb.data(), in.width, in.height, plan, rgbModel, rgbEngine, Sink::Rgb, out, ctx);
+        Status s = tiledRender(rgb.data(), in.width, in.height, plan, rgbModel, rgbEngine, Sink::Rgb, out, ctx);
         if (s.ok() && hasAlpha) {
             if (rgbModel.scale == 1) {
                 // noise (1x): alpha is returned unchanged.
@@ -338,7 +348,7 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
             st.tileUsed = tile;
             st.attempts = attempt;
             st.alphaPassed = alphaPass;
-            return s;
+            return out;
         }
         out.clear();
         // Only an explicit OOM or a lost device may restart, once, with the fallback tile, from a
@@ -351,7 +361,7 @@ Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine
             continue;
         }
         st.attempts = attempt;
-        return s;
+        return std::unexpected(std::move(s));
     }
 }
 

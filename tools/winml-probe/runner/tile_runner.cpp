@@ -244,8 +244,10 @@ int wmain(int argc, wchar_t** argv) {
                 });
             const TileParams rgbP = ModelContract::tileParams(*m);
             const TileParams alphaP = am ? ModelContract::tileParams(*am) : TileParams{};
-            s = upscaleImage({strided.data(), w, h, c, stride}, rgbP, *rgbEng, am ? &alphaP : nullptr,
-                             am ? (alphaEng ? alphaEng.get() : rgbEng.get()) : nullptr, o, out, &st);
+            auto r = upscaleImage({strided.data(), w, h, c, stride}, rgbP, *rgbEng, am ? &alphaP : nullptr,
+                                  am ? (alphaEng ? alphaEng.get() : rgbEng.get()) : nullptr, o, &st);
+            if (r) out = std::move(*r);
+            else s = r.error();
             auto t2 = Clock::now();
             if (canceller.joinable()) canceller.join();
             js << ",\"process_ms\":" << ms(t1, t2) << ",\"first_tile_ms\":" << firstTileMs

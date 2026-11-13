@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <vector>
 
@@ -54,7 +55,7 @@ struct TilePlan {
     int tiles() const { return hBlocks * wBlocks; }
 };
 
-Status makeTilePlan(int width, int height, const TileParams& p, int tile, TilePlan& plan);
+std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TileParams& p, int tile);
 
 struct Progress {
     uint64_t donePixels = 0, totalPixels = 0;  // effective output pixels (all passes)
@@ -90,10 +91,10 @@ struct ProcessStats {
 //  - alpha: 1x kept as is; 2x/4x non-blank: alpha -> 3 channels -> tiled render with
 //    alphaEngine (scale2x / scale4x) -> mean of channels; blank: nearest upscale.
 // Output channels = input channels. Output size is exactly W*scale x H*scale.
-// On any error `out` is cleared (no partial result).
-Status upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine& rgbEngine,
-                    const TileParams* alphaModel, ITileEngine* alphaEngine, const ProcessOptions& opt,
-                    Image8& out, ProcessStats* stats = nullptr);
+// On any error only the Status is returned (no partial result); `stats` is filled either way.
+std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine& rgbEngine,
+                                           const TileParams* alphaModel, ITileEngine* alphaEngine,
+                                           const ProcessOptions& opt, ProcessStats* stats = nullptr);
 
 // AlphaBorderPadding.forward (nunif/utils/alpha.py:46-64) on planar float RGB (3*W*H) in place.
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations);
