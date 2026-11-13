@@ -1,7 +1,7 @@
 // arx_verify: developer tool for the v2.0 P3 checks (not a ctest test, not shipped).
 // Runs ProcessJob / BatchRunner on the real EngineHost next to this exe (onnxruntime.dll,
 // DirectML.dll, models/) and writes one JSON line per item and per job: result, tile,
-// time, private bytes after the item, and cancel latency.
+// time, private bytes after the item and the process peak so far, and cancel latency.
 //
 //   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu|gpu][:tta]]]... FILE...
 //              [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]
@@ -42,6 +42,15 @@ double privateMiB()
     pmc.cb = sizeof pmc;
     GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof pmc);
     return double(pmc.PrivateUsage) / (1024.0 * 1024.0);
+}
+
+// Peak private (committed) bytes of the process so far (PeakPagefileUsage).
+double peakPrivateMiB()
+{
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    pmc.cb = sizeof pmc;
+    GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof pmc);
+    return double(pmc.PeakPagefileUsage) / (1024.0 * 1024.0);
 }
 
 const char *choiceName(TileChoice c)
@@ -284,6 +293,7 @@ int main(int argc, char **argv)
                           {QStringLiteral("reset_engine"), r.resetEngine},
                           {QStringLiteral("ms"), double(itemTimer.nsecsElapsed()) / 1e6},
                           {QStringLiteral("private_mib"), privateMiB()},
+                          {QStringLiteral("peak_private_mib"), peakPrivateMiB()},
                           {QStringLiteral("diagnostics"), r.diagnostics}};
             if (cancelTime != Clock::time_point{})
                 o.insert(QStringLiteral("cancel_to_return_ms"),
@@ -321,6 +331,7 @@ int main(int argc, char **argv)
         if (!s.fatalError.isEmpty())
             exitCode = 3;
     }
-    writeLine({{QStringLiteral("event"), QStringLiteral("end")}, {QStringLiteral("private_mib"), privateMiB()}});
+    writeLine({{QStringLiteral("event"), QStringLiteral("end")}, {QStringLiteral("private_mib"), privateMiB()},
+               {QStringLiteral("peak_private_mib"), peakPrivateMiB()}});
     return exitCode;
 }
