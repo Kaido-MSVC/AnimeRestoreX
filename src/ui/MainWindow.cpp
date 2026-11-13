@@ -327,11 +327,12 @@ void MainWindow::saveSettings()
 
 void MainWindow::openSettings()
 {
-    SettingsDialog dlg(m_settings->tileSize(), m_settings->computeDevice(),
+    SettingsDialog dlg(m_settings->tileSize(), m_settings->computeDevice(), m_settings->tta(),
                        LanguageManager::instance().current(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    applySettings(dlg.tileSize(), int(dlg.computeDevice()), dlg.languageChanged(), int(dlg.language()));
+    applySettings(dlg.tileSize(), int(dlg.computeDevice()), dlg.tta(), dlg.languageChanged(),
+                  int(dlg.language()));
 }
 
 void MainWindow::openAbout()
@@ -440,10 +441,11 @@ void MainWindow::requestThumbnail(const QString &path)
     });
 }
 
-void MainWindow::applySettings(int tile, int device, bool languageChanged, int language)
+void MainWindow::applySettings(int tile, int device, bool tta, bool languageChanged, int language)
 {
     m_settings->setTileSize(tile);
     m_settings->setComputeDevice(arx::ComputeDevice(device));
+    m_settings->setTta(tta);
     if (languageChanged) {
         // Only an explicit choice is stored as a manual override.
         const auto lang = arx::Language(language);
@@ -675,6 +677,7 @@ arx::JobSpec MainWindow::currentSpec() const
     spec.inference.noise = ui->noiseCombo->currentData().toInt();
     spec.inference.tile = m_settings->tileSize();
     spec.inference.device = m_settings->computeDevice();
+    spec.inference.tta = m_settings->tta();
     spec.inference.scale = ui->scaleCombo->currentData().toInt();
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
     spec.encode.webpLossless = ui->webpModeCombo->currentData().toBool();
@@ -1062,6 +1065,8 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
     if (r.ok) {
         item->setData(ColFile, kRoleOutput, r.outputPath);
         QString detail = QFileInfo(r.outputPath).fileName();
+        if (r.tta)
+            detail += tr(" (TTA)");
         // The tile size changes the result slightly: say when Auto had to use a smaller one.
         if (r.tileChoice == arx::TileChoice::SmallerForVram)
             detail += tr(" (tile %1: not enough GPU memory for 256)").arg(r.tileUsed);

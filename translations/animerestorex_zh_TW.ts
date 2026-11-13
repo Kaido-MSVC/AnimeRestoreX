@@ -480,6 +480,10 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
         <translation>所有項目都已完成。變更輸出設定或加入圖片後即可再次處理。</translation>
     </message>
     <message>
+        <source> (TTA)</source>
+        <translation>（TTA）</translation>
+    </message>
+    <message>
         <source> (tile %1: not enough GPU memory for 256)</source>
         <translation>（Tile %1：GPU 記憶體不足以使用 256）</translation>
     </message>
@@ -862,6 +866,14 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
     <message>
         <source>CPU (much slower)</source>
         <translation>CPU（慢很多）</translation>
+    </message>
+    <message>
+        <source>TTA (test-time augmentation)</source>
+        <translation>TTA（測試時增強）</translation>
+    </message>
+    <message>
+        <source>Each image is processed 8 times, flipped and rotated, and the results are averaged. Processing takes about 8 times as long.</source>
+        <translation>每張圖會翻轉、旋轉後處理 8 次，再取平均。處理時間約為 8 倍。</translation>
     </message>
     <message>
         <source>Language</source>

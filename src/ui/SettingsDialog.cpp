@@ -1,5 +1,6 @@
 #include "ui/SettingsDialog.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -8,7 +9,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Language language,
+SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, bool tta, arx::Language language,
                                QWidget *parent)
     : QDialog(parent), m_initialLanguage(language)
 {
@@ -41,6 +42,13 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
     m_deviceHint->setWordWrap(true);
     m_deviceHint->setMinimumWidth(hintWidth);
     model->addRow(QString(), m_deviceHint);
+    // Off by default: about 8x the processing time.
+    m_tta = new QCheckBox(this);
+    model->addRow(QString(), m_tta);
+    m_ttaHint = new QLabel(this);
+    m_ttaHint->setWordWrap(true);
+    m_ttaHint->setMinimumWidth(hintWidth);
+    model->addRow(QString(), m_ttaHint);
     root->addWidget(m_modelGroup);
 
     m_langGroup = new QGroupBox(this);
@@ -59,6 +67,7 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, arx::Languag
 
     m_tile->setCurrentIndex(std::max(0, m_tile->findData(tile)));
     m_device->setCurrentIndex(std::max(0, m_device->findData(int(device))));
+    m_tta->setChecked(tta);
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
     connect(m_device, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDeviceHint);
     retranslate();
@@ -102,6 +111,9 @@ void SettingsDialog::retranslate()
     m_device->setItemText(0, tr("GPU (DirectML)"));
     m_device->setItemText(1, tr("CPU (much slower)"));
     updateDeviceHint();
+    m_tta->setText(tr("TTA (test-time augmentation)"));
+    m_ttaHint->setText(tr("Each image is processed 8 times, flipped and rotated, and the results are "
+                          "averaged. Processing takes about 8 times as long."));
     m_langGroup->setTitle(tr("Language"));
     m_langLabel->setText(tr("Interface language:"));
     fitToContents();
@@ -119,4 +131,5 @@ arx::ComputeDevice SettingsDialog::computeDevice() const
 {
     return arx::ComputeDevice(m_device->currentData().toInt());
 }
+bool SettingsDialog::tta() const { return m_tta->isChecked(); }
 arx::Language SettingsDialog::language() const { return arx::Language(m_lang->currentData().toInt()); }

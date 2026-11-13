@@ -42,7 +42,7 @@ public:
 
     // Applies values from the settings dialog (also used by tests).
     // `device` is an arx::ComputeDevice value.
-    void applySettings(int tile, int device, bool languageChanged, int language);
+    void applySettings(int tile, int device, bool tta, bool languageChanged, int language);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
