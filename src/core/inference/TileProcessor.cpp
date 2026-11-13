@@ -4,9 +4,18 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <mdspan>
 #include <new>
+#include <ranges>
 
 namespace arx::core {
+
+namespace {
+// Planar float views. Planes3 = [c][y][x] with 3 channels (RGB planes, the [1,3,T,T] tile
+// input / [1,3,Ho,Ho] output with batch 1 left out); Plane = [y][x] (alpha, weights, filter).
+using Planes3 = std::extents<size_t, 3, std::dynamic_extent, std::dynamic_extent>;
+using Plane = std::dextents<size_t, 2>;
+}  // namespace
 
 bool mulOk(uint64_t a, uint64_t b, uint64_t& r) {
     if (a != 0 && b > std::numeric_limits<uint64_t>::max() / a) return false;
@@ -73,13 +82,15 @@ std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TilePa
 
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations) {
     const size_t n = (size_t)width * height;
+    // [c][pixel]: the three planes, pixels in row-major order (box3 works on whole planes).
+    const std::mdspan<float, std::extents<size_t, 3, std::dynamic_extent>> planes(rgb, n);
     std::vector<float> mask(n), mw(n), tmp(n), border(n);
     bool anyHole = false;
     for (size_t i = 0; i < n; ++i) {
         mask[i] = alpha[i] > 0.0f ? 1.0f : 0.0f;  // mask[alpha > 0] = 1.0
         if (mask[i] < 1.0f) {
             anyHole = true;
-            for (int c = 0; c < 3; ++c) rgb[c * n + i] = 0.0f;  // rgb[:, mask_nega] = 0.0
+            for (int c = 0; c < 3; ++c) planes[c, i] = 0.0f;  // rgb[:, mask_nega] = 0.0
         }
     }
     // 3x3 sum with zero padding (ChannelWiseSum: Conv2d 3x3, weight 1, padding 1, zeros).
@@ -101,7 +112,7 @@ void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, i
     for (int it = 0; it < iterations && anyHole; ++it) {
         box3(mask.data(), mw.data());  // mask_weight = sum_alpha(mask)
         for (int c = 0; c < 3; ++c) {
-            float* plane = rgb + c * n;
+            float* plane = &planes[c, 0];
             box3(plane, border.data());  // border = sum_rgb(rgb)
             for (size_t i = 0; i < n; ++i)
                 if (mask[i] < 1.0f) plane[i] = border[i] / (mw[i] + 1e-7f);  // rgb[:, nega] = border / (w + 1e-7)
@@ -134,8 +145,8 @@ bool cancelled(const ProcessOptions& o) { return o.cancel && o.cancel->load(std:
 Status tiledRender(const float* src, int width, int height, const TilePlan& plan, const TileParams& p,
                    ITileEngine& engine, Sink sink, Image8& out, RenderCtx& ctx) {
     const int T = plan.tile, Ho = plan.tileOut, b = p.blendSize;
-    const size_t n = (size_t)width * height;
     const size_t on = (size_t)plan.outWidth * plan.outHeight;
+    const std::mdspan<const float, Planes3> in(src, height, width);
 
     // create_blend_filter (seam_blending.py:155-162): inner (Ho-2b)^2 ones, then b rings padded
     // outward with value 1 - (1/(b+1))*(i+1), i = 0 (innermost ring) .. b-1 (outermost).
@@ -143,11 +154,12 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
     // stored as float32 like F.pad(value=python float).
     std::vector<float> ringValue((size_t)b + 1, 1.0f);
     for (int d = 0; d < b; ++d) ringValue[d] = (float)(1.0 - (1.0 / (b + 1)) * (b - d));
-    std::vector<float> filter((size_t)Ho * Ho);
+    std::vector<float> filterBuf((size_t)Ho * Ho);
+    const std::mdspan<float, Plane> filter(filterBuf.data(), Ho, Ho);
     for (int y = 0; y < Ho; ++y)
         for (int x = 0; x < Ho; ++x) {
             int d = std::min(std::min(y, x), std::min(Ho - 1 - y, Ho - 1 - x));
-            filter[(size_t)y * Ho + x] = d < b ? ringValue[d] : 1.0f;
+            filter[y, x] = d < b ? ringValue[d] : 1.0f;
         }
 
     std::vector<float> sum, wsum, tileIn, tileOut;
@@ -161,58 +173,65 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
                             std::format("host allocation failed for the blend accumulators ({} output pixels)", on));
     }
 
+    const std::mdspan<float, Planes3> tin(tileIn.data(), T, T);
+    const std::mdspan<float, Planes3> acc(sum.data(), plan.outHeight, plan.outWidth);
+    const std::mdspan<float, Plane> weight(wsum.data(), plan.outHeight, plan.outWidth);
+
     std::vector<int> sx(T);
-    for (int hi = 0; hi < plan.hBlocks; ++hi) {
-        for (int wi = 0; wi < plan.wBlocks; ++wi) {
-            if (cancelled(ctx.opt)) return Status::fail(ErrorKind::Cancelled, "cancelled before tile");
-            // x = F.pad(x, pad, mode="replicate"); tile = x[:, i:i+T, j:j+T] with i = hi*step, j = wi*step.
-            // Replicate padding == clamping the source coordinate.
-            const int i0 = hi * plan.stepIn - plan.padTop, j0 = wi * plan.stepIn - plan.padLeft;
-            for (int tx = 0; tx < T; ++tx) sx[tx] = std::clamp(j0 + tx, 0, width - 1);
-            for (int c = 0; c < 3; ++c)
-                for (int ty = 0; ty < T; ++ty) {
-                    const float* row = src + c * n + (size_t)std::clamp(i0 + ty, 0, height - 1) * width;
-                    float* dst = tileIn.data() + ((size_t)c * T + ty) * T;
-                    for (int tx = 0; tx < T; ++tx) dst[tx] = row[sx[tx]];
-                }
-
-            Status st = engine.run(tileIn.data(), T, Ho, tileOut);
-            if (!st.ok()) {
-                if (cancelled(ctx.opt)) return Status::fail(ErrorKind::Cancelled, "cancelled during Run: " + st.message);
-                return st;
-            }
-            if (tileOut.size() != (size_t)3 * Ho * Ho)
-                return Status::fail(ErrorKind::ContractViolation,
-                                    std::format("model output has {} values, expected 3x{}x{}", tileOut.size(), Ho, Ho));
-            for (float v : tileOut)
-                if (!std::isfinite(v)) return Status::fail(ErrorKind::EngineFailure, "non-finite model output");
-            ++ctx.tilesRun;
-
-            // update(): pixels[:, step*i : step*i+Ho, step*j : step*j+Ho], clipped to the final crop.
-            const int oy0 = hi * plan.stepOut, ox0 = wi * plan.stepOut;
-            const int hh = std::min(Ho, plan.outHeight - oy0), ww = std::min(Ho, plan.outWidth - ox0);
-            for (int y = 0; y < hh; ++y) {
-                const float* f = filter.data() + (size_t)y * Ho;
-                const size_t orow = (size_t)(oy0 + y) * plan.outWidth + ox0;
-                float* wrow = wsum.data() + orow;
-                for (int x = 0; x < ww; ++x) wrow[x] += f[x];
-                for (int c = 0; c < 3; ++c) {
-                    const float* yr = tileOut.data() + ((size_t)c * Ho + y) * Ho;
-                    float* srow = sum.data() + c * on + orow;
-                    for (int x = 0; x < ww; ++x) srow[x] += yr[x] * f[x];
-                }
+    // Row-major tile order (wi fastest), as upstream: the accumulation order is part of the result.
+    for (const auto [hi, wi] : std::views::cartesian_product(std::views::iota(0, plan.hBlocks),
+                                                              std::views::iota(0, plan.wBlocks))) {
+        if (cancelled(ctx.opt)) return Status::fail(ErrorKind::Cancelled, "cancelled before tile");
+        // x = F.pad(x, pad, mode="replicate"); tile = x[:, i:i+T, j:j+T] with i = hi*step, j = wi*step.
+        // Replicate padding == clamping the source coordinate.
+        const int i0 = hi * plan.stepIn - plan.padTop, j0 = wi * plan.stepIn - plan.padLeft;
+        for (int tx = 0; tx < T; ++tx) sx[tx] = std::clamp(j0 + tx, 0, width - 1);
+        // Hot loops: mdspan gives the row start, the innermost loop stays on plain pointers
+        // (per-element 3-D subscripts measured ~5% slower in release).
+        for (int c = 0; c < 3; ++c)
+            for (int ty = 0; ty < T; ++ty) {
+                const float* row = &in[c, std::clamp(i0 + ty, 0, height - 1), 0];
+                float* dst = &tin[c, ty, 0];
+                for (int tx = 0; tx < T; ++tx) dst[tx] = row[sx[tx]];
             }
 
-            // Effective (non-overlapping) share of this tile: rows [oy0, next tile's oy0) etc.
-            const int ey = (hi + 1 == plan.hBlocks ? plan.outHeight : std::min(plan.outHeight, oy0 + plan.stepOut)) - oy0;
-            const int ex = (wi + 1 == plan.wBlocks ? plan.outWidth : std::min(plan.outWidth, ox0 + plan.stepOut)) - ox0;
-            ctx.prog.donePixels += (uint64_t)std::max(ey, 0) * (uint64_t)std::max(ex, 0);
-            ++ctx.prog.tilesDone;
-            if (ctx.opt.progress) ctx.opt.progress(ctx.prog);
+        Status st = engine.run(tileIn.data(), T, Ho, tileOut);
+        if (!st.ok()) {
+            if (cancelled(ctx.opt)) return Status::fail(ErrorKind::Cancelled, "cancelled during Run: " + st.message);
+            return st;
         }
+        if (tileOut.size() != (size_t)3 * Ho * Ho)
+            return Status::fail(ErrorKind::ContractViolation,
+                                std::format("model output has {} values, expected 3x{}x{}", tileOut.size(), Ho, Ho));
+        for (float v : tileOut)
+            if (!std::isfinite(v)) return Status::fail(ErrorKind::EngineFailure, "non-finite model output");
+        ++ctx.tilesRun;
+
+        // update(): pixels[:, step*i : step*i+Ho, step*j : step*j+Ho], clipped to the final crop.
+        const std::mdspan<const float, Planes3> tout(tileOut.data(), Ho, Ho);
+        const int oy0 = hi * plan.stepOut, ox0 = wi * plan.stepOut;
+        const int hh = std::min(Ho, plan.outHeight - oy0), ww = std::min(Ho, plan.outWidth - ox0);
+        for (int y = 0; y < hh; ++y) {
+            const float* f = &filter[y, 0];
+            float* wrow = &weight[oy0 + y, ox0];
+            for (int x = 0; x < ww; ++x) wrow[x] += f[x];
+            for (int c = 0; c < 3; ++c) {
+                const float* yr = &tout[c, y, 0];
+                float* srow = &acc[c, oy0 + y, ox0];
+                for (int x = 0; x < ww; ++x) srow[x] += yr[x] * f[x];
+            }
+        }
+
+        // Effective (non-overlapping) share of this tile: rows [oy0, next tile's oy0) etc.
+        const int ey = (hi + 1 == plan.hBlocks ? plan.outHeight : std::min(plan.outHeight, oy0 + plan.stepOut)) - oy0;
+        const int ex = (wi + 1 == plan.wBlocks ? plan.outWidth : std::min(plan.outWidth, ox0 + plan.stepOut)) - ox0;
+        ctx.prog.donePixels += (uint64_t)std::max(ey, 0) * (uint64_t)std::max(ex, 0);
+        ++ctx.prog.tilesDone;
+        if (ctx.opt.progress) ctx.opt.progress(ctx.prog);
     }
 
     // get_output(): clamp(pixels[:, :y_h, :y_w], 0, 1); then quantize256 (to_image).
+    // Pixel i of a plane is element i of its row-major [y][x] storage.
     const int C = out.channels;
     for (size_t i = 0; i < on; ++i) {
         const float w = wsum[i];
@@ -263,14 +282,16 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
     } catch (const std::bad_alloc&) {
         return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the input planes"));
     }
+    const std::mdspan<float, Planes3> rgbPlanes(rgb.data(), in.height, in.width);
+    // Zero extents without alpha: the view must not describe memory that does not exist.
+    const std::mdspan<float, Plane> alphaPlane(alpha.data(), hasAlpha ? in.height : 0, hasAlpha ? in.width : 0);
     for (int y = 0; y < in.height; ++y) {
         const uint8_t* r = in.data + y * in.stride;
         for (int x = 0; x < in.width; ++x) {
-            const size_t i = (size_t)y * in.width + x;
-            for (int c = 0; c < 3; ++c) rgb[c * n + i] = (float)r[x * in.channels + c] / 255.0f;
+            for (int c = 0; c < 3; ++c) rgbPlanes[c, y, x] = (float)r[x * in.channels + c] / 255.0f;
             if (hasAlpha) {
                 const uint8_t a = r[x * 4 + 3];
-                alpha[i] = (float)a / 255.0f;
+                alphaPlane[y, x] = (float)a / 255.0f;
                 blankAlpha &= a == 255;  // torch.equal(alpha, ones)
             }
         }
