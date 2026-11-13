@@ -80,6 +80,20 @@ std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TilePa
     return plan;
 }
 
+TtaMap ttaMap(int k, std::ptrdiff_t H, std::ptrdiff_t W) {
+    const std::ptrdiff_t lastRow = (H - 1) * W, lastCol = W - 1;
+    switch (k) {
+    case 1: return {lastCol, W, -1};             // (y', W-1-x')
+    case 2: return {lastRow, -W, 1};             // (H-1-y', x')
+    case 3: return {lastRow + lastCol, -W, -1};  // (H-1-y', W-1-x')
+    case 4: return {lastCol, -1, W};             // (x', W-1-y')
+    case 5: return {lastRow + lastCol, -1, -W};  // (H-1-x', W-1-y')
+    case 6: return {0, 1, W};                    // (x', y')
+    case 7: return {lastRow, 1, -W};             // (H-1-x', y')
+    default: return {0, W, 1};                   // identity
+    }
+}
+
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations) {
     const size_t n = (size_t)width * height;
     // [c][pixel]: the three planes, pixels in row-major order (box3 works on whole planes).
@@ -128,7 +142,32 @@ void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, i
 
 namespace {
 
-enum class Sink { Rgb, AlphaMean };
+// Rgb / AlphaMean: 8-bit output (channels 0..2 / channel 3). TtaFirst / TtaAdd: float RGB planes
+// in the original orientation (tta_merge: the first result is copied, the others are added).
+enum class Sink { Rgb, AlphaMean, TtaFirst, TtaAdd };
+
+using Affine = TtaMap;
+inline constexpr int kTtaVariants = 8;
+bool ttaRotated(int k) { return k >= 4; }  // width and height swap
+
+// What one tiled render reads: 3 planes of the original image (planeSize pixels each), seen
+// through `map` as a width x height image (the variant's size). identity: the plain path.
+struct RenderSource {
+    const float* planes = nullptr;
+    size_t planeSize = 0;
+    int width = 0, height = 0;
+    Affine map;
+    bool identity = true;
+};
+
+// Where it goes: the 8-bit image (Rgb, AlphaMean) or the TTA accumulator (3 planes of the
+// output in the original orientation; `map` from the variant's output pixels to it).
+struct RenderTarget {
+    Sink sink = Sink::Rgb;
+    Image8* out = nullptr;
+    float* acc = nullptr;
+    Affine map;
+};
 
 struct RenderCtx {
     const ProcessOptions& opt;
@@ -139,14 +178,17 @@ struct RenderCtx {
 bool cancelled(const ProcessOptions& o) { return o.cancel && o.cancel->load(std::memory_order_relaxed); }
 
 // SeamBlending.tiled_render + update + get_output for one 3-channel planar float image, written
-// straight into the 8-bit output (channels 0..2 for Sink::Rgb, channel 3 for Sink::AlphaMean).
+// straight into the 8-bit output (channels 0..2 for Sink::Rgb, channel 3 for Sink::AlphaMean) or,
+// for TTA, as clamped floats into the accumulator. `plan` is made for src.width x src.height.
 // Accumulates sum(y*f) and sum(f) and normalizes at the end; upstream normalizes incrementally
 // (pixels = pixels*W/(W+f) + y*(1-W/(W+f))), which is the same weighted mean up to float rounding.
-Status tiledRender(const float* src, int width, int height, const TilePlan& plan, const TileParams& p,
-                   ITileEngine& engine, Sink sink, Image8& out, RenderCtx& ctx) {
+Status tiledRender(const RenderSource& src, const TilePlan& plan, const TileParams& p, ITileEngine& engine,
+                   const RenderTarget& target, RenderCtx& ctx) {
     const int T = plan.tile, Ho = plan.tileOut, b = p.blendSize;
+    const int width = src.width, height = src.height;
     const size_t on = (size_t)plan.outWidth * plan.outHeight;
-    const std::mdspan<const float, Planes3> in(src, height, width);
+    // Identity source: planes [c][y][x] of a width x height image (the path without TTA).
+    const std::mdspan<const float, Planes3> in(src.planes, src.identity ? height : 0, src.identity ? width : 0);
 
     // create_blend_filter (seam_blending.py:155-162): inner (Ho-2b)^2 ones, then b rings padded
     // outward with value 1 - (1/(b+1))*(i+1), i = 0 (innermost ring) .. b-1 (outermost).
@@ -178,22 +220,36 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
     const std::mdspan<float, Plane> weight(wsum.data(), plan.outHeight, plan.outWidth);
 
     std::vector<int> sx(T);
+    std::vector<std::ptrdiff_t> colOff(src.identity ? 0 : T);
     // Row-major tile order (wi fastest), as upstream: the accumulation order is part of the result.
     for (const auto [hi, wi] : std::views::cartesian_product(std::views::iota(0, plan.hBlocks),
                                                               std::views::iota(0, plan.wBlocks))) {
         if (cancelled(ctx.opt)) return Status::fail(ErrorKind::Cancelled, "cancelled before tile");
         // x = F.pad(x, pad, mode="replicate"); tile = x[:, i:i+T, j:j+T] with i = hi*step, j = wi*step.
-        // Replicate padding == clamping the source coordinate.
+        // Replicate padding == clamping the source coordinate (of the transformed image for TTA).
         const int i0 = hi * plan.stepIn - plan.padTop, j0 = wi * plan.stepIn - plan.padLeft;
-        for (int tx = 0; tx < T; ++tx) sx[tx] = std::clamp(j0 + tx, 0, width - 1);
         // Hot loops: mdspan gives the row start, the innermost loop stays on plain pointers
         // (per-element 3-D subscripts measured ~5% slower in release).
-        for (int c = 0; c < 3; ++c)
-            for (int ty = 0; ty < T; ++ty) {
-                const float* row = &in[c, std::clamp(i0 + ty, 0, height - 1), 0];
-                float* dst = &tin[c, ty, 0];
-                for (int tx = 0; tx < T; ++tx) dst[tx] = row[sx[tx]];
+        if (src.identity) {
+            for (int tx = 0; tx < T; ++tx) sx[tx] = std::clamp(j0 + tx, 0, width - 1);
+            for (int c = 0; c < 3; ++c)
+                for (int ty = 0; ty < T; ++ty) {
+                    const float* row = &in[c, std::clamp(i0 + ty, 0, height - 1), 0];
+                    float* dst = &tin[c, ty, 0];
+                    for (int tx = 0; tx < T; ++tx) dst[tx] = row[sx[tx]];
+                }
+        } else {
+            // TTA variant: read the transformed image through its map, no transformed copy.
+            for (int tx = 0; tx < T; ++tx) colOff[tx] = src.map.c * std::clamp(j0 + tx, 0, width - 1);
+            for (int c = 0; c < 3; ++c) {
+                const float* plane = src.planes + c * src.planeSize;
+                for (int ty = 0; ty < T; ++ty) {
+                    const float* row = plane + src.map.a + src.map.b * std::clamp(i0 + ty, 0, height - 1);
+                    float* dst = &tin[c, ty, 0];
+                    for (int tx = 0; tx < T; ++tx) dst[tx] = row[colOff[tx]];
+                }
             }
+        }
 
         Status st = engine.run(tileIn.data(), T, Ho, tileOut);
         if (!st.ok()) {
@@ -230,8 +286,32 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
         if (ctx.opt.progress) ctx.opt.progress(ctx.prog);
     }
 
+    if (target.sink == Sink::TtaFirst || target.sink == Sink::TtaAdd) {
+        // get_output() of this variant: clamp(pixels, 0, 1), sent back to the original orientation
+        // and copied (first variant) or added (tta_merge: avg = x.clone(); avg += ...).
+        const bool first = target.sink == Sink::TtaFirst;
+        for (int y = 0; y < plan.outHeight; ++y) {
+            const float* wrow = &weight[y, 0];
+            const std::ptrdiff_t base = target.map.a + target.map.b * y;
+            for (int c = 0; c < 3; ++c) {
+                const float* srow = &acc[c, y, 0];
+                float* plane = target.acc + c * on;
+                for (int x = 0; x < plan.outWidth; ++x) {
+                    const float w = wrow[x];
+                    if (!(w > 0.0f))
+                        return Status::fail(ErrorKind::ContractViolation, "tile plan left an output pixel uncovered");
+                    const float v = std::clamp(srow[x] / w, 0.0f, 1.0f);
+                    float& d = plane[base + target.map.c * x];
+                    d = first ? v : d + v;
+                }
+            }
+        }
+        return Status::success();
+    }
+
     // get_output(): clamp(pixels[:, :y_h, :y_w], 0, 1); then quantize256 (to_image).
     // Pixel i of a plane is element i of its row-major [y][x] storage.
+    Image8& out = *target.out;
     const int C = out.channels;
     for (size_t i = 0; i < on; ++i) {
         const float w = wsum[i];
@@ -239,7 +319,7 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
         float v[3];
         for (int c = 0; c < 3; ++c) v[c] = std::clamp(sum[c * on + i] / w, 0.0f, 1.0f);
         uint8_t* o = out.pixels.data() + i * C;
-        if (sink == Sink::Rgb) {
+        if (target.sink == Sink::Rgb) {
             o[0] = quantize256(v[0]);
             o[1] = quantize256(v[1]);
             o[2] = quantize256(v[2]);
@@ -248,6 +328,15 @@ Status tiledRender(const float* src, int width, int height, const TilePlan& plan
         }
     }
     return Status::success();
+}
+
+// tta_merge tail: avg *= 1 / 8.0; clamp_(avg, 0, 1); then quantize256 into channels 0..2.
+void writeTtaMean(const float* acc, size_t on, Image8& out) {
+    const int C = out.channels;
+    for (size_t i = 0; i < on; ++i) {
+        uint8_t* o = out.pixels.data() + i * C;
+        for (int c = 0; c < 3; ++c) o[c] = quantize256(std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f));
+    }
 }
 
 }  // namespace
@@ -263,9 +352,11 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
         return std::unexpected(Status::fail(ErrorKind::InvalidArgument,
                                             "input must be 8-bit RGB or RGBA with stride >= width*channels"));
 
+    // Float buffers per output pixel: sum + weight of one render (16 bytes), plus the TTA
+    // accumulator (3 floats, 12 bytes) when TTA is on.
     uint64_t outPixels = 0, outBytes = 0, sumBytes = 0;
     if (!mulOk((uint64_t)in.width * rgbModel.scale, (uint64_t)in.height * rgbModel.scale, outPixels) ||
-        !mulOk(outPixels, (uint64_t)in.channels, outBytes) || !mulOk(outPixels, 16, sumBytes) ||
+        !mulOk(outPixels, (uint64_t)in.channels, outBytes) || !mulOk(outPixels, opt.tta ? 28 : 16, sumBytes) ||
         sumBytes > (uint64_t)std::numeric_limits<size_t>::max())
         return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "output size overflows"));
     if (outPixels > opt.maxOutputPixels)
@@ -307,6 +398,18 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
     }
     if (hasAlpha && !blankAlpha) alphaBorderPadding(rgb.data(), alpha.data(), in.width, in.height, rgbModel.offset);
 
+    // TTA (Waifu2x.convert, tta=True): the whole RGB image goes through the 8 tta_split
+    // variants, each a full tiled render; their outputs are merged in the original orientation.
+    // Only this accumulator and the render in progress are held, never 8 results.
+    std::vector<float> ttaAcc;
+    if (opt.tta) {
+        try {
+            ttaAcc.resize(3 * (size_t)outPixels);
+        } catch (const std::bad_alloc&) {
+            return std::unexpected(Status::fail(ErrorKind::SizeOverflow, "host allocation failed for the TTA accumulator"));
+        }
+    }
+
     Image8 out;
     int tile = opt.tile;
     for (int attempt = 1;; ++attempt) {
@@ -314,6 +417,13 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
         const auto rgbPlan = makeTilePlan(in.width, in.height, rgbModel, tile);
         if (!rgbPlan) return std::unexpected(rgbPlan.error());
         const TilePlan& plan = *rgbPlan;
+        // Rotated TTA variants are height x width: their tiles are cut from that size.
+        TilePlan rotPlan;
+        if (opt.tta) {
+            const auto r = makeTilePlan(in.height, in.width, rgbModel, tile);
+            if (!r) return std::unexpected(r.error());
+            rotPlan = *r;
+        }
         TilePlan aplan;
         if (alphaPass) {
             const auto a = makeTilePlan(in.width, in.height, *alphaModel, tile);
@@ -329,14 +439,31 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
         out.height = plan.outHeight;
         out.channels = in.channels;
 
+        // RGB counts once per TTA variant, alpha once.
+        const int rgbRenders = opt.tta ? kTtaVariants : 1;
         Progress prog;
         prog.attempt = attempt;
-        prog.totalPixels = outPixels * (alphaPass ? 2 : 1);
-        prog.tilesTotal = plan.tiles() + (alphaPass ? aplan.tiles() : 0);
+        prog.totalPixels = outPixels * (uint64_t)(rgbRenders + (alphaPass ? 1 : 0));
+        prog.tilesTotal = (opt.tta ? 4 * (plan.tiles() + rotPlan.tiles()) : plan.tiles()) + (alphaPass ? aplan.tiles() : 0);
         st.tilesRun = 0;
         RenderCtx ctx{opt, prog, st.tilesRun};
 
-        Status s = tiledRender(rgb.data(), in.width, in.height, plan, rgbModel, rgbEngine, Sink::Rgb, out, ctx);
+        const RenderSource whole{rgb.data(), n, in.width, in.height, {}, true};
+        Status s;
+        if (!opt.tta) {
+            s = tiledRender(whole, plan, rgbModel, rgbEngine, {Sink::Rgb, &out, nullptr, {}}, ctx);
+        } else {
+            for (int k = 0; k < kTtaVariants && s.ok(); ++k) {
+                prog.ttaVariant = k;
+                const bool rot = ttaRotated(k);
+                const RenderSource src{rgb.data(), n, rot ? in.height : in.width, rot ? in.width : in.height,
+                                       ttaMap(k, in.height, in.width), k == 0};
+                const RenderTarget dst{k == 0 ? Sink::TtaFirst : Sink::TtaAdd, nullptr, ttaAcc.data(),
+                                       ttaMap(k, plan.outHeight, plan.outWidth)};
+                s = tiledRender(k == 0 ? whole : src, rot ? rotPlan : plan, rgbModel, rgbEngine, dst, ctx);
+            }
+            if (s.ok()) writeTtaMean(ttaAcc.data(), (size_t)outPixels, out);
+        }
         if (s.ok() && hasAlpha) {
             if (rgbModel.scale == 1) {
                 // noise (1x): alpha is returned unchanged.
@@ -359,8 +486,8 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
                     }
                     if (s.ok()) {
                         for (int c = 0; c < 3; ++c) std::copy(alpha.begin(), alpha.end(), a3.begin() + c * n);
-                        s = tiledRender(a3.data(), in.width, in.height, aplan, *alphaModel, *alphaEngine,
-                                        Sink::AlphaMean, out, ctx);
+                        s = tiledRender({a3.data(), n, in.width, in.height, {}, true}, aplan, *alphaModel,
+                                        *alphaEngine, {Sink::AlphaMean, &out, nullptr, {}}, ctx);
                     }
                 }
             }
@@ -369,6 +496,7 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
             st.tileUsed = tile;
             st.attempts = attempt;
             st.alphaPassed = alphaPass;
+            st.tta = opt.tta;
             return out;
         }
         out.clear();

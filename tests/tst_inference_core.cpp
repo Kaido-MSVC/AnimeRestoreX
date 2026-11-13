@@ -3,6 +3,7 @@
 // sizes, stride, tile rule, cancel, OOM retry, device errors, alpha flow, quantization,
 // manifest validation. A fake engine emulates the model as "nearest upscale, crop offset",
 // so a correct tiler must reproduce a plain nearest upscale of the whole image exactly.
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -304,6 +305,148 @@ static void testAlpha() {
     }
 }
 
+// tta_split written out with torch semantics on an H x W plane (dims (1, 2) = (y, x)):
+// flip(x, (2,)) reverses x, flip(x, (1,)) reverses y, rot90(x, 1, (1, 2))[i][j] = x[j][W-1-i].
+using Plane2 = std::vector<std::vector<int>>;
+static Plane2 hflipP(const Plane2& p) {
+    Plane2 r = p;
+    for (auto& row : r) std::reverse(row.begin(), row.end());
+    return r;
+}
+static Plane2 vflipP(const Plane2& p) { return Plane2(p.rbegin(), p.rend()); }
+static Plane2 rot90P(const Plane2& p) {
+    const size_t H = p.size(), W = p[0].size();
+    Plane2 r(W, std::vector<int>(H));
+    for (size_t i = 0; i < W; ++i)
+        for (size_t j = 0; j < H; ++j) r[i][j] = p[j][W - 1 - i];
+    return r;
+}
+
+static void testTtaMap() {
+    for (auto [H, W] : {std::pair{1, 1}, {3, 5}, {4, 2}, {7, 7}}) {
+        Plane2 x(H, std::vector<int>(W));
+        for (int y = 0; y < H; ++y)
+            for (int c = 0; c < W; ++c) x[y][c] = y * W + c;  // value = own index
+        const Plane2 tr = rot90P(x);
+        const Plane2 split[8] = {x, hflipP(x), vflipP(x), hflipP(vflipP(x)),
+                                 tr, hflipP(tr), vflipP(tr), hflipP(vflipP(tr))};
+        bool ok = true;
+        for (int k = 0; k < 8; ++k) {
+            const TtaMap m = ttaMap(k, H, W);
+            const Plane2& v = split[k];
+            ok &= (int)v.size() == (k >= 4 ? W : H) && (int)v[0].size() == (k >= 4 ? H : W);
+            for (int y = 0; y < (int)v.size(); ++y)
+                for (int c = 0; c < (int)v[0].size(); ++c) ok &= v[y][c] == m.a + m.b * y + m.c * c;
+        }
+        if (!ok) std::printf("  ttaMap mismatch for %dx%d\n", W, H);
+        CHECK(ok);
+    }
+}
+
+// The nearest fake engine commutes with flips and rot90, so all 8 TTA renders give the plain
+// result in the original orientation: TTA on must equal TTA off (catches a wrong transform,
+// inverse or rotated tile plan). Non-square sizes, RGB and RGBA (alpha pass).
+// Exact everywhere, except the RGB of fully transparent pixels: alpha border padding fills them
+// with values like (a+b)/(2+1e-7), and the 8-term float sum * 1/8 of tta_merge moves ~2.7% of
+// such values across a quantize256 rounding boundary (checked by brute force; opaque pixels
+// hold k/255 and never do). Those may differ by 1; their alpha is 0 either way.
+static void testTtaMatchesPlain() {
+    struct Case { int w, h, c; bool holes; };
+    const Case cases[] = {{37, 23, 3, false},  {257, 131, 3, false}, {1, 70, 3, false},
+                          {131, 61, 4, false}, {131, 61, 4, true},   {90, 170, 4, true}};
+    for (const TileParams& p : {P1, P2, P4})
+        for (int tile : {64, 160})
+            for (const Case& cs : cases) {
+                TestImage in = makeImage(cs.w, cs.h, cs.c, 3, (unsigned)(cs.w * 7 + cs.h + tile));
+                if (cs.c == 4 && !cs.holes)  // non-blank alpha without fully transparent pixels
+                    for (int y = 0; y < cs.h; ++y)
+                        for (int x = 0; x < cs.w; ++x) {
+                            uint8_t& a = in.buf[(size_t)y * in.stride + x * 4 + 3];
+                            a = (uint8_t)std::clamp((int)a, 1, 254);
+                        }
+                ProcessOptions o;
+                o.tile = tile;
+                FakeEngine e0(p), a0(p), e1(p), a1(p);
+                const auto plain = upscaleImage(in.view(), p, e0, &p, &a0, o);
+                o.tta = true;
+                uint64_t lastDone = 0, total = 0;
+                int lastTiles = 0, tilesTotal = 0;
+                o.progress = [&](const Progress& pr) {
+                    lastDone = pr.donePixels; total = pr.totalPixels;
+                    lastTiles = pr.tilesDone; tilesTotal = pr.tilesTotal;
+                };
+                ProcessStats st;
+                const auto tta = upscaleImage(in.view(), p, e1, &p, &a1, o, &st);
+                CHECK(plain && tta);
+                if (!plain || !tta) continue;
+                bool same = plain->width == tta->width && plain->height == tta->height &&
+                            plain->channels == tta->channels && plain->pixels.size() == tta->pixels.size();
+                int strictDiffs = 0, holeDiffs = 0;
+                for (size_t i = 0; same && i < plain->pixels.size(); ++i) {
+                    const int d = std::abs((int)plain->pixels[i] - (int)tta->pixels[i]);
+                    if (!d) continue;
+                    const size_t px = i / cs.c;
+                    const int x = (int)(px % plain->width) / p.scale, y = (int)(px / plain->width) / p.scale;
+                    const bool holeRgb = cs.c == 4 && i % 4 != 3 && in.at(x, y, 3) == 0;
+                    if (holeRgb && d == 1) ++holeDiffs;
+                    else ++strictDiffs;
+                }
+                same &= strictDiffs == 0;
+                if (!same)
+                    std::printf("  TTA vs plain: scale %d tile %d %dx%dx%d%s: %d exact-pixel diffs, %d hole RGB diffs (<= 1)\n",
+                                p.scale, tile, cs.w, cs.h, cs.c, cs.holes ? " holes" : "", strictDiffs, holeDiffs);
+                CHECK(same);
+                if (!cs.holes) CHECK(plain->pixels == tta->pixels);
+                CHECK(st.tta && st.attempts == 1 && st.firstAttemptError.kind == ErrorKind::None);
+                // 8 RGB renders (rotated ones planned for h x w), alpha once.
+                const auto pw = makeTilePlan(cs.w, cs.h, p, tile), ph = makeTilePlan(cs.h, cs.w, p, tile);
+                CHECK(pw && ph && e1.calls == 4 * (pw->tiles() + ph->tiles()));
+                const bool alphaPass = cs.c == 4 && p.scale > 1;
+                CHECK(a1.calls == (alphaPass ? pw->tiles() : 0) && a1.calls == a0.calls);
+                const uint64_t outPx = (uint64_t)cs.w * cs.h * p.scale * p.scale;
+                CHECK(total == outPx * (8 + (alphaPass ? 1 : 0)) && lastDone == total);
+                CHECK(lastTiles == tilesTotal && tilesTotal == e1.calls + a1.calls);
+            }
+}
+
+static void testTtaRetryAndCancel() {
+    TestImage in = makeImage(300, 200, 4, 0, 9);
+    {  // OOM in the 4th variant: all 8 are redone at 160 from scratch
+        FakeEngine e(P2), ea(P2);
+        ProcessOptions o;
+        o.tile = 256;
+        o.tta = true;
+        const auto pw = makeTilePlan(300, 200, P2, 256), ph = makeTilePlan(200, 300, P2, 256);
+        e.failAtCall = 3 * pw->tiles() + 1;  // first tile of variant 3
+        e.failWith = Status::fail(ErrorKind::OutOfMemory, "oom", 0x8007000E);
+        int rebuilds = 0;
+        o.beforeRetry = [&] { ++rebuilds; };
+        ProcessStats st;
+        const auto out = upscaleImage(in.view(), P2, e, &P2, &ea, o, &st);
+        CHECK(out && rebuilds == 1 && st.attempts == 2 && st.tileUsed == 160 && st.tta);
+        const auto qw = makeTilePlan(300, 200, P2, 160), qh = makeTilePlan(200, 300, P2, 160);
+        const int before = 3 * pw->tiles() + 1;
+        CHECK(e.calls == before + 4 * (qw->tiles() + qh->tiles()));
+        bool all160 = true;
+        for (size_t i = (size_t)before; i < e.tiles.size(); ++i) all160 &= e.tiles[i] == 160;
+        CHECK(all160 && ea.calls == qw->tiles());
+        CHECK(out && equalsNearest(in, *out, 2, true));
+        CHECK(ph && st.firstAttemptError.kind == ErrorKind::OutOfMemory);
+    }
+    {  // cancel between tiles of a later variant: no image
+        std::atomic<bool> cancel{false};
+        FakeEngine e(P2), ea(P2);
+        e.cancelAt = &cancel;
+        e.cancelAfterCalls = 10;
+        ProcessOptions o;
+        o.tile = 160;
+        o.tta = true;
+        o.cancel = &cancel;
+        const auto out = upscaleImage(in.view(), P2, e, &P2, &ea, o);
+        CHECK(!out && out.error().kind == ErrorKind::Cancelled && e.calls == 10 && ea.calls == 0);
+    }
+}
+
 static void testAlphaBorderPadding() {
     // 3x3, only the centre is opaque (red). One iteration: every neighbour sees one opaque
     // pixel -> red / (1 + 1e-7f); corners as well (3x3 window).
@@ -392,6 +535,9 @@ int main(int argc, char** argv) {
     testCancel();
     testOomRetryAndDeviceLost();
     testAlpha();
+    testTtaMap();
+    testTtaMatchesPlain();
+    testTtaRetryAndCancel();
     testAlphaBorderPadding();
     testQuantize();
     testManifest(argv[1], argv[2]);

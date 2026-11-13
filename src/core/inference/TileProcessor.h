@@ -58,14 +58,18 @@ struct TilePlan {
 std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TileParams& p, int tile);
 
 struct Progress {
-    uint64_t donePixels = 0, totalPixels = 0;  // effective output pixels (all passes)
+    uint64_t donePixels = 0, totalPixels = 0;  // effective output pixels (all passes; TTA: RGB x8)
     int tilesDone = 0, tilesTotal = 0;
     int attempt = 1;                           // 2 after a restart with the fallback tile
     int pass = 0;                              // 0 = RGB, 1 = alpha
+    int ttaVariant = 0;                        // TTA: RGB variant 0..7 in tta_split order
 };
 
 struct ProcessOptions {
     int tile = 256;
+    // Waifu2x.convert(tta=True): 8 flipped / rotated renders of the whole RGB image, averaged.
+    // Same tile for all 8; an OOM / lost-device restart redoes all 8 at the fallback tile.
+    bool tta = false;
     bool allowOomRetry = true;   // Auto tile: one restart with fallbackTile on OOM or a lost device
     int fallbackTile = 160;
     // Runs once, right before that restart. Must release the sessions: after either error the
@@ -81,13 +85,16 @@ struct ProcessStats {
     int attempts = 0;
     int tilesRun = 0;            // Runs in the successful attempt (both passes)
     bool alphaPassed = false;    // a non-blank alpha went through the alpha model
+    bool tta = false;            // the result is the TTA mean of 8 renders
     Status firstAttemptError;    // the error that caused a restart, if any
 };
 
 // Waifu2x.convert (waifu2x/utils.py:261-311) for one 8-bit image:
 //  - RGB -> float /255; RGBA: alpha all 255 = blank alpha (treated as no alpha for RGB).
 //  - non-blank alpha: AlphaBorderPadding(rgb, alpha, offset) before the RGB pass.
-//  - RGB tiled render, clamp, quantize256.
+//  - RGB tiled render, clamp, quantize256. With opt.tta: tta_split -> 8 tiled renders (each
+//    clamped) -> tta_merge (inverse transforms, sum in split order, * 1/8, clamp) -> quantize256
+//    (nunif/transforms/tta.py). Alpha is never TTA'd; alpha border padding runs before the split.
 //  - alpha: 1x kept as is; 2x/4x non-blank: alpha -> 3 channels -> tiled render with
 //    alphaEngine (scale2x / scale4x) -> mean of channels; blank: nearest upscale.
 // Output channels = input channels. Output size is exactly W*scale x H*scale.
@@ -95,6 +102,17 @@ struct ProcessStats {
 std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams& rgbModel, ITileEngine& rgbEngine,
                                            const TileParams* alphaModel, ITileEngine* alphaEngine,
                                            const ProcessOptions& opt, ProcessStats* stats = nullptr);
+
+// TTA variant k of an H x W image in nunif/transforms/tta.py tta_split order (0d3d92c):
+// 0 x, 1 hflip, 2 vflip, 3 vflip+hflip, 4 rot90(+1) "tr", 5 tr+hflip, 6 tr+vflip, 7 tr+vflip+hflip.
+// hflip flips x, vflip flips y, tr = torch.rot90(x, 1, (1, 2)): tr[i, j] = x[j, W-1-i] (W x H).
+// Pixel (y', x') of the variant is pixel a + b*y' + c*x' (row-major index) of the original.
+// tta_merge undoes each variant exactly, so the same map, with the output size, sends a
+// variant's output pixel back to the original orientation.
+struct TtaMap {
+    std::ptrdiff_t a = 0, b = 0, c = 1;
+};
+TtaMap ttaMap(int k, std::ptrdiff_t H, std::ptrdiff_t W);
 
 // AlphaBorderPadding.forward (nunif/utils/alpha.py:46-64) on planar float RGB (3*W*H) in place.
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations);
