@@ -114,8 +114,8 @@ Status EngineHost::ready() {
 const ModelContract& EngineHost::contract() const { return d->contract; }
 
 Status EngineHost::verify(const ModelInfo& m) {
-    fs::path p;
-    return d->contract.resolveVerified(m, d->modelsRoot, p);
+    const auto p = d->contract.resolveVerified(m, d->modelsRoot);
+    return p ? Status::success() : p.error();
 }
 
 Status EngineHost::beginJob(ExecutionDevice device, int maxSessions) {
@@ -143,12 +143,11 @@ Status EngineHost::acquire(const ModelInfo& m, ITileEngine*& engine) {
     if (!s.ok()) return s;
     // Release first, so two large sessions are never alive together when only one fits.
     while ((int)d->sessions.size() >= d->maxSessions) d->sessions.pop_back();
-    fs::path file;
-    s = d->contract.resolveVerified(m, d->modelsRoot, file);
-    if (!s.ok()) return s;
+    const auto file = d->contract.resolveVerified(m, d->modelsRoot);
+    if (!file) return file.error();
     std::unique_ptr<OrtTileEngine> e;
     const auto ep = d->device == ExecutionDevice::Dml ? OrtTileEngine::Ep::Dml : OrtTileEngine::Ep::Cpu;
-    s = OrtTileEngine::create(processEnv(), file, ep, d->dmlDevice, d->contract.inputName(), d->contract.outputName(), e,
+    s = OrtTileEngine::create(processEnv(), *file, ep, d->dmlDevice, d->contract.inputName(), d->contract.outputName(), e,
                               d->runOptions.get());
     if (!s.ok()) return s;
     d->sessions.emplace_front(m.id, std::move(e));

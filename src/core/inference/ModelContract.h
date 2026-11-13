@@ -2,6 +2,7 @@
 // I/O names, file hash, legal tile rule and the alpha helper model per scale.
 #pragma once
 
+#include <expected>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -54,8 +55,9 @@ public:
 
     // Resolves models_root/file, refuses paths that leave the root, and checks the
     // SHA-256 against the manifest. A mismatch is a hard error (no fallback model).
-    Status resolveVerified(const ModelInfo& m, const std::filesystem::path& modelsRoot,
-                           std::filesystem::path& resolved) const;
+    // Returns the verified path; on any error only the Status.
+    std::expected<std::filesystem::path, Status> resolveVerified(const ModelInfo& m,
+                                                                 const std::filesystem::path& modelsRoot) const;
 
     static bool isValidTile(TileRule rule, int tile) {
         return rule == TileRule::SwinUnetV3 ? tile >= 64 && tile % 16 == 0 : tile > 16 && (tile - 16) % 48 == 0;

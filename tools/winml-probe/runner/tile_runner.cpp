@@ -171,8 +171,13 @@ int wmain(int argc, wchar_t** argv) {
         if (!am) s = Status::fail(ErrorKind::ModelNotFound, "alpha model missing for scale " + std::to_string(m->scale));
     }
     fs::path rgbPath, alphaPath;
-    if (s.ok()) s = mc.resolveVerified(*m, a.modelsRoot, rgbPath);
-    if (s.ok() && am) s = mc.resolveVerified(*am, a.modelsRoot, alphaPath);
+    auto resolve = [&](const ModelInfo& info, fs::path& path) {
+        auto r = mc.resolveVerified(info, a.modelsRoot);
+        if (r) path = std::move(*r);
+        else s = r.error();
+    };
+    if (s.ok()) resolve(*m, rgbPath);
+    if (s.ok() && am) resolve(*am, alphaPath);
     if (!s.ok()) {
         js << ",\"error_kind\":\"" << errorKindName(s.kind) << "\",\"error\":\"" << jsonEscape(s.message) << "\"";
         return finish(2);

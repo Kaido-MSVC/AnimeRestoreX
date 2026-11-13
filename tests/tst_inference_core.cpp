@@ -353,10 +353,11 @@ static void testManifest(const fs::path& manifest, const fs::path& scratch) {
     // Hash mismatch: a file with the right name but different contents.
     fs::create_directories(scratch / "swin_unet/art");
     { std::ofstream(scratch / "swin_unet/art/noise3_scale4x.onnx") << "not a model"; }
-    fs::path resolved;
-    CHECK(mc.resolveVerified(*m, scratch, resolved).kind == ErrorKind::HashMismatch);
+    const auto mismatch = mc.resolveVerified(*m, scratch);
+    CHECK(!mismatch && mismatch.error().kind == ErrorKind::HashMismatch);
     fs::remove(scratch / "swin_unet/art/noise3_scale4x.onnx");
-    CHECK(mc.resolveVerified(*m, scratch, resolved).kind == ErrorKind::ModelNotFound);
+    const auto missing = mc.resolveVerified(*m, scratch);
+    CHECK(!missing && missing.error().kind == ErrorKind::ModelNotFound);
 
     // Unsafe relative paths are rejected when the manifest is loaded.
     std::ifstream f(manifest, std::ios::binary);

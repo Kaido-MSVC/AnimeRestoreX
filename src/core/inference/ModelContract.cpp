@@ -1,5 +1,6 @@
 #include "ModelContract.h"
 
+#include <format>
 #include <fstream>
 #include <sstream>
 
@@ -132,25 +133,24 @@ std::string ModelContract::alphaModelFor(int scale) const {
     return {};
 }
 
-Status ModelContract::resolveVerified(const ModelInfo& m, const fs::path& modelsRoot, fs::path& resolved) const {
-    if (!isSafeRelative(m.file)) return Status::fail(ErrorKind::ContractViolation, m.id + ": unsafe path");
+std::expected<fs::path, Status> ModelContract::resolveVerified(const ModelInfo& m, const fs::path& modelsRoot) const {
+    auto fail = [](ErrorKind k, std::string msg) { return std::unexpected(Status::fail(k, std::move(msg))); };
+    if (!isSafeRelative(m.file)) return fail(ErrorKind::ContractViolation, m.id + ": unsafe path");
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(modelsRoot, ec);
-    if (ec) return Status::fail(ErrorKind::ModelNotFound, "models root: " + ec.message());
+    if (ec) return fail(ErrorKind::ModelNotFound, "models root: " + ec.message());
     const fs::path p = fs::weakly_canonical(root / fs::path(m.file), ec);
-    if (ec) return Status::fail(ErrorKind::ModelNotFound, m.id + ": " + ec.message());
+    if (ec) return fail(ErrorKind::ModelNotFound, m.id + ": " + ec.message());
     // The canonical path must stay below the root (symlinks / junctions included).
     auto rel = p.lexically_relative(root);
     if (rel.empty() || *rel.begin() == "..")
-        return Status::fail(ErrorKind::ContractViolation, m.id + ": resolved path leaves the models root");
-    if (!fs::is_regular_file(p, ec)) return Status::fail(ErrorKind::ModelNotFound, m.id + ": file not found " + p.string());
-    std::string digest;
-    Status s = sha256File(p, digest);
-    if (!s.ok()) return s;
-    if (digest != m.sha256)
-        return Status::fail(ErrorKind::HashMismatch, m.id + ": SHA-256 " + digest + " != manifest " + m.sha256);
-    resolved = p;
-    return Status::success();
+        return fail(ErrorKind::ContractViolation, m.id + ": resolved path leaves the models root");
+    if (!fs::is_regular_file(p, ec)) return fail(ErrorKind::ModelNotFound, m.id + ": file not found " + p.string());
+    const auto digest = sha256File(p);
+    if (!digest) return std::unexpected(digest.error());
+    if (*digest != m.sha256)
+        return fail(ErrorKind::HashMismatch, std::format("{}: SHA-256 {} != manifest {}", m.id, *digest, m.sha256));
+    return p;
 }
 
 }  // namespace arx::core
