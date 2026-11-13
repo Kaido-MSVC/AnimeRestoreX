@@ -1,5 +1,6 @@
 #include "ModelContract.h"
 
+#include <algorithm>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -122,9 +123,8 @@ Status ModelContract::load(const fs::path& manifest, ModelContract& out) {
 }
 
 const ModelInfo* ModelContract::find(std::string_view id) const {
-    for (const ModelInfo& m : models_)
-        if (m.id == id) return &m;
-    return nullptr;
+    const auto it = std::ranges::find(models_, id, &ModelInfo::id);
+    return it == models_.end() ? nullptr : &*it;
 }
 
 std::string ModelContract::alphaModelFor(int scale) const {

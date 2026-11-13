@@ -9,6 +9,8 @@
 //    alpha session is created after the RGB session was released.
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 
 namespace arx::core {
@@ -19,9 +21,9 @@ inline constexpr uint64_t kVramMarginMiB = 256;
 
 // Tile sizes a job may request: 0 (Auto), 160, 256, 352, 448. Everything else is refused before
 // the engine is touched, even if the model's tile rule would accept it (e.g. 64, 400, 640).
-inline constexpr bool isOfferedTile(int tile) {
-    return tile == 0 || tile == 160 || tile == 256 || tile == 352 || tile == 448;
-}
+inline constexpr std::array kOfferedTiles{0, 160, 256, 352, 448};
+inline constexpr bool isOfferedTile(int tile) { return std::ranges::contains(kOfferedTiles, tile); }
+static_assert(isOfferedTile(0) && isOfferedTile(448) && !isOfferedTile(400) && !isOfferedTile(640));
 
 // Measured peak VRAM of one DML session (GTX 1060 6GB, ORT 1.24.4, docs/v2.0-P1重做報告.md §6),
 // in MiB. 1x and 2x are the v3 models (the higher of the two); 0 = not measured.
