@@ -23,6 +23,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include "core/ImageOrientation.h"
 #include <QImageReader>
 #include <QLabel>
 #include <QPainterPath>
@@ -388,18 +389,16 @@ void MainWindow::requestThumbnail(const QString &path)
     const QColor frame = theme::color("border");
     m_thumbPool.start([this, path, side, dpr, frame] {
         // Header first, then decode at (about) the thumbnail size.
-        QImageReader reader(path);
-        reader.setAutoTransform(true);
+        // Same reader as the job and the preview: JPEG, PNG and WebP come out upright.
+        arx::OrientedReader reader(path);
         // Same check as the preview of an original: an image over the processing limit or
         // without a readable size is not decoded (PNG is decoded at full size before
         // the scaling), and gets a placeholder instead.
-        const QSize stored = reader.size();
         const int px = int(std::ceil(side * dpr));
         QImage img;
-        if (arx::limits::checkHeader(stored, arx::limits::kMaxInputPixels) == arx::limits::HeaderCheck::Ok) {
-            // The scaled size applies before the orientation is applied (Qt 6.12), so it is
-            // computed from the stored size; the square box keeps the result within px either way.
-            reader.setScaledSize(stored.scaled(px, px, Qt::KeepAspectRatio));
+        if (arx::limits::checkHeader(reader.storedSize(), arx::limits::kMaxInputPixels) ==
+            arx::limits::HeaderCheck::Ok) {
+            reader.scaleToFit(px);  // square box: the result fits px in either orientation
             img = reader.read();
             ++m_thumbDecodes;
         }

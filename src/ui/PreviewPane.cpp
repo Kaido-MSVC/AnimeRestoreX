@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QHBoxLayout>
+#include "core/ImageOrientation.h"
 #include <QImageReader>
 #include <QLabel>
 #include <QPaintEvent>
@@ -332,34 +333,30 @@ qint64 PreviewPane::maxResultPixels()
 PreviewPane::Loaded PreviewPane::loadForPreview(const QString &path, qint64 maxPixels, bool full)
 {
     Loaded l;
-    QImageReader reader(path);
-    reader.setAutoTransform(true);
+    // Same reader as the job (ImageLoader): JPEG, PNG and WebP come out upright.
+    arx::OrientedReader reader(path);
 
     // Header only: nothing is decoded before the size is known to be within the limit.
-    const QSize stored = reader.size();  // as stored in the file, before its orientation
-    const arx::limits::HeaderCheck check = arx::limits::checkHeader(stored, maxPixels);
+    const arx::limits::HeaderCheck check = arx::limits::checkHeader(reader.storedSize(), maxPixels);
     if (check == arx::limits::HeaderCheck::UnknownSize) {
-        l.error = reader.canRead() ? tr("Unknown image size") : reader.errorString();
+        l.error = reader.reader().canRead() ? tr("Unknown image size") : reader.reader().errorString();
         return l;
     }
-    const QSize size = (reader.transformation() & QImageIOHandler::TransformationRotate90)
-                           ? stored.transposed()
-                           : stored;
+    const QSize size = reader.size();  // upright
     l.size = size;
     if (check == arx::limits::HeaderCheck::TooLarge) {
         l.tooLarge = true;
         return l;
     }
 
-    // Fit mode needs no more than the thumbnail: let the decoder scale down. The scaled
-    // size applies before the orientation is applied (Qt 6.12), so it uses the stored size.
+    // Fit mode needs no more than the thumbnail: let the decoder scale down.
     l.isFull = full || (size.width() <= kThumbSide && size.height() <= kThumbSide);
     if (!l.isFull)
-        reader.setScaledSize(stored.scaled(kThumbSide, kThumbSide, Qt::KeepAspectRatio));
+        reader.scaleToFit(kThumbSide);
 
     QImage img = reader.read();
     if (img.isNull()) {
-        l.error = reader.errorString();
+        l.error = reader.reader().errorString();
         return l;
     }
     img = img.convertToFormat(img.hasAlphaChannel() ? QImage::Format_ARGB32_Premultiplied

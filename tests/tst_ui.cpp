@@ -15,6 +15,7 @@
 #include "ui/Theme.h"
 
 #include "core/AppSettings.h"
+#include "core/ImageMetadata.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -33,6 +34,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QImageReader>
+#include <QImageWriter>
 #include <QBuffer>
 #include <QtEndian>
 #include <QLabel>
@@ -1290,6 +1292,24 @@ QByteArray withExifOrientation6(const QByteArray &jpeg)
     return jpeg.left(2) + app1 + jpeg.mid(2);
 }
 
+// `img` stored as is in format `fmt` ("jpg", "png", "webp") with EXIF Orientation 6.
+QByteArray rotated6(const QImage &img, const char *fmt)
+{
+    QBuffer buf;
+    buf.open(QIODevice::WriteOnly);
+    const QByteArray f(fmt);
+    if (f == "jpg") {
+        img.convertToFormat(QImage::Format_RGB32).save(&buf, "jpeg", 90);
+        return withExifOrientation6(buf.data());
+    }
+    QImageWriter w(&buf, f == "png" ? "png" : "webp");
+    w.setQuality(f == "png" ? -1 : 90);
+    w.write(img.convertToFormat(QImage::Format_RGB888));
+    const auto out = arx::metadata::embed(buf.data(), f == "png" ? arx::OutputFormat::Png : arx::OutputFormat::WebP,
+                                          {}, testimg::makeExif(true, 6, false));
+    return out ? *out : QByteArray();
+}
+
 ImageCanvas *previewCanvas(PreviewPane &p, int index)
 {
     const auto canvases = p.findChildren<ImageCanvas *>();
@@ -1391,6 +1411,25 @@ void TestUi::previewDecodesScaledThenFull()
     QVERIFY(src->hasFullImage());
     QCOMPARE(src->decodedSize(), QSize(1000, 3000));
     QCOMPARE(p.decodeCount(), 4);
+
+    // v2.1 P5: PNG and WebP with EXIF Orientation 6, fit mode and 100% mode.
+    for (const char *fmt : {"png", "webp"}) {
+        const QString path = m_dir.filePath(QStringLiteral("preview 回転.%1").arg(QLatin1String(fmt)));
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(rotated6(testimg::make(3000, 1000, false), fmt));
+        }
+        p.findChild<QComboBox *>()->setCurrentIndex(0);
+        p.clear();
+        p.showItem(path, QString());
+        QTRY_VERIFY(src->hasImage());
+        QCOMPARE(src->imageSize(), QSize(1000, 3000));
+        QCOMPARE(src->decodedSize(), QSize(1000, 3000).scaled(2048, 2048, Qt::KeepAspectRatio));
+        p.findChild<QComboBox *>()->setCurrentIndex(1);
+        QTRY_VERIFY(src->hasFullImage());
+        QCOMPARE(src->imageSize(), QSize(1000, 3000));
+    }
 }
 
 void TestUi::previewSkipsStaleRequests()
@@ -1433,14 +1472,13 @@ void TestUi::listThumbnailOfRotatedImage()
 {
     // Stored 300 x 100 with EXIF orientation 6: shown 100 x 300 (portrait). The thumbnail
     // must be portrait with the same 1:3 aspect ratio, not squashed or turned sideways.
-    const QString rotated = m_dir.filePath(QStringLiteral("thumb 回転.jpg"));
+    // v2.1 P5: the same for PNG (eXIf) and WebP (EXIF), which Qt decodes as stored.
+    for (const char *fmt : {"jpg", "png", "webp"}) {
+    const QString rotated = m_dir.filePath(QStringLiteral("thumb 回転.%1").arg(QLatin1String(fmt)));
     {
-        QBuffer buf;
-        QVERIFY(buf.open(QIODevice::WriteOnly));
-        QVERIFY(testimg::make(300, 100, false).convertToFormat(QImage::Format_RGB32).save(&buf, "jpeg", 90));
         QFile f(rotated);
         QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(withExifOrientation6(buf.data()));
+        f.write(rotated6(testimg::make(300, 100, false), fmt));
     }
     MainWindow w;
     w.show();
@@ -1462,6 +1500,26 @@ void TestUi::listThumbnailOfRotatedImage()
     QVERIFY2(r.height() > r.width(), qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
     const double aspect = double(r.height()) / r.width();
     QVERIFY2(qAbs(aspect - 3.0) < 0.35, qPrintable(QStringLiteral("%1 x %2").arg(r.width()).arg(r.height())));
+    }
+
+    // Optional visual check (v2.1 P5): ARX_UI_SNAPSHOT=<dir> and ARX_UI_SNAPSHOT_ROTATED=<files
+    // separated by ';'> save the list thumbnails and the preview of each file, in zh_TW.
+    const QString snapDir = qEnvironmentVariable("ARX_UI_SNAPSHOT");
+    const QStringList files = qEnvironmentVariable("ARX_UI_SNAPSHOT_ROTATED").split(u';', Qt::SkipEmptyParts);
+    if (!snapDir.isEmpty() && !files.isEmpty()) {
+        MainWindow w;
+        w.applySettings(SettingsValues{}, true, int(arx::Language::TraditionalChinese));
+        w.findChild<QLineEdit *>(QStringLiteral("outputDirEdit"))->setText(QStringLiteral("D:\\Images\\Output"));
+        w.resize(1100, 720);
+        w.show();
+        QCOMPARE(w.addFiles(files), int(files.size()));
+        auto *list = w.findChild<QTreeWidget *>(QStringLiteral("fileList"));
+        for (int i = 0; i < list->topLevelItemCount(); ++i) {
+            list->setCurrentItem(list->topLevelItem(i));
+            QTest::qWait(1500);
+            w.grab().save(QDir(snapDir).filePath(QStringLiteral("rotated_%1.png").arg(i + 1)));
+        }
+    }
 }
 
 void TestUi::listThumbnailOfOversizedImage()
