@@ -47,6 +47,7 @@ private slots:
     void exifPrepare();
     void exifPrepareRejectsDamaged();
     void metadataEmbedRoundTrip();
+    void loaderKeepsIccAndDetectsGray();
     void folderScanTopLevelNaturalOrder();
     void sizeMessagesIncludeValues();
     void languageFromUiTag_data();
@@ -519,6 +520,84 @@ void TestCore::metadataEmbedRoundTrip()
     QCOMPARE(QImage::fromData(d).convertToFormat(QImage::Format_RGB888), gray);  // lossless RGB
 }
 
+void TestCore::loaderKeepsIccAndDetectsGray()
+{
+    // An embedded RGB profile is kept and the pixels are not converted (until 2.0.1 they
+    // were converted to sRGB and the profile dropped).
+    const QImage src = testimg::make(40, 30, false).convertToFormat(QImage::Format_RGB888);
+    QImage tagged = src;
+    tagged.setColorSpace(QColorSpace(QColorSpace::DisplayP3));
+    for (const char *fmt : {"png", "jpeg", "webp"}) {
+        const QString path = m_dir.filePath(QStringLiteral("p3.%1").arg(QLatin1String(fmt)));
+        QImageWriter w(path, fmt);
+        w.setQuality(100);
+        QVERIFY(w.write(tagged));
+        const LoadResult r = ImageLoader::load(path);
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QCOMPARE(r.meta.icc, QColorSpace(QColorSpace::DisplayP3).iccProfile());
+        QVERIFY(!r.image.colorSpace().isValid());
+        QImage plain(path);
+        plain.setColorSpace(QColorSpace());  // decoded values, no conversion
+        QCOMPARE(r.image, plain.convertToFormat(QImage::Format_RGB888));
+        QVERIFY(!r.meta.grayscale);
+    }
+
+    // Grayscale sources (nunif keeps Pillow L / LA images grayscale).
+    QImage g = src.convertToFormat(QImage::Format_Grayscale8);
+    const QString gpng = m_dir.filePath(QStringLiteral("gray.png"));
+    const QString gjpg = m_dir.filePath(QStringLiteral("gray.jpg"));
+    QVERIFY(g.save(gpng));
+    QVERIFY(g.save(gjpg));
+    QVERIFY(ImageLoader::load(gpng).meta.grayscale);
+    QVERIFY(ImageLoader::load(gjpg).meta.grayscale);
+    // A GRAY profile on a grayscale source is kept.
+    QImage gt = g;
+    gt.setColorSpace(QColorSpace(QPointF(0.3127, 0.3290), QColorSpace::TransferFunction::SRgb));  // D65 gray
+    QVERIFY(gt.colorSpace().isValid());
+    const QString gicc = m_dir.filePath(QStringLiteral("gray_icc.png"));
+    QVERIFY(gt.save(gicc));
+    LoadResult r = ImageLoader::load(gicc);
+    QVERIFY(r.ok && r.meta.grayscale);
+    QCOMPARE(metadata::iccColorSpace(r.meta.icc), QByteArray("GRAY"));
+    // Not grayscale: RGB with gray pixels, a palette with only gray entries (Pillow "P").
+    const QString rgbGray = m_dir.filePath(QStringLiteral("rgb_gray.png"));
+    QVERIFY(g.convertToFormat(QImage::Format_RGB888).save(rgbGray));
+    QVERIFY(!ImageLoader::load(rgbGray).meta.grayscale);
+    // Qt writes a gray Indexed8 image as a gray PNG, so write a colour palette (type 3) and
+    // turn its PLTE entries gray afterwards.
+    QImage pal(16, 8, QImage::Format_Indexed8);
+    QList<QRgb> table;
+    for (int i = 0; i < 16; ++i)
+        table << qRgb(i * 16, 255 - i * 16, 7);
+    pal.setColorTable(table);
+    for (int y = 0; y < pal.height(); ++y)
+        for (int x = 0; x < pal.width(); ++x)
+            pal.setPixel(x, y, uint(x));
+    QBuffer pbuf;
+    QVERIFY(pbuf.open(QIODevice::WriteOnly));
+    QVERIFY(pal.save(&pbuf, "png"));
+    QByteArray png = pbuf.data();
+    QCOMPARE(int(quint8(png[25])), 3);  // IHDR colour type: palette
+    const qsizetype plte = png.indexOf("PLTE");
+    QVERIFY(plte > 0);
+    const int plteLen = int(qFromBigEndian<quint32>(png.constData() + plte - 4));
+    for (int i = 0; i < plteLen / 3; ++i)
+        png[plte + 4 + 3 * i] = png[plte + 4 + 3 * i + 1] = png[plte + 4 + 3 * i + 2] = char(i * 16);
+    qToBigEndian<quint32>(metadata::crc32(png.constData() + plte, 4 + plteLen), png.data() + plte + 4 + plteLen);
+    const QString palPath = m_dir.filePath(QStringLiteral("gray_palette.png"));
+    {
+        QFile f(palPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(png);
+    }
+    const QImage palRead(palPath);
+    QCOMPARE(palRead.format(), QImage::Format_Indexed8);
+    QVERIFY(std::ranges::all_of(palRead.colorTable(), [](QRgb c) { return qRed(c) == qGreen(c) && qGreen(c) == qBlue(c); }));
+    r = ImageLoader::load(palPath);
+    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY(!r.meta.grayscale);
+}
+
 void TestCore::folderScanTopLevelNaturalOrder()
 {
     const QString dir = m_dir.filePath(QStringLiteral("掃描 フォルダ"));
@@ -630,7 +709,9 @@ void TestCore::settingsSeparateKeysAndValidation()
         AppSettings s;
         QVERIFY(!s.manualLanguage().has_value());  // nothing stored yet
         QVERIFY(!s.tta());                          // missing (older files): off
+        QVERIFY(!s.grayscaleOutput());
         s.setTta(true);
+        s.setGrayscaleOutput(true);
         s.setSourceDir(a);
         s.setOutputDir(b);
         s.setNoiseLevel(3);
@@ -648,9 +729,12 @@ void TestCore::settingsSeparateKeysAndValidation()
         QCOMPARE(s.computeDevice(), ComputeDevice::Cpu);
         QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
         QVERIFY(s.tta());
+        QVERIFY(s.grayscaleOutput());
         s.setTta(false);
+        s.setGrayscaleOutput(false);
     }
     QVERIFY(!AppSettings().tta());
+    QVERIFY(!AppSettings().grayscaleOutput());
     for (int t : {100, 200, 640, 300})  // old engine values, 640+, illegal tiles
         QVERIFY(!AppSettings::isValidTile(t));
     QSettings raw;
@@ -666,9 +750,11 @@ void TestCore::settingsSeparateKeysAndValidation()
     raw.setValue(QStringLiteral("v2/inference/device"), QStringLiteral("npu"));
     raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
     raw.setValue(QStringLiteral("v2/inference/tta"), QStringLiteral("yes"));
+    raw.setValue(QStringLiteral("v2/output/grayscale"), 1);
     raw.sync();
     AppSettings s;
     QVERIFY(!s.tta());
+    QVERIFY(!s.grayscaleOutput());
     QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
     QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
     QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);

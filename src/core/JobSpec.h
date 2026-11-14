@@ -11,6 +11,9 @@ struct EncodeOptions {
     OutputFormat format = OutputFormat::Png;
     bool webpLossless = false;  // only meaningful for WebP
     int quality = 90;           // JPEG 0-100, WebP lossy 0-99; ignored for PNG / WebP lossless
+    // 2.1: save every output as grayscale (nunif --grayscale). A grayscale source is saved
+    // as grayscale either way (nunif keeps L / LA images grayscale).
+    bool forceGrayscale = false;
 };
 
 // Where inference runs. CPU is only used when the user picks it; a GPU failure never
@@ -54,6 +57,7 @@ struct ItemResult {
     int tileUsed = 0;
     TileChoice tileChoice = TileChoice::Default;
     bool tta = false;    // the result is the TTA mean of 8 runs (set when ok)
+    bool grayscale = false;  // saved as grayscale (source was grayscale, or forced; set when ok)
     // The engine should release its sessions before the next item (after an
     // out-of-memory failure or a device error).
     bool resetEngine = false;

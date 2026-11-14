@@ -5,10 +5,14 @@
 #include "TestImages.h"
 
 #include "core/BatchRunner.h"
+#include "core/ImageEncoder.h"
 #include "core/ImageLoader.h"
+#include "core/ImageMetadata.h"
 #include "core/ProcessJob.h"
 #include "core/inference/EngineHost.h"
 
+#include <QBuffer>
+#include <QColorSpace>
 #include <QCoreApplication>
 #include <QDir>
 #include <QImageReader>
@@ -148,6 +152,8 @@ private slots:
     void init();
     void png2xOpaque();
     void ttaThroughTheJob();
+    void grayscaleThroughTheJob();
+    void iccAndExifThroughTheJob();
     void webp4xLossyAlpha();
     void webpLosslessAndJpeg();
     void sameNameGetsNumbered();
@@ -293,6 +299,99 @@ void TestPipeline::ttaThroughTheJob()
     QCOMPARE(ttaBackend.script.calls, 8 * plainBackend.script.calls);  // square tiles, 96x64 input
     QCOMPARE(QImage(tta.outputPath).convertToFormat(QImage::Format_RGB888),
              QImage(plain.outputPath).convertToFormat(QImage::Format_RGB888));
+}
+
+void TestPipeline::grayscaleThroughTheJob()
+{
+    const QString dir = QDir(m_outDir).filePath(QStringLiteral("gray"));
+    QVERIFY(QDir().mkpath(dir));
+    const QString png = QDir(m_srcDir).filePath(QStringLiteral("rgb.png"));
+    QVERIFY(testimg::make(96, 64, false).convertToFormat(QImage::Format_RGB888).save(png));
+
+    // Plain RGB result, then the same image with "grayscale output": Pillow L of the RGB result.
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = dir;
+    FakeBackend b1, b2, b3, b4;
+    const ItemResult plain = runOne(png, s, b1);
+    QVERIFY2(plain.ok, qPrintable(why(plain)));
+    QVERIFY(!plain.grayscale);
+    QVERIFY2(plain.diagnostics.contains(QStringLiteral("\ngray: off")), qPrintable(plain.diagnostics));
+    s.encode.forceGrayscale = true;
+    const ItemResult forced = runOne(png, s, b2);
+    QVERIFY2(forced.ok, qPrintable(why(forced)));
+    QVERIFY(forced.grayscale);
+    QVERIFY2(forced.diagnostics.contains(QStringLiteral("\ngray: forced")), qPrintable(forced.diagnostics));
+    const QImage rgb = QImage(plain.outputPath).convertToFormat(QImage::Format_RGB888);
+    const QImage g(forced.outputPath);
+    QCOMPARE(g.format(), QImage::Format_Grayscale8);
+    QCOMPARE(g.size(), rgb.size());
+    for (int y = 0; y < g.height(); ++y)
+        for (int x = 0; x < g.width(); ++x) {
+            const uchar *p = rgb.constScanLine(y) + 3 * x;
+            QCOMPARE(g.constScanLine(y)[x], ImageEncoder::luma(p[0], p[1], p[2]));
+        }
+
+    // A grayscale source is saved as grayscale without the option (nunif keeps L images L).
+    const QString graySrc = QDir(m_srcDir).filePath(QStringLiteral("gray.png"));
+    QVERIFY(QImage(png).convertToFormat(QImage::Format_Grayscale8).save(graySrc));
+    s.encode.forceGrayscale = false;
+    s.encode.format = OutputFormat::Jpeg;
+    const ItemResult autoGray = runOne(graySrc, s, b3);
+    QVERIFY2(autoGray.ok, qPrintable(why(autoGray)));
+    QVERIFY(autoGray.grayscale);
+    QVERIFY2(autoGray.diagnostics.contains(QStringLiteral("\ngray: source is grayscale")), qPrintable(autoGray.diagnostics));
+    QCOMPARE(QImageReader(autoGray.outputPath).imageFormat(), QImage::Format_Grayscale8);
+
+    // Transparent + grayscale PNG: RGBA with R = G = B (Qt has no 8-bit gray + alpha format).
+    s.encode.format = OutputFormat::Png;
+    s.encode.forceGrayscale = true;
+    const ItemResult alpha = runOne(m_alpha, s, b4);
+    QVERIFY2(alpha.ok, qPrintable(why(alpha)));
+    const QImage a = QImage(alpha.outputPath).convertToFormat(QImage::Format_RGBA8888);
+    QVERIFY(a.hasAlphaChannel());
+    bool equal = true, translucent = false;
+    for (int y = 0; y < a.height(); ++y)
+        for (int x = 0; x < a.width(); ++x) {
+            const uchar *p = a.constScanLine(y) + 4 * x;
+            equal = equal && p[0] == p[1] && p[1] == p[2];
+            translucent = translucent || p[3] != 255;
+        }
+    QVERIFY(equal && translucent);
+}
+
+void TestPipeline::iccAndExifThroughTheJob()
+{
+    const QString dir = QDir(m_outDir).filePath(QStringLiteral("meta"));
+    QVERIFY(QDir().mkpath(dir));
+    // JPEG with a Display P3 profile and EXIF (orientation 6 = rotate 90, thumbnail).
+    QImage img = testimg::make(96, 64, false).convertToFormat(QImage::Format_RGB888);
+    img.setColorSpace(QColorSpace(QColorSpace::DisplayP3));
+    QBuffer buf;
+    QVERIFY(buf.open(QIODevice::WriteOnly));
+    QVERIFY(img.save(&buf, "jpeg", 95));  // Qt writes the profile
+    auto withExif = metadata::embed(buf.data(), OutputFormat::Jpeg, {}, testimg::makeExif(false, 6, true));
+    QVERIFY2(withExif.has_value(), qPrintable(withExif ? QString() : withExif.error()));
+    const QString src = QDir(m_srcDir).filePath(QStringLiteral("p3 exif.jpg"));
+    {
+        QFile f(src);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(*withExif);
+    }
+    const QByteArray before = testimg::sha256(src);
+
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = dir;
+    FakeBackend b1;
+    // The profile goes back as it was; no EXIF is written.
+    ItemResult r = runOne(src, s, b1);
+    QVERIFY2(r.ok, qPrintable(why(r)));
+    QVERIFY2(r.diagnostics.contains(QStringLiteral("\nicc: kept (")), qPrintable(r.diagnostics));
+    metadata::SourceInfo out = metadata::read(r.outputPath);
+    QCOMPARE(out.icc, QColorSpace(QColorSpace::DisplayP3).iccProfile());
+    QVERIFY(out.exif.isEmpty());
+    QCOMPARE(QImageReader(r.outputPath).size(), QSize(128, 192));  // turned upright
+    QCOMPARE(testimg::sha256(src), before);  // source untouched
+    QVERIFY(leftovers().isEmpty());
 }
 
 void TestPipeline::webp4xLossyAlpha()

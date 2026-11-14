@@ -26,6 +26,7 @@ const QString kNoiseKey = QStringLiteral("v2/model/noiseLevel");
 const QString kTileKey = QStringLiteral("v2/inference/tileSize");
 const QString kDeviceKey = QStringLiteral("v2/inference/device");
 const QString kTtaKey = QStringLiteral("v2/inference/tta");  // 2.1; missing in older files = off
+const QString kGrayKey = QStringLiteral("v2/output/grayscale");  // 2.1; missing = off
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
 const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // early 2.0 test builds; removed by schema 2
 
@@ -142,6 +143,11 @@ bool AppSettings::tta() const
 }
 
 void AppSettings::setTta(bool on) { m_s->setValue(kTtaKey, on); }
+
+// Same rule as TTA: only an explicit "true" turns an option on, so files from older versions
+// (no key) and garbled values keep the old behaviour.
+bool AppSettings::grayscaleOutput() const { return m_s->value(kGrayKey).toString() == QLatin1String("true"); }
+void AppSettings::setGrayscaleOutput(bool on) { m_s->setValue(kGrayKey, on); }
 
 QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey).toByteArray(); }
 void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }

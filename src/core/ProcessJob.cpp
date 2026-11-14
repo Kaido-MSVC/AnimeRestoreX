@@ -3,6 +3,7 @@
 #include "core/ImageEncoder.h"
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
+#include "core/ImageMetadata.h"
 #include "core/OutputNaming.h"
 #include "core/inference/TileProcessor.h"
 
@@ -474,6 +475,36 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     //    result buffer (no copy); `out` outlives it.
     step = QStringLiteral("encode");
     report(Stage::Encode);
+
+    // Grayscale (nunif pil_io.save_image, 0d3d92c lines 292-296): a grayscale source, or the
+    // "grayscale output" option, turns the 8-bit result into Pillow convert("L") values.
+    const OutputFormat format = spec.encode.format;
+    const bool gray = spec.encode.forceGrayscale || loaded.meta.grayscale;
+    if (gray)
+        ImageEncoder::toGrayscale(out.pixels.data(), out.width, out.height, out.channels,
+                                  qsizetype(out.width) * out.channels);
+    // One gray channel in the file: PNG / JPEG without alpha (JPEG drops the alpha first).
+    const bool grayPlane = gray && format != OutputFormat::WebP && !(format == OutputFormat::Png && out.channels == 4);
+    ImageEncoder::Extras extras;
+    extras.grayscale = gray;
+
+    // ICC: the pixels were never converted, so the source profile goes back as it was, if it
+    // still describes the output: an RGB profile on RGB(A) pixels, a GRAY profile on a gray plane.
+    QString iccNote = QStringLiteral("none");
+    if (!loaded.meta.icc.isEmpty()) {
+        const QByteArray space = metadata::iccColorSpace(loaded.meta.icc);
+        if (space == (grayPlane ? "GRAY" : "RGB ") && (space == "GRAY" || !gray)) {
+            extras.icc = loaded.meta.icc;
+            iccNote = QStringLiteral("kept (%1 bytes, %2)").arg(extras.icc.size()).arg(QString::fromLatin1(space.trimmed()));
+        } else if (space == "RGB ") {
+            iccNote = QStringLiteral("dropped: RGB profile on grayscale output");
+        } else {
+            iccNote = QStringLiteral("dropped: grayscale profile on an RGB(A) file");
+        }
+    }
+
+    loaded.meta = {};
+
     const QImage result(out.pixels.data(), out.width, out.height, qsizetype(out.width) * out.channels,
                         out.channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888);
     const QString stem = OutputNaming::stem(sourcePath, scale);
@@ -484,9 +515,13 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         return fail(tr("Cannot create a file in the output folder: %1").arg(tmp.errorString()));
     TempFileCleanup cleanup(tmp);
 
-    QString encodeError;
-    if (!ImageEncoder::encode(result, spec.encode, &tmp, &encodeError))
+    QString encodeError, metadataError;
+    if (!ImageEncoder::encode(result, spec.encode, extras, &tmp, &encodeError, &metadataError))
         return fail(encodeError);
+    if (!metadataError.isEmpty()) {
+        if (!extras.icc.isEmpty())
+            iccNote = QStringLiteral("not written: ") + metadataError;
+    }
     if (!tmp.flush() || tmp.error() != QFileDevice::NoError)
         return fail(tr("Failed to write the output file: %1").arg(tmp.errorString()));
     tmp.close();
@@ -518,6 +553,12 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
                          .arg(stats.attempts)
                          .arg(stats.alphaPassed ? QStringLiteral(", alpha model") : QString(),
                               stats.tta ? QStringLiteral("on (8 runs)") : QStringLiteral("off"));
+    ok.diagnostics += QStringLiteral("\ngray: %1\nicc: %2")
+                          .arg(spec.encode.forceGrayscale ? QStringLiteral("forced")
+                               : gray                     ? QStringLiteral("source is grayscale")
+                                                          : QStringLiteral("off"),
+                               iccNote);
+    ok.grayscale = gray;
     return ok;
 }
 

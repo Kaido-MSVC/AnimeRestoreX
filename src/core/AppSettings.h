@@ -52,6 +52,8 @@ public:
     void setComputeDevice(ComputeDevice device);
     bool tta() const;            // TTA (8 runs averaged); missing or invalid -> off
     void setTta(bool on);
+    bool grayscaleOutput() const;  // save every output as grayscale; missing or invalid -> off
+    void setGrayscaleOutput(bool on);
 
     // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
     QByteArray windowGeometry() const;

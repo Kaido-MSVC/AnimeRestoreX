@@ -1,5 +1,6 @@
 #include "core/ImageLoader.h"
 #include "core/ImageLimits.h"
+#include "core/ImageMetadata.h"
 
 #include <QColorSpace>
 #include <QFile>
@@ -97,6 +98,7 @@ LoadResult ImageLoader::load(const QString &path)
         r.error = tr("Animated or multi-frame images are not supported.");
         return r;
     }
+    r.meta = metadata::read(path);
 
     if (isHighBitDepth(reader.imageFormat())) {
         r.error = tr("16-bit or HDR images are not supported. Please convert to 8 bits per channel first.");
@@ -123,10 +125,22 @@ LoadResult ImageLoader::load(const QString &path)
         return r;
     }
 
-    // Minimal colour handling: convert embedded non-sRGB profiles to sRGB,
-    // then drop the tag. Output files are untagged sRGB.
+    // With autoTransform, Qt applies the orientation it reports (Qt 6.12: JPEG EXIF only;
+    // PNG eXIf and WebP EXIF are read as stored and report TransformationNone).
+    r.orientationApplied = reader.transformation() != QImageIOHandler::TransformationNone;
+
+    // Colour (v2.1 P3): an embedded RGB ICC profile, or a GRAY profile on a grayscale source,
+    // is kept as is: the pixels stay in that colour space and the output gets the same
+    // profile back (ProcessJob). Otherwise the old handling: a non-sRGB colour space Qt knows
+    // (e.g. PNG gAMA / cHRM, or a profile that cannot be kept) is converted to sRGB and the
+    // output is untagged. The working image never carries a colour space, so no Qt
+    // conversion below touches the pixel values.
+    const QByteArray iccSpace = metadata::iccColorSpace(r.meta.icc);
+    const bool keepIcc = iccSpace == "RGB " || (iccSpace == "GRAY" && r.meta.grayscale);
+    if (!keepIcc)
+        r.meta.icc.clear();
     const QColorSpace cs = img.colorSpace();
-    if (cs.isValid() && cs != QColorSpace(QColorSpace::SRgb)) {
+    if (!keepIcc && cs.isValid() && cs != QColorSpace(QColorSpace::SRgb)) {
         const QImage::Format target = img.hasAlphaChannel() ? QImage::Format_ARGB32
                                                             : QImage::Format_RGB32;
         img = img.convertToFormat(target);
