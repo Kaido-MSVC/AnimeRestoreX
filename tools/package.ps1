@@ -28,9 +28,11 @@ $ProgressPreference = 'SilentlyContinue'
 $Root    = Split-Path -Parent $PSScriptRoot
 $Qt      = 'D:\qt\6.12.0\msvc2022_64'
 $VsRoot  = 'C:\Program Files\Microsoft Visual Studio\18\Community'
-$VcVars  = '14.51'
+# Same toolset as build.ps1 (v2.1 P0); the CRT comes from the redist folder of that toolset.
+$VcVars  = '14.52'
 $CMake   = 'C:\Program Files\CMake\bin\cmake.exe'
-$CrtDir  = Join-Path $VsRoot 'VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
+$CrtRel  = 'VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT'
+$CrtDir  = Join-Path $VsRoot $CrtRel
 $CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
 $ModelsSrc = Join-Path $Root 'third_party\models'
 $QtSrc   = Join-Path $Root 'third_party\_download\qt-src'
@@ -139,7 +141,7 @@ foreach ($line in $mapping) {
 
 # 3. Visual C++ runtime (AnimeRestoreX.exe and the Qt DLLs import these), app-local
 foreach ($dll in $CrtDlls) {
-    Add-File (Join-Path $CrtDir $dll) $dll 'VS 2026 VC\Redist\MSVC\14.51.36231\x64\Microsoft.VC145.CRT'
+    Add-File (Join-Path $CrtDir $dll) $dll "VS 2026 $CrtRel"
 }
 
 # 4. Runtime: only the two DLLs the app loads (ONNX Runtime C API + DirectML).

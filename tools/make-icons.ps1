@@ -16,7 +16,7 @@ $Icons  = Join-Path $Root 'resources\icons'
 if (-not $env:VSCMD_VER) {
     Import-Module (Join-Path $VsRoot 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $VsRoot -SkipAutomaticLocation `
-        -DevCmdArguments '-arch=x64 -host_arch=x64 -vcvars_ver=14.51' | Out-Null
+        -DevCmdArguments '-arch=x64 -host_arch=x64 -vcvars_ver=14.52' | Out-Null
 }
 & $CMake -S (Join-Path $Root 'tools\icongen') -B $Build -G Ninja `
     "-DCMAKE_MAKE_PROGRAM=$Ninja" "-DCMAKE_PREFIX_PATH=$Qt" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl | Out-Null

@@ -35,7 +35,7 @@ foreach ($s in 'load','correct','tile','illegal','cancel','bitwise','rawpad','ol
 |---|---|---|
 | `src/main.cpp` | probe 本體（C++23） | 是 |
 | `CMakeLists.txt` | 只用套件內的 `build/cmake` 設定檔，連結 `WindowsML::OnnxRuntime` | 是 |
-| `build.ps1` | VS 2026 DevShell、MSVC 14.51、WinGet Ninja 1.13.2，Release 建置 | 是 |
+| `build.ps1` | VS 2026 DevShell、MSVC 14.52、WinGet Ninja 1.13.2，Release 建置 | 是 |
 | `fetch-deps.ps1` | 下載固定版本的 nupkg 與模型 zip、驗證 SHA-256、解壓、建立 venv | 是 |
 | `run-probe.ps1` | 跑測試矩陣（timing／placement／cancel／compare） | 是 |
 | `scripts/` | Python 參考與診斷腳本、`requirements.txt` | 是 |
