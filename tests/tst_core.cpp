@@ -1079,7 +1079,15 @@ void TestCore::progressPlanFollowsStages()
     QCOMPARE(plan.stages[1].rateKey, key + QStringLiteral("/tta"));
     QCOMPARE(plan.stages[1].megapixels, 8 * plainWork);
     QCOMPARE(plan.weight, plainWork);
+    // Film grain: its own speed group too, same work and weight.
+    spec.inference.grain = true;
+    plan = ProcessJob::progressPlan(img, spec, &ctx);
+    QCOMPARE(plan.stages[1].rateKey, key + QStringLiteral("/tta/grain"));
     spec.inference.tta = false;
+    plan = ProcessJob::progressPlan(img, spec, &ctx);
+    QCOMPARE(plan.stages[1].rateKey, key + QStringLiteral("/grain"));
+    QCOMPARE(plan.stages[1].megapixels, plainWork);
+    spec.inference.grain = false;
 
     // Unreadable header: size unknown, the estimator uses an average weight.
     plan = ProcessJob::progressPlan(m_dir.filePath(QStringLiteral("missing.png")), spec);

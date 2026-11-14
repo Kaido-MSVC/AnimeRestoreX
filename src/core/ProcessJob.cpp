@@ -299,12 +299,14 @@ ItemPlan ProcessJob::progressPlan(const QString &sourcePath, const JobSpec &spec
     QString model = modelId(o);
     if (context && !context->modelHash.isEmpty())
         model += QLatin1Char('@') + context->modelHash.left(8);
-    // TTA renders the RGB image 8 times: its own speed group ("/tta"), 8x the RGB work.
-    const QString key = QStringLiteral("nunif/%1/%2/%3/x%4%5")
+    // TTA renders the RGB image 8 times: its own speed group ("/tta"), 8x the RGB work. Film grain
+    // adds CPU time per output pixel (P4: about 4 s on 15 MP): its own group ("/grain").
+    const QString key = QStringLiteral("nunif/%1/%2/%3/x%4%5%6")
                             .arg(model, cpu ? QStringLiteral("cpu") : QStringLiteral("dml"),
                                  tile ? QStringLiteral("t%1").arg(tile) : QStringLiteral("auto"))
                             .arg(scale)
-                            .arg(o.tta ? QStringLiteral("/tta") : QString());
+                            .arg(o.tta ? QStringLiteral("/tta") : QString(),
+                                 o.grain ? QStringLiteral("/grain") : QString());
     // Cold start: session creation (and the hash check) before the first tile; about 4 s
     // per DML session on the GTX 1060 (P2/P3 measurements), less on the CPU.
     const bool cold = context && context->cold;
