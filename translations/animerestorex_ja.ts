@@ -177,6 +177,10 @@
         <translation>出力画像の準備中にメモリが不足しました。</translation>
     </message>
     <message>
+        <source>Failed to write the output file: %1</source>
+        <translation>出力ファイルの書き込みに失敗しました：%1</translation>
+    </message>
+    <message>
         <source>The %1 encoder is not available: %2</source>
         <translation>%1 エンコーダーを使用できません：%2</translation>
     </message>
@@ -735,6 +739,10 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
     <message>
         <source>Tile size %1 is not valid for this model.</source>
         <translation>タイルサイズ %1 はこのモデルでは使用できません。</translation>
+    </message>
+    <message>
+        <source>Unsupported film grain strength: %1.</source>
+        <translation>対応していないフィルムグレインの強さです：%1。</translation>
     </message>
     <message>
         <source>The %1 image plugin is missing.</source>

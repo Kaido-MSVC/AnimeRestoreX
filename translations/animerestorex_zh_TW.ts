@@ -177,6 +177,10 @@
         <translation>準備輸出圖片時記憶體不足。</translation>
     </message>
     <message>
+        <source>Failed to write the output file: %1</source>
+        <translation>寫入輸出檔案失敗：%1</translation>
+    </message>
+    <message>
         <source>The %1 encoder is not available: %2</source>
         <translation>無法使用 %1 編碼器：%2</translation>
     </message>
@@ -737,8 +741,12 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
         <translation>Tile 大小 %1 不適用於此模型。</translation>
     </message>
     <message>
+        <source>Unsupported film grain strength: %1.</source>
+        <translation>不支援的底片顆粒強度：%1。</translation>
+    </message>
+    <message>
         <source>The %1 image plugin is missing.</source>
-        <translation>缺少 %1 圖片插件。</translation>
+        <translation>缺少 %1 圖片外掛。</translation>
     </message>
     <message>
         <source>The AI runtime files (onnxruntime.dll, DirectML.dll) are missing from the program folder. Please reinstall AnimeRestoreX.</source>
