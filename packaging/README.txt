@@ -12,7 +12,8 @@ AI denoising and 1x (denoise only) / 2x / 4x upscaling for anime illustrations
 - Windows 11 x64（實測：25H2 build 26200）。Windows 10 未測試。
 - DirectX 12 顯示卡與最新驅動程式；已實測的只有 NVIDIA GeForce GTX 1060 6GB。
   沒有合適 GPU 時可在「設定」選擇 CPU（在測試電腦上約慢 3 到 10 倍，視倍率而定）。
-- 建議 8 GB 記憶體（4× 有透明時程式約用 2.1 GB）。
+- 建議 8 GB 記憶體（4× 有透明時程式約用 2.1 GB）。開啟 TTA 時建議 16 GB：
+  最大尺寸的 4× 透明圖約用 4.4 GB。
 - 不需要安裝；不需要另外安裝 Visual C++ 執行階段；不需要網路連線。
 - 未測試：AMD / Intel GPU、6 GB 以下的 GPU、多 GPU（固定使用 Windows 預設的
   顯示卡）、Windows 10、ARM64、遠端桌面與虛擬機器。

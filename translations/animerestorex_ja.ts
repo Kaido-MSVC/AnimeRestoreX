@@ -872,8 +872,28 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>TTA（テスト時拡張）</translation>
     </message>
     <message>
-        <source>Each image is processed 8 times, flipped and rotated, and the results are averaged. Processing takes about 8 times as long.</source>
-        <translation>各画像を反転・回転して 8 回処理し、結果を平均します。処理時間は約 8 倍になります。</translation>
+        <source>Each image is processed 8 times, flipped and rotated, and the results are averaged. Processing takes about 8 times as long. The largest 4x images with transparency use about 4.4 GB of memory; 16 GB of RAM is recommended.</source>
+        <translation>各画像を反転・回転して 8 回処理し、結果を平均します。処理時間は約 8 倍になります。最大サイズの透過画像を 4 倍にすると約 4.4 GB のメモリを使うため、16 GB の RAM を推奨します。</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>出力</translation>
+    </message>
+    <message>
+        <source>Save as grayscale</source>
+        <translation>グレースケールで保存</translation>
+    </message>
+    <message>
+        <source>Grayscale source images are always saved as grayscale. PNG with transparency and WebP keep three equal color channels.</source>
+        <translation>元画像がグレースケールの場合は常にグレースケールで保存します。透過 PNG と WebP は、同じ値の 3 つのカラーチャンネルで保存します。</translation>
+    </message>
+    <message>
+        <source>Keep EXIF information</source>
+        <translation>EXIF 情報を保持</translation>
+    </message>
+    <message>
+        <source>Copies the camera, date and other EXIF data of the source image. EXIF may contain personal information, such as the location where a photo was taken.</source>
+        <translation>元画像のカメラ、日時などの EXIF データをコピーします。EXIF には撮影場所などの個人情報が含まれる場合があります。</translation>
     </message>
     <message>
         <source>Language</source>

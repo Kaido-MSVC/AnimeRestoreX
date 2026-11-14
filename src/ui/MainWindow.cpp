@@ -327,12 +327,16 @@ void MainWindow::saveSettings()
 
 void MainWindow::openSettings()
 {
-    SettingsDialog dlg(m_settings->tileSize(), m_settings->computeDevice(), m_settings->tta(),
-                       LanguageManager::instance().current(), this);
+    SettingsValues v;
+    v.tile = m_settings->tileSize();
+    v.device = m_settings->computeDevice();
+    v.tta = m_settings->tta();
+    v.grayscale = m_settings->grayscaleOutput();
+    v.keepExif = m_settings->keepExif();
+    SettingsDialog dlg(v, LanguageManager::instance().current(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    applySettings(dlg.tileSize(), int(dlg.computeDevice()), dlg.tta(), dlg.languageChanged(),
-                  int(dlg.language()));
+    applySettings(dlg.values(), dlg.languageChanged(), int(dlg.language()));
 }
 
 void MainWindow::openAbout()
@@ -441,11 +445,13 @@ void MainWindow::requestThumbnail(const QString &path)
     });
 }
 
-void MainWindow::applySettings(int tile, int device, bool tta, bool languageChanged, int language)
+void MainWindow::applySettings(const SettingsValues &v, bool languageChanged, int language)
 {
-    m_settings->setTileSize(tile);
-    m_settings->setComputeDevice(arx::ComputeDevice(device));
-    m_settings->setTta(tta);
+    m_settings->setTileSize(v.tile);
+    m_settings->setComputeDevice(v.device);
+    m_settings->setTta(v.tta);
+    m_settings->setGrayscaleOutput(v.grayscale);
+    m_settings->setKeepExif(v.keepExif);
     if (languageChanged) {
         // Only an explicit choice is stored as a manual override.
         const auto lang = arx::Language(language);
@@ -682,6 +688,8 @@ arx::JobSpec MainWindow::currentSpec() const
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
     spec.encode.webpLossless = ui->webpModeCombo->currentData().toBool();
     spec.encode.quality = ui->qualitySpin->value();
+    spec.encode.forceGrayscale = m_settings->grayscaleOutput();
+    spec.encode.keepExif = m_settings->keepExif();
     return spec;
 }
 

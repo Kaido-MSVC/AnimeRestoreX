@@ -9,8 +9,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, bool tta, arx::Language language,
-                               QWidget *parent)
+SettingsDialog::SettingsDialog(const SettingsValues &values, arx::Language language, QWidget *parent)
     : QDialog(parent), m_initialLanguage(language)
 {
     auto *root = new QVBoxLayout(this);
@@ -51,6 +50,23 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, bool tta, ar
     model->addRow(QString(), m_ttaHint);
     root->addWidget(m_modelGroup);
 
+    // Output file options (2.1), both off by default. The ICC profile is always kept.
+    m_outputGroup = new QGroupBox(this);
+    auto *output = new QFormLayout(m_outputGroup);
+    m_gray = new QCheckBox(this);
+    output->addRow(m_gray);
+    m_grayHint = new QLabel(this);
+    m_grayHint->setWordWrap(true);
+    m_grayHint->setMinimumWidth(hintWidth);
+    output->addRow(m_grayHint);
+    m_exif = new QCheckBox(this);
+    output->addRow(m_exif);
+    m_exifHint = new QLabel(this);
+    m_exifHint->setWordWrap(true);
+    m_exifHint->setMinimumWidth(hintWidth);
+    output->addRow(m_exifHint);
+    root->addWidget(m_outputGroup);
+
     m_langGroup = new QGroupBox(this);
     auto *lang = new QFormLayout(m_langGroup);
     m_langLabel = new QLabel(this);
@@ -65,9 +81,11 @@ SettingsDialog::SettingsDialog(int tile, arx::ComputeDevice device, bool tta, ar
     connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(m_buttons);
 
-    m_tile->setCurrentIndex(std::max(0, m_tile->findData(tile)));
-    m_device->setCurrentIndex(std::max(0, m_device->findData(int(device))));
-    m_tta->setChecked(tta);
+    m_tile->setCurrentIndex(std::max(0, m_tile->findData(values.tile)));
+    m_device->setCurrentIndex(std::max(0, m_device->findData(int(values.device))));
+    m_tta->setChecked(values.tta);
+    m_gray->setChecked(values.grayscale);
+    m_exif->setChecked(values.keepExif);
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
     connect(m_device, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDeviceHint);
     retranslate();
@@ -113,7 +131,15 @@ void SettingsDialog::retranslate()
     updateDeviceHint();
     m_tta->setText(tr("TTA (test-time augmentation)"));
     m_ttaHint->setText(tr("Each image is processed 8 times, flipped and rotated, and the results are "
-                          "averaged. Processing takes about 8 times as long."));
+                          "averaged. Processing takes about 8 times as long. The largest 4x images "
+                          "with transparency use about 4.4 GB of memory; 16 GB of RAM is recommended."));
+    m_outputGroup->setTitle(tr("Output"));
+    m_gray->setText(tr("Save as grayscale"));
+    m_grayHint->setText(tr("Grayscale source images are always saved as grayscale. PNG with "
+                           "transparency and WebP keep three equal color channels."));
+    m_exif->setText(tr("Keep EXIF information"));
+    m_exifHint->setText(tr("Copies the camera, date and other EXIF data of the source image. EXIF may "
+                           "contain personal information, such as the location where a photo was taken."));
     m_langGroup->setTitle(tr("Language"));
     m_langLabel->setText(tr("Interface language:"));
     fitToContents();
@@ -132,4 +158,16 @@ arx::ComputeDevice SettingsDialog::computeDevice() const
     return arx::ComputeDevice(m_device->currentData().toInt());
 }
 bool SettingsDialog::tta() const { return m_tta->isChecked(); }
+bool SettingsDialog::grayscale() const { return m_gray->isChecked(); }
+bool SettingsDialog::keepExif() const { return m_exif->isChecked(); }
+SettingsValues SettingsDialog::values() const
+{
+    SettingsValues v;
+    v.tile = tileSize();
+    v.device = computeDevice();
+    v.tta = tta();
+    v.grayscale = grayscale();
+    v.keepExif = keepExif();
+    return v;
+}
 arx::Language SettingsDialog::language() const { return arx::Language(m_lang->currentData().toInt()); }

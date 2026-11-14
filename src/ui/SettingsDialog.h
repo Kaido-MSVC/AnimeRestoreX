@@ -11,17 +11,28 @@ class QLabel;
 class QGroupBox;
 class QDialogButtonBox;
 
-// "Settings" window: advanced AI model parameters (tile size, processing device, TTA) and
-// language. The denoise level lives in the main window since v1.1.
+// Values the settings dialog edits (stored in AppSettings).
+struct SettingsValues {
+    int tile = 0;  // 0 = Auto
+    arx::ComputeDevice device = arx::ComputeDevice::Gpu;
+    bool tta = false;
+    bool grayscale = false;  // save every output as grayscale
+    bool keepExif = false;   // copy the source EXIF into the output
+};
+
+// "Settings" window: advanced AI model parameters (tile size, processing device, TTA), output
+// options (grayscale, EXIF) and language. The denoise level lives in the main window since v1.1.
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
-    SettingsDialog(int tile, arx::ComputeDevice device, bool tta, arx::Language language,
-                   QWidget *parent = nullptr);
+    SettingsDialog(const SettingsValues &values, arx::Language language, QWidget *parent = nullptr);
 
+    SettingsValues values() const;
     int tileSize() const;
     arx::ComputeDevice computeDevice() const;
     bool tta() const;
+    bool grayscale() const;
+    bool keepExif() const;
     arx::Language language() const;
     // True only if the user picked a different language than the one shown at open.
     bool languageChanged() const { return language() != m_initialLanguage; }
@@ -35,7 +46,12 @@ private:
     void fitToContents();
 
     QGroupBox *m_modelGroup = nullptr;
+    QGroupBox *m_outputGroup = nullptr;
     QGroupBox *m_langGroup = nullptr;
+    QCheckBox *m_gray = nullptr;
+    QLabel *m_grayHint = nullptr;
+    QCheckBox *m_exif = nullptr;
+    QLabel *m_exifHint = nullptr;
     QLabel *m_modelLabel = nullptr;
     QLabel *m_modelName = nullptr;
     QLabel *m_tileLabel = nullptr;

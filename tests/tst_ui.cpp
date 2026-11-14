@@ -497,15 +497,20 @@ void TestUi::autoLanguageIsNotSavedAsManual()
     QSettings().remove(QStringLiteral("ui/language"));
     MainWindow w;
     // Settings dialog accepted without changing the language.
-    w.applySettings(160, int(arx::ComputeDevice::Cpu), true, false, int(arx::Language::TraditionalChinese));
+    w.applySettings(SettingsValues{160, arx::ComputeDevice::Cpu, true, true, true}, false,
+                    int(arx::Language::TraditionalChinese));
     arx::AppSettings s;
     QVERIFY(!s.manualLanguage().has_value());
     QCOMPARE(s.tileSize(), 160);
     QCOMPARE(s.computeDevice(), arx::ComputeDevice::Cpu);
     QVERIFY(s.tta());
+    QVERIFY(s.grayscaleOutput());
+    QVERIFY(s.keepExif());
     s.setTileSize(arx::AppSettings::kDefaultTile);
     s.setComputeDevice(arx::ComputeDevice::Gpu);
     s.setTta(false);
+    s.setGrayscaleOutput(false);
+    s.setKeepExif(false);
     QVERIFY(s.sync());
 }
 
@@ -532,15 +537,24 @@ void TestUi::denoiseOnMainWindow()
     QCOMPARE(list->topLevelItem(0)->text(1), QStringLiteral("Pending"));
 
     // The settings dialog has no denoise control any more.
-    SettingsDialog sd(0, arx::ComputeDevice::Gpu, false, arx::Language::English, &w);
+    SettingsDialog sd(SettingsValues{}, arx::Language::English, &w);
     QCOMPARE(sd.findChildren<QComboBox *>().size(), 3);  // tile + device + language
-    // TTA: one check box, off as passed in, with the 8x time note.
+    // Check boxes: TTA (8x time note), grayscale output, keep EXIF (privacy note); all off
+    // as passed in.
     const QList<QCheckBox *> checks = sd.findChildren<QCheckBox *>();
-    QCOMPARE(checks.size(), 1);
-    QVERIFY(!checks.first()->isChecked() && !sd.tta());
-    checks.first()->setChecked(true);
+    QCOMPARE(checks.size(), 3);
+    for (QCheckBox *c : checks)
+        QVERIFY(!c->isChecked());
+    QVERIFY(!sd.tta() && !sd.grayscale() && !sd.keepExif());
+    checks.at(0)->setChecked(true);
     QVERIFY(sd.tta());
-    QCOMPARE(SettingsDialog(0, arx::ComputeDevice::Gpu, true, arx::Language::English, &w).tta(), true);
+    checks.at(1)->setChecked(true);
+    QVERIFY(sd.grayscale());
+    checks.at(2)->setChecked(true);
+    QVERIFY(sd.keepExif());
+    const SettingsValues on{0, arx::ComputeDevice::Gpu, true, true, true};
+    const SettingsValues back = SettingsDialog(on, arx::Language::English, &w).values();
+    QVERIFY(back.tta && back.grayscale && back.keepExif);
     // Only validated tiles; nothing at 640 or above.
     const QList<QComboBox *> combos = sd.findChildren<QComboBox *>();
     QComboBox *tiles = combos.first();
@@ -557,6 +571,8 @@ void TestUi::denoiseOnMainWindow()
         return all;
     };
     QVERIFY2(hintText().contains(QStringLiteral("about 8 times as long")), qPrintable(hintText()));
+    QVERIFY2(hintText().contains(QStringLiteral("16 GB of RAM")), qPrintable(hintText()));
+    QVERIFY2(hintText().contains(QStringLiteral("location where a photo was taken")), qPrintable(hintText()));
     QVERIFY(!hintText().contains(QStringLiteral("much slower than the GPU")));
     devices->setCurrentIndex(devices->findData(int(arx::ComputeDevice::Cpu)));
     QVERIFY2(hintText().contains(QStringLiteral("much slower than the GPU")), qPrintable(hintText()));
@@ -785,7 +801,7 @@ void TestUi::languageSwitchRetranslates()
     QVERIFY2(QFile::exists(QStringLiteral(":/i18n/animerestorex_ja.qm")), "embedded .qm missing");
 
     // LanguageChange is delivered through the event loop.
-    w.applySettings(0, int(arx::ComputeDevice::Gpu), false, true, int(arx::Language::TraditionalChinese));
+    w.applySettings(SettingsValues{}, true, int(arx::Language::TraditionalChinese));
     QCOMPARE(LanguageManager::instance().current(), arx::Language::TraditionalChinese);
     QTRY_COMPARE(startButton->text(), QStringLiteral("開始處理"));
     QCOMPARE(w.menuBar()->actions().first()->text(), QStringLiteral("檔案(&F)"));
@@ -814,7 +830,9 @@ void TestUi::languageSwitchRetranslates()
             w.show();
             QTest::qWait(300);
             w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
-            SettingsDialog sd(0, arx::ComputeDevice::Cpu, true, LanguageManager::instance().current(), &w);
+            // CPU (longest hint), every check box on.
+            SettingsDialog sd(SettingsValues{0, arx::ComputeDevice::Cpu, true, true, true},
+                              LanguageManager::instance().current(), &w);
             sd.show();
             QTest::qWait(200);
             sd.grab().save(QDir(snapDir).filePath(QStringLiteral("settings_%1.png").arg(tag)));
@@ -828,12 +846,12 @@ void TestUi::languageSwitchRetranslates()
     };
     snapshot(QStringLiteral("zh_TW"));
 
-    w.applySettings(0, int(arx::ComputeDevice::Gpu), false, true, int(arx::Language::Japanese));
+    w.applySettings(SettingsValues{}, true, int(arx::Language::Japanese));
     QTRY_COMPARE(startButton->text(), QStringLiteral("処理開始"));
     snapshot(QStringLiteral("ja"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::Japanese));
 
-    w.applySettings(0, int(arx::ComputeDevice::Gpu), false, true, int(arx::Language::English));
+    w.applySettings(SettingsValues{}, true, int(arx::Language::English));
     QTRY_COMPARE(startButton->text(), QStringLiteral("Start"));
     snapshot(QStringLiteral("en"));
     QCOMPARE(arx::AppSettings().manualLanguage(), std::optional(arx::Language::English));

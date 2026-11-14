@@ -16,6 +16,7 @@
 
 namespace Ui { class MainWindow; }
 namespace arx { class AppSettings; }
+struct SettingsValues;
 class ElidedLabel;
 class JobWorker;
 class QAction;
@@ -41,8 +42,7 @@ public:
     QString sourceFolder() const { return m_sourceDir; }
 
     // Applies values from the settings dialog (also used by tests).
-    // `device` is an arx::ComputeDevice value.
-    void applySettings(int tile, int device, bool tta, bool languageChanged, int language);
+    void applySettings(const SettingsValues &values, bool languageChanged, int language);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

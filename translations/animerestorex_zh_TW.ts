@@ -872,8 +872,28 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
         <translation>TTA（測試時增強）</translation>
     </message>
     <message>
-        <source>Each image is processed 8 times, flipped and rotated, and the results are averaged. Processing takes about 8 times as long.</source>
-        <translation>每張圖會翻轉、旋轉後處理 8 次，再取平均。處理時間約為 8 倍。</translation>
+        <source>Each image is processed 8 times, flipped and rotated, and the results are averaged. Processing takes about 8 times as long. The largest 4x images with transparency use about 4.4 GB of memory; 16 GB of RAM is recommended.</source>
+        <translation>每張圖會翻轉、旋轉後處理 8 次，再取平均。處理時間約為 8 倍。最大尺寸的 4 倍透明圖約使用 4.4 GB 記憶體，建議 16 GB RAM。</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>輸出</translation>
+    </message>
+    <message>
+        <source>Save as grayscale</source>
+        <translation>輸出灰階</translation>
+    </message>
+    <message>
+        <source>Grayscale source images are always saved as grayscale. PNG with transparency and WebP keep three equal color channels.</source>
+        <translation>原圖是灰階時一律輸出灰階。含透明的 PNG 與 WebP 會保留三個數值相同的色彩通道。</translation>
+    </message>
+    <message>
+        <source>Keep EXIF information</source>
+        <translation>保留 EXIF 資訊</translation>
+    </message>
+    <message>
+        <source>Copies the camera, date and other EXIF data of the source image. EXIF may contain personal information, such as the location where a photo was taken.</source>
+        <translation>複製原圖的相機、日期等 EXIF 資料。EXIF 可能包含拍攝位置等個人資訊。</translation>
     </message>
     <message>
         <source>Language</source>

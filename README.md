@@ -26,6 +26,9 @@ ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
 - Progress for the current image (reading → AI processing → encoding) and for
   the whole batch, with an estimated time left. The estimate is based on the
   image size and the speed measured on your GPU, and is marked as an estimate.
+- 2.1: grayscale images stay grayscale (optionally every output); an embedded ICC
+  profile is kept (the pixels are not converted); EXIF can be kept (off by default:
+  it may contain the location where a photo was taken).
 - Light and dark theme that follows the Windows setting.
 - User interface in 繁體中文, 日本語 and English; high-DPI aware.
 
@@ -52,6 +55,7 @@ Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a compatible driv
 | GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 |
 | GPU memory | Auto tile 256: about 1.2 GB at 1x/2x, 0.8 GB at 4x per model (twice that with transparency); tile 448 about 3 GB | measured on the GTX 1060 (P1 redo) |
 | RAM | **8 GB recommended**. Peak private memory of the app: about 1.3 GB at 1x, 1.7 GB at 2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (1x/2x P1 close, 4x P3) |
+| RAM with TTA (2.1) | **16 GB recommended**. The largest 4x image with transparency (2634×1708 → 72 MP) peaks at about 4.4 GB (4,185 MiB) with TTA, 3.5 GB (3,359 MiB) without | measured (v2.1 P3) |
 | CPU mode | works without a GPU, about 3 to 10 times slower than the GTX 1060 on the test PC, depending on the scale | measured (P2 redo) |
 
 Not tested: AMD and Intel GPUs, GPUs with less than 6 GB, more than one GPU (the
