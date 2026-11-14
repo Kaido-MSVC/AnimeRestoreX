@@ -710,8 +710,10 @@ void TestCore::settingsSeparateKeysAndValidation()
         QVERIFY(!s.manualLanguage().has_value());  // nothing stored yet
         QVERIFY(!s.tta());                          // missing (older files): off
         QVERIFY(!s.grayscaleOutput());
+        QVERIFY(!s.keepExif());
         s.setTta(true);
         s.setGrayscaleOutput(true);
+        s.setKeepExif(true);
         s.setSourceDir(a);
         s.setOutputDir(b);
         s.setNoiseLevel(3);
@@ -730,11 +732,14 @@ void TestCore::settingsSeparateKeysAndValidation()
         QCOMPARE(s.manualLanguage(), std::optional<Language>(Language::Japanese));
         QVERIFY(s.tta());
         QVERIFY(s.grayscaleOutput());
+        QVERIFY(s.keepExif());
         s.setTta(false);
         s.setGrayscaleOutput(false);
+        s.setKeepExif(false);
     }
     QVERIFY(!AppSettings().tta());
     QVERIFY(!AppSettings().grayscaleOutput());
+    QVERIFY(!AppSettings().keepExif());
     for (int t : {100, 200, 640, 300})  // old engine values, 640+, illegal tiles
         QVERIFY(!AppSettings::isValidTile(t));
     QSettings raw;
@@ -751,10 +756,12 @@ void TestCore::settingsSeparateKeysAndValidation()
     raw.setValue(QStringLiteral("ui/language"), QStringLiteral("klingon"));
     raw.setValue(QStringLiteral("v2/inference/tta"), QStringLiteral("yes"));
     raw.setValue(QStringLiteral("v2/output/grayscale"), 1);
+    raw.setValue(QStringLiteral("v2/output/keepExif"), QStringLiteral("on"));
     raw.sync();
     AppSettings s;
     QVERIFY(!s.tta());
     QVERIFY(!s.grayscaleOutput());
+    QVERIFY(!s.keepExif());
     QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
     QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
     QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);

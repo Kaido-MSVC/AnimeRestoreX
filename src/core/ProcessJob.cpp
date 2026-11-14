@@ -503,6 +503,26 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
         }
     }
 
+    // EXIF (option): orientation, pixel size and thumbnail fixed; anything wrong = no EXIF.
+    QString exifNote = QStringLiteral("off");
+    if (spec.encode.keepExif) {
+        if (!loaded.meta.exifError.isEmpty()) {
+            exifNote = QStringLiteral("not written: ") + loaded.meta.exifError;
+        } else if (loaded.meta.exif.isEmpty()) {
+            exifNote = QStringLiteral("none in source");
+        } else if (auto exif = metadata::prepareExif(loaded.meta.exif, loaded.orientationApplied, out.width,
+                                                     out.height);
+                   !exif) {
+            exifNote = QStringLiteral("not written: ") + exif.error();
+        } else if (format == OutputFormat::Jpeg && exif->size() > metadata::kMaxJpegExif) {
+            exifNote = QStringLiteral("not written: %1 bytes do not fit into a JPEG APP1 segment").arg(exif->size());
+        } else {
+            extras.exif = *exif;
+            exifNote = QStringLiteral("written (%1 bytes, orientation %2)")
+                           .arg(extras.exif.size())
+                           .arg(loaded.orientationApplied ? QStringLiteral("reset to 1") : QStringLiteral("as in source"));
+        }
+    }
     loaded.meta = {};
 
     const QImage result(out.pixels.data(), out.width, out.height, qsizetype(out.width) * out.channels,
@@ -521,6 +541,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     if (!metadataError.isEmpty()) {
         if (!extras.icc.isEmpty())
             iccNote = QStringLiteral("not written: ") + metadataError;
+        if (!extras.exif.isEmpty())
+            exifNote = QStringLiteral("not written: ") + metadataError;
     }
     if (!tmp.flush() || tmp.error() != QFileDevice::NoError)
         return fail(tr("Failed to write the output file: %1").arg(tmp.errorString()));
@@ -553,11 +575,11 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
                          .arg(stats.attempts)
                          .arg(stats.alphaPassed ? QStringLiteral(", alpha model") : QString(),
                               stats.tta ? QStringLiteral("on (8 runs)") : QStringLiteral("off"));
-    ok.diagnostics += QStringLiteral("\ngray: %1\nicc: %2")
+    ok.diagnostics += QStringLiteral("\ngray: %1\nicc: %2\nexif: %3")
                           .arg(spec.encode.forceGrayscale ? QStringLiteral("forced")
                                : gray                     ? QStringLiteral("source is grayscale")
                                                           : QStringLiteral("off"),
-                               iccNote);
+                               iccNote, exifNote);
     ok.grayscale = gray;
     return ok;
 }

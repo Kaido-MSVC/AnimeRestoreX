@@ -381,16 +381,46 @@ void TestPipeline::iccAndExifThroughTheJob()
 
     JobSpec s = spec(OutputFormat::Png, 2);
     s.outputDir = dir;
-    FakeBackend b1;
-    // The profile goes back as it was; no EXIF is written.
+    FakeBackend b1, b2, b3;
+    // EXIF off (default): the profile is still kept, no EXIF.
     ItemResult r = runOne(src, s, b1);
     QVERIFY2(r.ok, qPrintable(why(r)));
+    QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: off")), qPrintable(r.diagnostics));
     QVERIFY2(r.diagnostics.contains(QStringLiteral("\nicc: kept (")), qPrintable(r.diagnostics));
     metadata::SourceInfo out = metadata::read(r.outputPath);
     QCOMPARE(out.icc, QColorSpace(QColorSpace::DisplayP3).iccProfile());
     QVERIFY(out.exif.isEmpty());
     QCOMPARE(QImageReader(r.outputPath).size(), QSize(128, 192));  // turned upright
-    QCOMPARE(testimg::sha256(src), before);  // source untouched
+
+    // EXIF on: orientation 1, the output size, no thumbnail.
+    s.encode.keepExif = true;
+    r = runOne(src, s, b2);
+    QVERIFY2(r.ok, qPrintable(why(r)));
+    QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: written")), qPrintable(r.diagnostics));
+    out = metadata::read(r.outputPath);
+    QCOMPARE(out.exif.size(), 88);
+    QCOMPARE(testimg::exifU16(out.exif, 30), quint16(1));
+    QCOMPARE(testimg::exifU16(out.exif, 68), quint16(128));
+    QCOMPARE(testimg::exifU16(out.exif, 80), quint16(192));
+    QCOMPARE(testimg::exifU32(out.exif, 46), 0u);
+    QCOMPARE(out.icc, QColorSpace(QColorSpace::DisplayP3).iccProfile());
+
+    // Damaged EXIF: the image is still written, without EXIF, and the reason is recorded.
+    QByteArray bad = testimg::makeExif(false, 1, false);
+    qToBigEndian<quint32>(0x00FFFFF0, bad.data() + 4);
+    auto badJpeg = metadata::embed(buf.data(), OutputFormat::Jpeg, {}, bad);
+    QVERIFY(badJpeg.has_value());
+    const QString badSrc = QDir(m_srcDir).filePath(QStringLiteral("bad exif.jpg"));
+    {
+        QFile f(badSrc);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(*badJpeg);
+    }
+    r = runOne(badSrc, s, b3);
+    QVERIFY2(r.ok, qPrintable(why(r)));
+    QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: IFD0 offset")), qPrintable(r.diagnostics));
+    QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
+    QCOMPARE(testimg::sha256(src), before);  // sources untouched
     QVERIFY(leftovers().isEmpty());
 }
 

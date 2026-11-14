@@ -54,6 +54,8 @@ public:
     void setTta(bool on);
     bool grayscaleOutput() const;  // save every output as grayscale; missing or invalid -> off
     void setGrayscaleOutput(bool on);
+    bool keepExif() const;         // copy the source EXIF into the output; missing or invalid -> off
+    void setKeepExif(bool on);
 
     // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
     QByteArray windowGeometry() const;

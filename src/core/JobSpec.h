@@ -14,6 +14,8 @@ struct EncodeOptions {
     // 2.1: save every output as grayscale (nunif --grayscale). A grayscale source is saved
     // as grayscale either way (nunif keeps L / LA images grayscale).
     bool forceGrayscale = false;
+    // 2.1: copy the source's EXIF block into the output (orientation, size and thumbnail fixed).
+    bool keepExif = false;
 };
 
 // Where inference runs. CPU is only used when the user picks it; a GPU failure never
