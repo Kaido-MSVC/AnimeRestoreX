@@ -6,12 +6,14 @@
 #include "core/ImageEncoder.h"
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
+#include "core/ImageMetadata.h"
 #include "core/OutputNaming.h"
 #include "core/ProcessJob.h"
 #include "core/Progress.h"
 #include "core/inference/TilePolicy.h"
 
 #include <QBuffer>
+#include <QColorSpace>
 #include <QDir>
 #include <QImageReader>
 #include <QImageWriter>
@@ -20,6 +22,7 @@
 #include <QtEndian>
 #include <QtTest>
 
+#include <array>
 #include <limits>
 
 using namespace arx;
@@ -40,6 +43,10 @@ private slots:
     void webpLossyUsesVp8AndQuality();
     void jpegQualityAndWhiteBackground();
     void pngKeepsAlpha();
+    void grayscaleMatchesPillow();
+    void exifPrepare();
+    void exifPrepareRejectsDamaged();
+    void metadataEmbedRoundTrip();
     void folderScanTopLevelNaturalOrder();
     void sizeMessagesIncludeValues();
     void languageFromUiTag_data();
@@ -315,6 +322,201 @@ void TestCore::pngKeepsAlpha()
     const QImage dec = QImage::fromData(encodeToBytes(src, opt), "png")
                            .convertToFormat(QImage::Format_ARGB32);
     QCOMPARE(dec, src);
+}
+
+using testimg::exifU16;
+using testimg::exifU32;
+using testimg::makeExif;
+
+void TestCore::grayscaleMatchesPillow()
+{
+    // Reference values from Pillow 13.0.0 Image.convert("L") (venv-torch); the formula was also
+    // checked against Pillow for all 2^24 RGB values (docs/v2.1-P3報告.md).
+    const std::array<std::array<int, 4>, 10> ref{{{255, 0, 0, 76}, {0, 255, 0, 150}, {0, 0, 255, 29},
+                                                  {12, 200, 99, 132}, {255, 255, 255, 255}, {1, 1, 1, 1},
+                                                  {128, 64, 32, 79}, {37, 213, 151, 153}, {250, 3, 250, 105},
+                                                  {127, 128, 129, 128}}};
+    std::vector<uchar> rgba;
+    for (const auto &r : ref) {
+        QCOMPARE(int(ImageEncoder::luma(uchar(r[0]), uchar(r[1]), uchar(r[2]))), r[3]);
+        rgba.insert(rgba.end(), {uchar(r[0]), uchar(r[1]), uchar(r[2]), uchar(r[3] ^ 0x5A)});
+    }
+    // RGBA: R, G and B get L, alpha is untouched (Pillow rgba2la).
+    ImageEncoder::toGrayscale(rgba.data(), 5, 2, 4, 5 * 4);
+    for (size_t i = 0; i < ref.size(); ++i) {
+        QCOMPARE(int(rgba[4 * i]), ref[i][3]);
+        QCOMPARE(int(rgba[4 * i + 1]), ref[i][3]);
+        QCOMPARE(int(rgba[4 * i + 2]), ref[i][3]);
+        QCOMPARE(int(rgba[4 * i + 3]), ref[i][3] ^ 0x5A);
+    }
+}
+
+void TestCore::exifPrepare()
+{
+    for (bool le : {true, false}) {
+        const QByteArray in = makeExif(le, 6, true);
+        auto r = metadata::prepareExif(in, true, 300, 200);
+        QVERIFY2(r.has_value(), qPrintable(r ? QString() : r.error()));  // error() only without a value
+        const QByteArray &o = *r;
+        QCOMPARE(o.size(), 88);                  // IFD1 and the thumbnail cut off the end
+        QCOMPARE(exifU32(o, 46), 0u);            // IFD0 no longer links to IFD1
+        QCOMPARE(exifU16(o, 22 + 8), quint16(1)); // Orientation
+        QCOMPARE(exifU16(o, 60 + 8), quint16(300));
+        QCOMPARE(exifU16(o, 72 + 8), quint16(200));
+        QCOMPARE(o.mid(50, 8), QByteArray("ARXTest\0", 8));
+        QCOMPARE(o.left(22), in.left(22));       // everything else byte for byte
+        QCOMPARE(o.mid(34, 12), in.mid(34, 12));
+
+        // Orientation not applied by the loader (PNG / WebP): the stored value stays.
+        r = metadata::prepareExif(in, false, 300, 200);
+        QVERIFY(r.has_value());
+        QCOMPARE(exifU16(*r, 22 + 8), quint16(6));
+
+        // SHORT too small for the size: the entry becomes LONG.
+        r = metadata::prepareExif(makeExif(le, 1, false), true, 70000, 64);
+        QVERIFY(r.has_value());
+        QCOMPARE(exifU16(*r, 60 + 2), quint16(4));
+        QCOMPARE(exifU32(*r, 60 + 8), 70000u);
+        QCOMPARE(exifU16(*r, 72 + 2), quint16(3));
+        QCOMPARE(exifU16(*r, 72 + 8), quint16(64));
+        QCOMPARE(r->size(), 88);
+
+        // LONG dimensions stay LONG.
+        r = metadata::prepareExif(makeExif(le, 1, false, 4), true, 5, 7);
+        QVERIFY(r.has_value());
+        QCOMPARE(exifU32(*r, 60 + 8), 5u);
+        QCOMPARE(exifU32(*r, 72 + 8), 7u);
+    }
+}
+
+void TestCore::exifPrepareRejectsDamaged()
+{
+    const QByteArray good = makeExif(true, 6, true);
+    QVERIFY(!metadata::prepareExif(QByteArray("II*\0", 4), true, 1, 1).has_value());  // too short
+    QByteArray b = good;
+    b[0] = 'X';
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // no TIFF header
+    b = good;
+    qToLittleEndian<quint32>(0x00FFFFF0, b.data() + 4);
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // IFD0 outside
+    b = good;
+    qToLittleEndian<quint16>(0x7FFF, b.data() + 8);
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // entry count past the end
+    b = good;
+    qToLittleEndian<quint32>(5000, b.data() + 10 + 8);
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Make value outside
+    b = good;
+    qToLittleEndian<quint32>(8, b.data() + 34 + 8);
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Exif pointer back to IFD0
+    b = good;
+    b.truncate(70);
+    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Exif IFD cut off
+}
+
+void TestCore::metadataEmbedRoundTrip()
+{
+    const QByteArray p3 = QColorSpace(QColorSpace::DisplayP3).iccProfile();
+    QCOMPARE(metadata::iccColorSpace(p3), QByteArray("RGB "));
+    // A profile that needs several JPEG APP2 segments and compresses very well in PNG.
+    const QByteArray big = p3 + QByteArray(150000, '\x5A');
+    const QByteArray exif = makeExif(true, 1, false);
+    struct Case {
+        OutputFormat format;
+        bool lossless;
+        bool alpha;
+    };
+    for (const Case c : {Case{OutputFormat::Png, false, false}, Case{OutputFormat::Png, false, true},
+                         Case{OutputFormat::Jpeg, false, false}, Case{OutputFormat::Jpeg, false, true},
+                         Case{OutputFormat::WebP, true, false}, Case{OutputFormat::WebP, true, true},
+                         Case{OutputFormat::WebP, false, false}, Case{OutputFormat::WebP, false, true}}) {
+        const QImage src = testimg::make(64, 48, c.alpha).convertToFormat(c.alpha ? QImage::Format_RGBA8888
+                                                                                     : QImage::Format_RGB888);
+        EncodeOptions opt;
+        opt.format = c.format;
+        opt.webpLossless = c.lossless;
+        const QByteArray plain = encodeToBytes(src, opt);
+        for (const QByteArray &icc : {p3, big, QByteArray()}) {
+            for (const QByteArray &ex : {exif, QByteArray()}) {
+                if (icc.isEmpty() && ex.isEmpty())
+                    continue;
+                const QString what = QStringLiteral("format %1 lossless %2 alpha %3 icc %4 exif %5")
+                                         .arg(int(c.format)).arg(c.lossless).arg(c.alpha).arg(icc.size()).arg(ex.size());
+                ImageEncoder::Extras x;
+                x.icc = icc;
+                x.exif = ex;
+                QBuffer buf;
+                QVERIFY(buf.open(QIODevice::WriteOnly));
+                QString err, metaErr;
+                QVERIFY2(ImageEncoder::encode(src, opt, x, &buf, &err, &metaErr), qPrintable(err));
+                QVERIFY2(metaErr.isEmpty(), qPrintable(what + QStringLiteral(": ") + metaErr));
+                buf.close();
+                QVERIFY(buf.open(QIODevice::ReadOnly));
+                const metadata::SourceInfo back = metadata::read(buf);
+                QVERIFY2(back.icc == icc, qPrintable(what));
+                QVERIFY2(back.exif == ex, qPrintable(what));
+                QVERIFY2(back.exifError.isEmpty(), qPrintable(back.exifError));
+                // Same pixels as the plain encode (the bitstream itself is not touched).
+                const QImage a = QImage::fromData(buf.data()), p = QImage::fromData(plain);
+                QVERIFY2(!a.isNull(), qPrintable(what));
+                QImage aa = a, pp = p;
+                aa.setColorSpace(QColorSpace());
+                pp.setColorSpace(QColorSpace());
+                QVERIFY2(aa.convertToFormat(QImage::Format_ARGB32) == pp.convertToFormat(QImage::Format_ARGB32),
+                         qPrintable(what));
+                if (icc == p3)
+                    QVERIFY2(a.colorSpace() == QColorSpace(QColorSpace::DisplayP3), qPrintable(what));
+            }
+        }
+    }
+
+    // EXIF too large for a JPEG APP1: the file is still written, without metadata.
+    {
+        EncodeOptions opt;
+        opt.format = OutputFormat::Jpeg;
+        ImageEncoder::Extras x;
+        x.exif = QByteArray(metadata::kMaxJpegExif + 1, 'e');
+        QBuffer buf;
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        QString err, metaErr;
+        QVERIFY(ImageEncoder::encode(testimg::make(16, 16, false), opt, x, &buf, &err, &metaErr));
+        QVERIFY(!metaErr.isEmpty());
+        QVERIFY(!QImage::fromData(buf.data()).isNull());
+    }
+
+    // Grayscale: one gray channel for PNG / JPEG without alpha; RGBA PNG and WebP stay RGB(A).
+    QImage gray = testimg::make(32, 24, false).convertToFormat(QImage::Format_RGB888);
+    ImageEncoder::toGrayscale(gray.bits(), gray.width(), gray.height(), 3, gray.bytesPerLine());
+    QImage grayA = testimg::make(32, 24, true).convertToFormat(QImage::Format_RGBA8888);
+    ImageEncoder::toGrayscale(grayA.bits(), grayA.width(), grayA.height(), 4, grayA.bytesPerLine());
+    ImageEncoder::Extras g;
+    g.grayscale = true;
+    auto encodeGray = [&](const QImage &img, OutputFormat f) {
+        EncodeOptions opt;
+        opt.format = f;
+        opt.webpLossless = true;
+        QBuffer buf;
+        buf.open(QIODevice::WriteOnly);
+        QString err;
+        [&] { QVERIFY(ImageEncoder::encode(img, opt, g, &buf, &err)); }();
+        return buf.data();
+    };
+    QByteArray d = encodeGray(gray, OutputFormat::Png);
+    QCOMPARE(QImage::fromData(d).format(), QImage::Format_Grayscale8);
+    QCOMPARE(QImage::fromData(d).convertToFormat(QImage::Format_RGB888), gray);
+    d = encodeGray(gray, OutputFormat::Jpeg);
+    QBuffer jb(&d);
+    jb.open(QIODevice::ReadOnly);
+    QVERIFY(metadata::read(jb).grayscale);  // one-component JPEG
+    d = encodeGray(grayA, OutputFormat::Jpeg);
+    jb.close();
+    jb.setBuffer(&d);
+    jb.open(QIODevice::ReadOnly);
+    QVERIFY(metadata::read(jb).grayscale);  // alpha dropped onto white, then one component
+    d = encodeGray(grayA, OutputFormat::Png);
+    QVERIFY(QImage::fromData(d).hasAlphaChannel());
+    QCOMPARE(QImage::fromData(d).convertToFormat(QImage::Format_RGBA8888), grayA);
+    d = encodeGray(gray, OutputFormat::WebP);
+    QCOMPARE(QImage::fromData(d).convertToFormat(QImage::Format_RGB888), gray);  // lossless RGB
 }
 
 void TestCore::folderScanTopLevelNaturalOrder()
