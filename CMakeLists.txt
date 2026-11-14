@@ -1,7 +1,7 @@
 # 3.26: cmake -E copy_directory_if_different (model files next to the app).
 cmake_minimum_required(VERSION 3.26)
 
-project(AnimeRestoreX VERSION 2.0.1 LANGUAGES CXX)
+project(AnimeRestoreX VERSION 2.1.0 LANGUAGES CXX)
 
 # CMake 4.4.4 maps C++23 on MSVC to -std:c++latest; MSVC 19.52 has -std:c++23.
 # Remove this once CMake maps C++23 to -std:c++23 natively.
