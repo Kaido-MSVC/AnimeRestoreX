@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <execution>
 #include <format>
+#include <numeric>
 #include <limits>
 #include <mdspan>
 #include <new>
@@ -243,6 +245,22 @@ struct RenderCtx {
 
 bool cancelled(const ProcessOptions& o) { return o.cancel && o.cancel->load(std::memory_order_relaxed); }
 
+// Film grain on the final RGB floats (value(i, c), already clamped), then quantize256 into channels
+// 0..2. Rows run in parallel: every value is a pure function of its position and the seed, so the
+// result does not depend on how the rows are split.
+template <class Value>
+void writeWithGrain(Image8& out, const GrainField& grain, float strength, const Value& value) {
+    std::vector<int> rows((size_t)out.height);
+    std::iota(rows.begin(), rows.end(), 0);
+    std::for_each(std::execution::par, rows.begin(), rows.end(), [&](int y) {
+        for (int x = 0; x < out.width; ++x) {
+            const size_t i = (size_t)y * out.width + x;
+            uint8_t* o = out.pixels.data() + i * out.channels;
+            for (int c = 0; c < 3; ++c) o[c] = quantize256(applyGrain(value(i, c), grain.at(c, y, x), strength));
+        }
+    });
+}
+
 // SeamBlending.tiled_render + update + get_output for one 3-channel planar float image, written
 // straight into the 8-bit output (channels 0..2 for Sink::Rgb, channel 3 for Sink::AlphaMean) or,
 // for TTA, as clamped floats into the accumulator. `plan` is made for src.width x src.height.
@@ -379,17 +397,20 @@ Status tiledRender(const RenderSource& src, const TilePlan& plan, const TilePara
     // Pixel i of a plane is element i of its row-major [y][x] storage.
     Image8& out = *target.out;
     const int C = out.channels;
+    if (target.sink == Sink::Rgb && ctx.grain) {
+        // process_image: apply_rgb_noise on the converted RGB, then to_image (quantize256).
+        if (std::ranges::any_of(wsum, [](float w) { return !(w > 0.0f); }))
+            return Status::fail(ErrorKind::ContractViolation, "tile plan left an output pixel uncovered");
+        writeWithGrain(out, *ctx.grain, ctx.opt.grainStrength,
+                       [&](size_t i, int c) { return std::clamp(sum[c * on + i] / wsum[i], 0.0f, 1.0f); });
+        return Status::success();
+    }
     for (size_t i = 0; i < on; ++i) {
         const float w = wsum[i];
         if (!(w > 0.0f)) return Status::fail(ErrorKind::ContractViolation, "tile plan left an output pixel uncovered");
         float v[3];
         for (int c = 0; c < 3; ++c) v[c] = std::clamp(sum[c * on + i] / w, 0.0f, 1.0f);
         uint8_t* o = out.pixels.data() + i * C;
-        if (target.sink == Sink::Rgb && ctx.grain) {
-            // process_image: apply_rgb_noise on the converted RGB, then to_image (quantize256).
-            const int y = (int)(i / (size_t)plan.outWidth), x = (int)(i % (size_t)plan.outWidth);
-            for (int c = 0; c < 3; ++c) v[c] = applyGrain(v[c], ctx.grain->at(c, y, x), ctx.opt.grainStrength);
-        }
         if (target.sink == Sink::Rgb) {
             o[0] = quantize256(v[0]);
             o[1] = quantize256(v[1]);
@@ -403,15 +424,15 @@ Status tiledRender(const RenderSource& src, const TilePlan& plan, const TilePara
 
 // tta_merge tail: avg *= 1 / 8.0; clamp_(avg, 0, 1); [film grain;] then quantize256 into channels 0..2.
 void writeTtaMean(const float* acc, size_t on, Image8& out, const GrainField* grain, float strength) {
+    if (grain) {
+        writeWithGrain(out, *grain, strength,
+                       [&](size_t i, int c) { return std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f); });
+        return;
+    }
     const int C = out.channels;
     for (size_t i = 0; i < on; ++i) {
         uint8_t* o = out.pixels.data() + i * C;
-        for (int c = 0; c < 3; ++c) {
-            float v = std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f);
-            if (grain)
-                v = applyGrain(v, grain->at(c, (int)(i / (size_t)out.width), (int)(i % (size_t)out.width)), strength);
-            o[c] = quantize256(v);
-        }
+        for (int c = 0; c < 3; ++c) o[c] = quantize256(std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f));
     }
 }
 
