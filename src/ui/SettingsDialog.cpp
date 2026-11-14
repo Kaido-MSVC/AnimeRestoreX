@@ -3,6 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QEvent>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -65,6 +66,21 @@ SettingsDialog::SettingsDialog(const SettingsValues &values, arx::Language langu
     m_exifHint->setWordWrap(true);
     m_exifHint->setMinimumWidth(hintWidth);
     output->addRow(m_exifHint);
+    // Film grain (nunif --grain): off by default; strength as nunif's grain_strength.
+    m_grain = new QCheckBox(this);
+    output->addRow(m_grain);
+    m_grainLabel = new QLabel(this);
+    m_grainStrength = new QDoubleSpinBox(this);
+    m_grainStrength->setRange(arx::kGrainStrengthMin, arx::kGrainStrengthMax);
+    m_grainStrength->setSingleStep(0.05);
+    m_grainStrength->setDecimals(2);
+    m_grainLabel->setBuddy(m_grainStrength);
+    output->addRow(m_grainLabel, m_grainStrength);
+    m_grainHint = new QLabel(this);
+    m_grainHint->setWordWrap(true);
+    m_grainHint->setMinimumWidth(hintWidth);
+    output->addRow(m_grainHint);
+    connect(m_grain, &QCheckBox::toggled, m_grainStrength, &QWidget::setEnabled);
     root->addWidget(m_outputGroup);
 
     m_langGroup = new QGroupBox(this);
@@ -86,6 +102,9 @@ SettingsDialog::SettingsDialog(const SettingsValues &values, arx::Language langu
     m_tta->setChecked(values.tta);
     m_gray->setChecked(values.grayscale);
     m_exif->setChecked(values.keepExif);
+    m_grain->setChecked(values.grain);
+    m_grainStrength->setValue(values.grainStrength);
+    m_grainStrength->setEnabled(values.grain);
     m_lang->setCurrentIndex(std::max(0, m_lang->findData(int(language))));
     connect(m_device, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDeviceHint);
     retranslate();
@@ -140,6 +159,11 @@ void SettingsDialog::retranslate()
     m_exif->setText(tr("Keep EXIF information"));
     m_exifHint->setText(tr("Copies the camera, date and other EXIF data of the source image. EXIF may "
                            "contain personal information, such as the location where a photo was taken."));
+    m_grain->setText(tr("Add film grain"));
+    m_grainLabel->setText(tr("Grain strength:"));
+    m_grainHint->setText(tr("Adds film-like noise after the AI processing, strongest in the midtones. "
+                            "0.20 is the default. The same image with the same settings always gets "
+                            "the same grain."));
     m_langGroup->setTitle(tr("Language"));
     m_langLabel->setText(tr("Interface language:"));
     fitToContents();
@@ -160,6 +184,8 @@ arx::ComputeDevice SettingsDialog::computeDevice() const
 bool SettingsDialog::tta() const { return m_tta->isChecked(); }
 bool SettingsDialog::grayscale() const { return m_gray->isChecked(); }
 bool SettingsDialog::keepExif() const { return m_exif->isChecked(); }
+bool SettingsDialog::grain() const { return m_grain->isChecked(); }
+double SettingsDialog::grainStrength() const { return m_grainStrength->value(); }
 SettingsValues SettingsDialog::values() const
 {
     SettingsValues v;
@@ -168,6 +194,8 @@ SettingsValues SettingsDialog::values() const
     v.tta = tta();
     v.grayscale = grayscale();
     v.keepExif = keepExif();
+    v.grain = grain();
+    v.grainStrength = grainStrength();
     return v;
 }
 arx::Language SettingsDialog::language() const { return arx::Language(m_lang->currentData().toInt()); }

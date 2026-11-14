@@ -333,6 +333,8 @@ void MainWindow::openSettings()
     v.tta = m_settings->tta();
     v.grayscale = m_settings->grayscaleOutput();
     v.keepExif = m_settings->keepExif();
+    v.grain = m_settings->grain();
+    v.grainStrength = m_settings->grainStrength();
     SettingsDialog dlg(v, LanguageManager::instance().current(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
@@ -452,6 +454,8 @@ void MainWindow::applySettings(const SettingsValues &v, bool languageChanged, in
     m_settings->setTta(v.tta);
     m_settings->setGrayscaleOutput(v.grayscale);
     m_settings->setKeepExif(v.keepExif);
+    m_settings->setGrain(v.grain);
+    m_settings->setGrainStrength(v.grainStrength);
     if (languageChanged) {
         // Only an explicit choice is stored as a manual override.
         const auto lang = arx::Language(language);
@@ -684,6 +688,8 @@ arx::JobSpec MainWindow::currentSpec() const
     spec.inference.tile = m_settings->tileSize();
     spec.inference.device = m_settings->computeDevice();
     spec.inference.tta = m_settings->tta();
+    spec.inference.grain = m_settings->grain();
+    spec.inference.grainStrength = m_settings->grainStrength();
     spec.inference.scale = ui->scaleCombo->currentData().toInt();
     spec.encode.format = arx::OutputFormat(ui->formatCombo->currentData().toInt());
     spec.encode.webpLossless = ui->webpModeCombo->currentData().toBool();
@@ -1075,6 +1081,8 @@ void MainWindow::onItemFinished(int index, const arx::ItemResult &r)
         QString detail = QFileInfo(r.outputPath).fileName();
         if (r.tta)
             detail += tr(" (TTA)");
+        if (r.grain)
+            detail += tr(" (film grain)");
         // The tile size changes the result slightly: say when Auto had to use a smaller one.
         if (r.tileChoice == arx::TileChoice::SmallerForVram)
             detail += tr(" (tile %1: not enough GPU memory for 256)").arg(r.tileUsed);

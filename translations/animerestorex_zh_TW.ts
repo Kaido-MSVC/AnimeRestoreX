@@ -484,6 +484,10 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
         <translation>（TTA）</translation>
     </message>
     <message>
+        <source> (film grain)</source>
+        <translation>（底片顆粒）</translation>
+    </message>
+    <message>
         <source> (tile %1: not enough GPU memory for 256)</source>
         <translation>（Tile %1：GPU 記憶體不足以使用 256）</translation>
     </message>
@@ -894,6 +898,18 @@ Extract the whole AnimeRestoreX folder again to restore them.</source>
     <message>
         <source>Copies the camera, date and other EXIF data of the source image. EXIF may contain personal information, such as the location where a photo was taken.</source>
         <translation>複製原圖的相機、日期等 EXIF 資料。EXIF 可能包含拍攝位置等個人資訊。</translation>
+    </message>
+    <message>
+        <source>Add film grain</source>
+        <translation>底片顆粒</translation>
+    </message>
+    <message>
+        <source>Grain strength:</source>
+        <translation>顆粒強度：</translation>
+    </message>
+    <message>
+        <source>Adds film-like noise after the AI processing, strongest in the midtones. 0.20 is the default. The same image with the same settings always gets the same grain.</source>
+        <translation>AI 處理後加入類似底片的雜訊，在中間調最明顯。預設為 0.20。同一張圖使用相同設定時，加入的顆粒每次都相同。</translation>
     </message>
     <message>
         <source>Language</source>

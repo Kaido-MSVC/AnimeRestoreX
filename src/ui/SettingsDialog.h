@@ -7,6 +7,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QGroupBox;
 class QDialogButtonBox;
@@ -18,6 +19,8 @@ struct SettingsValues {
     bool tta = false;
     bool grayscale = false;  // save every output as grayscale
     bool keepExif = false;   // copy the source EXIF into the output
+    bool grain = false;      // film grain
+    double grainStrength = arx::kGrainStrengthDefault;  // nunif grain_strength
 };
 
 // "Settings" window: advanced AI model parameters (tile size, processing device, TTA), output
@@ -33,6 +36,8 @@ public:
     bool tta() const;
     bool grayscale() const;
     bool keepExif() const;
+    bool grain() const;
+    double grainStrength() const;
     arx::Language language() const;
     // True only if the user picked a different language than the one shown at open.
     bool languageChanged() const { return language() != m_initialLanguage; }
@@ -52,6 +57,10 @@ private:
     QLabel *m_grayHint = nullptr;
     QCheckBox *m_exif = nullptr;
     QLabel *m_exifHint = nullptr;
+    QCheckBox *m_grain = nullptr;
+    QLabel *m_grainLabel = nullptr;
+    QDoubleSpinBox *m_grainStrength = nullptr;
+    QLabel *m_grainHint = nullptr;
     QLabel *m_modelLabel = nullptr;
     QLabel *m_modelName = nullptr;
     QLabel *m_tileLabel = nullptr;

@@ -484,6 +484,10 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
         <translation>（TTA）</translation>
     </message>
     <message>
+        <source> (film grain)</source>
+        <translation>（フィルムグレイン）</translation>
+    </message>
+    <message>
         <source> (tile %1: not enough GPU memory for 256)</source>
         <translation>（タイル %1：256 には GPU メモリが不足）</translation>
     </message>
@@ -894,6 +898,18 @@ AnimeRestoreX フォルダー全体を展開し直して復元してください
     <message>
         <source>Copies the camera, date and other EXIF data of the source image. EXIF may contain personal information, such as the location where a photo was taken.</source>
         <translation>元画像のカメラ、日時などの EXIF データをコピーします。EXIF には撮影場所などの個人情報が含まれる場合があります。</translation>
+    </message>
+    <message>
+        <source>Add film grain</source>
+        <translation>フィルムグレインを追加</translation>
+    </message>
+    <message>
+        <source>Grain strength:</source>
+        <translation>グレインの強さ：</translation>
+    </message>
+    <message>
+        <source>Adds film-like noise after the AI processing, strongest in the midtones. 0.20 is the default. The same image with the same settings always gets the same grain.</source>
+        <translation>AI 処理の後にフィルムのようなノイズを加えます。中間調で最も強くなります。既定値は 0.20 です。同じ画像を同じ設定で処理すると、常に同じグレインになります。</translation>
     </message>
     <message>
         <source>Language</source>

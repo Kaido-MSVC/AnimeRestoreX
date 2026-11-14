@@ -18,6 +18,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QHeaderView>
 #include <QMenu>
 #include <QMenuBar>
@@ -497,7 +498,7 @@ void TestUi::autoLanguageIsNotSavedAsManual()
     QSettings().remove(QStringLiteral("ui/language"));
     MainWindow w;
     // Settings dialog accepted without changing the language.
-    w.applySettings(SettingsValues{160, arx::ComputeDevice::Cpu, true, true, true}, false,
+    w.applySettings(SettingsValues{160, arx::ComputeDevice::Cpu, true, true, true, true, 0.75}, false,
                     int(arx::Language::TraditionalChinese));
     arx::AppSettings s;
     QVERIFY(!s.manualLanguage().has_value());
@@ -506,6 +507,10 @@ void TestUi::autoLanguageIsNotSavedAsManual()
     QVERIFY(s.tta());
     QVERIFY(s.grayscaleOutput());
     QVERIFY(s.keepExif());
+    QVERIFY(s.grain());
+    QCOMPARE(s.grainStrength(), 0.75);
+    s.setGrain(false);
+    s.setGrainStrength(arx::kGrainStrengthDefault);
     s.setTileSize(arx::AppSettings::kDefaultTile);
     s.setComputeDevice(arx::ComputeDevice::Gpu);
     s.setTta(false);
@@ -542,19 +547,31 @@ void TestUi::denoiseOnMainWindow()
     // Check boxes: TTA (8x time note), grayscale output, keep EXIF (privacy note); all off
     // as passed in.
     const QList<QCheckBox *> checks = sd.findChildren<QCheckBox *>();
-    QCOMPARE(checks.size(), 3);
+    QCOMPARE(checks.size(), 4);
     for (QCheckBox *c : checks)
         QVERIFY(!c->isChecked());
-    QVERIFY(!sd.tta() && !sd.grayscale() && !sd.keepExif());
+    QVERIFY(!sd.tta() && !sd.grayscale() && !sd.keepExif() && !sd.grain());
     checks.at(0)->setChecked(true);
     QVERIFY(sd.tta());
     checks.at(1)->setChecked(true);
     QVERIFY(sd.grayscale());
     checks.at(2)->setChecked(true);
     QVERIFY(sd.keepExif());
-    const SettingsValues on{0, arx::ComputeDevice::Gpu, true, true, true};
+    // Film grain: strength 0.05..1.00 (nunif grain_strength), 0.20 by default, enabled with the box.
+    auto *strength = sd.findChild<QDoubleSpinBox *>();
+    QVERIFY(strength);
+    QCOMPARE(strength->value(), 0.2);
+    QCOMPARE(strength->minimum(), 0.05);
+    QCOMPARE(strength->maximum(), 1.0);
+    QVERIFY(!strength->isEnabled());
+    checks.at(3)->setChecked(true);
+    QVERIFY(sd.grain() && strength->isEnabled());
+    strength->setValue(0.35);
+    QCOMPARE(sd.values().grainStrength, 0.35);
+    const SettingsValues on{0, arx::ComputeDevice::Gpu, true, true, true, true, 0.5};
     const SettingsValues back = SettingsDialog(on, arx::Language::English, &w).values();
-    QVERIFY(back.tta && back.grayscale && back.keepExif);
+    QVERIFY(back.tta && back.grayscale && back.keepExif && back.grain);
+    QCOMPARE(back.grainStrength, 0.5);
     // Only validated tiles; nothing at 640 or above.
     const QList<QComboBox *> combos = sd.findChildren<QComboBox *>();
     QComboBox *tiles = combos.first();
@@ -831,7 +848,7 @@ void TestUi::languageSwitchRetranslates()
             QTest::qWait(300);
             w.grab().save(QDir(snapDir).filePath(QStringLiteral("main_%1.png").arg(tag)));
             // CPU (longest hint), every check box on.
-            SettingsDialog sd(SettingsValues{0, arx::ComputeDevice::Cpu, true, true, true},
+            SettingsDialog sd(SettingsValues{0, arx::ComputeDevice::Cpu, true, true, true, true, 0.2},
                               LanguageManager::instance().current(), &w);
             sd.show();
             QTest::qWait(200);
