@@ -7,8 +7,15 @@ AnimeRestoreX 是為動畫風格插畫設計的 Windows x64 桌面工具。它�
 - 支援 PNG、JPEG 和 WebP 讀寫，WebP 可選有損或無損輸出。
 - 可拖放圖片或整個資料夾進行批次處理。工作清單顯示縮圖，並提供原圖與結果並排預覽、單張和整批進度及預估剩餘時間。
 - 介面支援繁體中文、日文與英文，並可隨 Windows 切換淺色或深色外觀。
+- 2.1 新增（選項在「工具 → 設定」，預設關閉；灰階原圖、ICC 與方向是自動處理）：
+  - **TTA**：每張圖翻轉、旋轉後處理 8 次再平均，處理時間約 8 倍；大圖 4× 建議 16 GB 記憶體。
+  - **輸出灰階**：灰階原圖一律輸出灰階，也可讓所有輸出都轉成灰階。
+  - **保留 ICC**：原圖內嵌的色彩描述檔原樣寫回輸出，像素不做色彩轉換（固定行為）。
+  - **保留 EXIF**：複製相機、日期等資料。EXIF 可能包含拍攝位置等個人資訊，分享前請留意。
+  - **底片顆粒**：AI 處理後加入類似底片的雜訊，強度可調；同一張圖、同樣設定，結果每次相同。
+  - **PNG／WebP 依 EXIF 轉正**：和 JPEG 一樣依方向資訊轉正，預覽、清單縮圖與輸出一致。
 
-各版本與下載請見 [Releases](https://github.com/Kaido-MSVC/AnimeRestoreX/releases)。v2.0 的實測平台與硬體列於下方[系統需求](#system-requirements-v20)，模型與第三方元件的散布注意事項見[發行封裝說明](#release-package)。
+各版本與下載請見 [Releases](https://github.com/Kaido-MSVC/AnimeRestoreX/releases)。實測平台與硬體列於下方[系統需求](#system-requirements-v21)，模型與第三方元件的散布注意事項見[發行封裝說明](#release-package)。
 
 ## English overview
 
@@ -26,9 +33,18 @@ ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
 - Progress for the current image (reading → AI processing → encoding) and for
   the whole batch, with an estimated time left. The estimate is based on the
   image size and the speed measured on your GPU, and is marked as an estimate.
-- 2.1: grayscale images stay grayscale (optionally every output); an embedded ICC
-  profile is kept (the pixels are not converted); EXIF can be kept (off by default:
-  it may contain the location where a photo was taken).
+- 2.1 (options in Tools > Settings, off by default; grayscale sources, ICC and orientation are automatic):
+  - TTA (test-time augmentation): every image is flipped / rotated and processed 8 times,
+    then averaged; about 8 times the processing time. 16 GB RAM recommended for large 4x images.
+  - Grayscale: grayscale images stay grayscale (automatic); optionally every output is grayscale.
+  - ICC: an embedded colour profile is written back to the output, the pixels are not
+    converted (always on).
+  - Keep EXIF: camera, date and other EXIF data are copied. EXIF may contain personal
+    information such as the location where a photo was taken.
+  - Film grain: film-like noise after the AI processing, adjustable strength; the same image
+    with the same settings always gets the same grain.
+  - PNG and WebP are turned upright from their EXIF orientation, like JPEG (always on);
+    the preview, the list thumbnail and the output agree.
 - Light and dark theme that follows the Windows setting.
 - User interface in 繁體中文, 日本語 and English; high-DPI aware.
 
@@ -46,7 +62,7 @@ same release. The executable is unsigned.
 v1.2 and older stay on the Releases page; they use waifu2x-ncnn-vulkan and need
 Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a compatible driver.
 
-## System requirements (v2.0)
+## System requirements (v2.1)
 
 | | Requirement | Basis |
 |---|---|---|
@@ -62,7 +78,7 @@ Not tested: AMD and Intel GPUs, GPUs with less than 6 GB, more than one GPU (the
 Windows default adapter is always used), Windows 10, ARM64, remote desktop and
 virtual machines.
 
-## Known limitations (v2.0)
+## Known limitations (v2.1)
 
 - **Cancel during encoding waits for the encoder.** A cancel during AI processing
   stops within about 0.1 s (GPU) or immediately (CPU), but a file that is being
@@ -77,8 +93,12 @@ virtual machines.
   and checked); the time estimate learns this separately.
 - After the GPU has been used, about 280 MB of memory stays allocated by the
   DirectML runtime until the program closes (it does not grow with more images).
-- v1.2 and v2.0 share the language, folder and window settings; the AI settings
-  and measured speeds of v2.0 are kept separately ("v2/"), so v1.2 keeps its own.
+- v1.2 and v2.x share the language, folder and window settings; the AI settings
+  and measured speeds of v2.x are kept separately ("v2/"), so v1.2 keeps its own.
+- **ICC profiles are kept, not converted.** A viewer without colour management shows
+  the output exactly as it shows the original.
+- **EXIF orientation**: only the EXIF Orientation tag is read; an orientation that is
+  given only in XMP is ignored.
 
 ## Development notes
 
@@ -123,7 +143,7 @@ UI languages: 繁體中文, 日本語, English (source). Translations live in
 ## Build
 
 Requirements: Qt 6.12.0 msvc2022_64 at `D:\qt\6.12.0\msvc2022_64`,
-Visual Studio 2026 with MSVC 14.51, CMake, Ninja (paths in `CMakePresets.json`).
+Visual Studio 2026 with MSVC 14.52 (C++23), CMake, Ninja (paths in `CMakePresets.json`).
 
 ```powershell
 pwsh -File build.ps1 -Preset release        # fetches the runtime and models on first run

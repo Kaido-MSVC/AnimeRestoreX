@@ -1,4 +1,4 @@
-AnimeRestoreX 2.0
+AnimeRestoreX 2.1
 =================
 
 動漫插畫 AI 降噪與 1×（只降噪）/ 2× / 4× 放大工具
@@ -47,12 +47,32 @@ every file is checked against the SHA256 in models\manifest.json.
 4. 完成後會依「失敗 / 未處理 / 成功」列出每個項目，可直接開啟輸出資料夾。
 
 - 「工具 → 設定」：Tile 大小（自動 / 160 / 256 / 352 / 448）、處理裝置（GPU / CPU）、
-  介面語言（繁體中文 / 日本語 / English）。
+  TTA、輸出灰階、保留 EXIF、底片顆粒、介面語言（繁體中文 / 日本語 / English）。
 - 快捷鍵：Ctrl+O 匯入圖片、Ctrl+Shift+O 匯入資料夾、Ctrl+Enter 開始處理、
   Delete 移除選取項目、Ctrl+, 設定。
 - 不會修改或覆寫原始圖片；同名輸出會自動加上 (1)、(2)…。
 - 輸入上限 4.5 MP（例如 3000 x 1500），輸出上限 75 MP；WebP 單邊上限 16383 px。
 - 不支援 16 位元、HDR、動畫圖片。
+
+
+2.1 新功能 / New in 2.1
+-----------------------
+設定項目預設都是關閉；灰階原圖、ICC、方向是自動處理。
+- TTA（測試時增強）：每張圖翻轉、旋轉後處理 8 次再平均，
+  處理時間約為 8 倍。大圖 4× 建議 16 GB 記憶體。
+- 輸出灰階：原圖是灰階時一律輸出灰階（自動）；勾選後所有輸出都轉成灰階。
+- 保留 ICC：原圖內嵌的色彩描述檔原樣寫回輸出，像素不做色彩轉換（自動）。
+- 保留 EXIF：複製相機、日期等 EXIF 資料。EXIF 可能包含拍攝位置等個人資訊，
+  分享輸出前請留意。方向一律寫成「正常」，因為輸出已經轉正。
+- 底片顆粒：AI 處理後加入類似底片的雜訊，強度 0.05–1.00（預設 0.20）；
+  同一張圖、同樣設定，加入的顆粒每次都相同。
+- PNG／WebP 依 EXIF 方向轉正（自動）：和 JPEG 一樣，預覽、清單縮圖與輸出方向一致。
+
+Options are off by default. TTA (8 runs averaged, about 8 times slower; 16 GB RAM
+recommended for large 4x images), grayscale output, keep EXIF (may contain personal
+information such as the location), film grain (0.05-1.00, default 0.20, same result every
+time). Always on: grayscale sources stay grayscale, the ICC profile is kept without
+converting the pixels, PNG / WebP are turned upright from their EXIF orientation.
 
 
 已知限制 / Known limitations
@@ -76,18 +96,18 @@ Extract the whole folder anywhere and run AnimeRestoreX.exe. Add images or a
 folder (or drag them onto the list), choose upscale (1x = denoise only, 2x, 4x)
 and denoise level, the output folder, format and quality, then press Start
 (Ctrl+Enter). Tools > Settings: tile size, processing device (GPU / CPU),
-language. Source images are never modified; existing output files are never
+TTA, grayscale output, keep EXIF, film grain, language. Source images are never modified; existing output files are never
 overwritten.
 
 
 移除 / Uninstall
 ----------------
 刪除整個資料夾即可。設定存於 HKEY_CURRENT_USER\Software\Kaido-MSVC\AnimeRestoreX
-（語言、資料夾、視窗大小與 AnimeRestoreX 1.x 共用；2.0 專屬的設定在其中的 v2
+（語言、資料夾、視窗大小與 AnimeRestoreX 1.x 共用；2.x 專屬的設定在其中的 v2
 機碼）。如果不再使用任何版本，可刪除整個機碼。
 
 Delete the folder. Settings are kept in HKEY_CURRENT_USER\Software\Kaido-MSVC\
-AnimeRestoreX (shared with AnimeRestoreX 1.x; the 2.0-only settings are under "v2").
+AnimeRestoreX (shared with AnimeRestoreX 1.x; the 2.x-only settings are under "v2").
 
 
 授權 / License
