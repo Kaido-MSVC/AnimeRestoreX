@@ -28,6 +28,8 @@ const QString kDeviceKey = QStringLiteral("v2/inference/device");
 const QString kTtaKey = QStringLiteral("v2/inference/tta");  // 2.1; missing in older files = off
 const QString kGrayKey = QStringLiteral("v2/output/grayscale");  // 2.1; missing = off
 const QString kExifKey = QStringLiteral("v2/output/keepExif");   // 2.1; missing = off
+const QString kGrainKey = QStringLiteral("v2/output/grain");     // 2.1; missing = off
+const QString kGrainStrengthKey = QStringLiteral("v2/output/grainStrength");  // 2.1; missing = 0.2
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
 const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // early 2.0 test builds; removed by schema 2
 
@@ -151,6 +153,17 @@ bool AppSettings::grayscaleOutput() const { return m_s->value(kGrayKey).toString
 void AppSettings::setGrayscaleOutput(bool on) { m_s->setValue(kGrayKey, on); }
 bool AppSettings::keepExif() const { return m_s->value(kExifKey).toString() == QLatin1String("true"); }
 void AppSettings::setKeepExif(bool on) { m_s->setValue(kExifKey, on); }
+bool AppSettings::grain() const { return m_s->value(kGrainKey).toString() == QLatin1String("true"); }
+void AppSettings::setGrain(bool on) { m_s->setValue(kGrainKey, on); }
+
+double AppSettings::grainStrength() const
+{
+    bool ok = false;
+    const double v = m_s->value(kGrainStrengthKey, kGrainStrengthDefault).toDouble(&ok);
+    return (ok && v >= kGrainStrengthMin && v <= kGrainStrengthMax) ? v : kGrainStrengthDefault;
+}
+
+void AppSettings::setGrainStrength(double strength) { m_s->setValue(kGrainStrengthKey, strength); }
 
 QByteArray AppSettings::windowGeometry() const { return m_s->value(kGeometryKey).toByteArray(); }
 void AppSettings::setWindowGeometry(const QByteArray &state) { m_s->setValue(kGeometryKey, state); }

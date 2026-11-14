@@ -131,6 +131,8 @@ QString ProcessJob::checkOptions(const InferenceOptions &o)
     // model's own rule again once the model is known).
     if (!core::isOfferedTile(o.tile))
         return tr("Tile size %1 is not valid for this model.").arg(o.tile);
+    if (o.grain && !(o.grainStrength >= kGrainStrengthMin && o.grainStrength <= kGrainStrengthMax))
+        return tr("Unsupported film grain strength: %1.").arg(o.grainStrength);
     return {};
 }
 
@@ -388,6 +390,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
     core::ProcessOptions opt;
     opt.tile = job.tile.tile;
     opt.tta = spec.inference.tta;
+    // process_image: apply_rgb_noise(rgb, noise, strength=args.grain_strength * 0.5) for images.
+    opt.grainStrength = spec.inference.grain ? float(spec.inference.grainStrength * 0.5) : 0.0f;
     opt.allowOomRetry = job.tile.allowOomRetry;
     opt.fallbackTile = job.tile.fallbackTile;
     opt.maxOutputPixels = quint64(limits::kMaxOutputPixels);
@@ -581,6 +585,12 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
                                                           : QStringLiteral("off"),
                                iccNote, exifNote);
     ok.grayscale = gray;
+    ok.grain = stats.grainSeed != 0;
+    ok.diagnostics += ok.grain ? QStringLiteral("\ngrain: on (strength %1, applied %2, seed 0x%3)")
+                                     .arg(spec.inference.grainStrength, 0, 'f', 2)
+                                     .arg(double(opt.grainStrength), 0, 'f', 3)
+                                     .arg(stats.grainSeed, 16, 16, QLatin1Char('0'))
+                               : QStringLiteral("\ngrain: off");
     return ok;
 }
 

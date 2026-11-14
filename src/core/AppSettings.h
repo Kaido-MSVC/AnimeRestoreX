@@ -56,6 +56,10 @@ public:
     void setGrayscaleOutput(bool on);
     bool keepExif() const;         // copy the source EXIF into the output; missing or invalid -> off
     void setKeepExif(bool on);
+    bool grain() const;            // film grain; missing or invalid -> off
+    void setGrain(bool on);
+    double grainStrength() const;  // nunif grain_strength, kGrainStrengthMin..Max; invalid -> default
+    void setGrainStrength(double strength);
 
     // Opaque blobs from QWidget::saveGeometry() / QSplitter::saveState(); empty if unset.
     QByteArray windowGeometry() const;

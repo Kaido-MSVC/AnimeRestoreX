@@ -711,6 +711,10 @@ void TestCore::settingsSeparateKeysAndValidation()
         QVERIFY(!s.tta());                          // missing (older files): off
         QVERIFY(!s.grayscaleOutput());
         QVERIFY(!s.keepExif());
+        QVERIFY(!s.grain());
+        QCOMPARE(s.grainStrength(), kGrainStrengthDefault);  // 0.2 as nunif
+        s.setGrain(true);
+        s.setGrainStrength(0.45);
         s.setTta(true);
         s.setGrayscaleOutput(true);
         s.setKeepExif(true);
@@ -733,6 +737,9 @@ void TestCore::settingsSeparateKeysAndValidation()
         QVERIFY(s.tta());
         QVERIFY(s.grayscaleOutput());
         QVERIFY(s.keepExif());
+        QVERIFY(s.grain());
+        QCOMPARE(s.grainStrength(), 0.45);
+        s.setGrain(false);
         s.setTta(false);
         s.setGrayscaleOutput(false);
         s.setKeepExif(false);
@@ -757,11 +764,15 @@ void TestCore::settingsSeparateKeysAndValidation()
     raw.setValue(QStringLiteral("v2/inference/tta"), QStringLiteral("yes"));
     raw.setValue(QStringLiteral("v2/output/grayscale"), 1);
     raw.setValue(QStringLiteral("v2/output/keepExif"), QStringLiteral("on"));
+    raw.setValue(QStringLiteral("v2/output/grain"), QStringLiteral("1"));
+    raw.setValue(QStringLiteral("v2/output/grainStrength"), 3.0);  // outside 0.05..1
     raw.sync();
     AppSettings s;
     QVERIFY(!s.tta());
     QVERIFY(!s.grayscaleOutput());
     QVERIFY(!s.keepExif());
+    QVERIFY(!s.grain());
+    QCOMPARE(s.grainStrength(), kGrainStrengthDefault);
     QCOMPARE(s.noiseLevel(), AppSettings::kDefaultNoise);
     QCOMPARE(s.tileSize(), AppSettings::kDefaultTile);
     QCOMPARE(s.computeDevice(), ComputeDevice::Gpu);
@@ -920,6 +931,18 @@ void TestCore::modelIdAndOptions()
     QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
     o = InferenceOptions{};
     o.noise = 4;
+    QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
+    // Film grain strength: only checked when grain is on; 0.05..1.0 (nunif grain_strength).
+    o = InferenceOptions{};
+    o.grainStrength = 7.0;
+    QVERIFY(ProcessJob::checkOptions(o).isEmpty());
+    o.grain = true;
+    QVERIFY(ProcessJob::checkOptions(o).contains(QStringLiteral("grain")));
+    for (double ok : {kGrainStrengthMin, kGrainStrengthDefault, kGrainStrengthMax}) {
+        o.grainStrength = ok;
+        QVERIFY(ProcessJob::checkOptions(o).isEmpty());
+    }
+    o.grainStrength = 0.0;
     QVERIFY(!ProcessJob::checkOptions(o).isEmpty());
     // Tiles: Auto and the offered sizes pass; anything the model cannot take is refused.
     o = InferenceOptions{};

@@ -3,7 +3,7 @@
 // DirectML.dll, models/) and writes one JSON line per item and per job: result, tile,
 // time, private bytes after the item and the process peak so far, and cancel latency.
 //
-//   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu|gpu][:tta][:gray][:exif]]]... FILE...
+//   arx_verify --out DIR --json LOG [--job SCALE:NOISE:FORMAT[:TILE[:cpu|gpu][:tta][:gray][:exif][:grain[=S]]]]... FILE...
 //              [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]
 //              [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]
 //   FORMAT: png | jpeg | webp | webpl (lossless). Jobs run in order over all files,
@@ -83,12 +83,18 @@ bool parseJob(const QString &text, const QString &outDir, JobSpec &s)
         return false;
     s.encode.quality = 90;
     s.inference.tile = p.size() > 3 ? p[3].toInt() : 0;
-    // After the tile: "cpu" / "gpu", "tta", "gray" (grayscale output), "exif" (keep EXIF), in any order.
+    // After the tile: "cpu" / "gpu", "tta", "gray" (grayscale output), "exif" (keep EXIF),
+    // "grain" / "grain=S" (film grain, nunif grain_strength S, default 0.2), in any order.
     for (qsizetype i = 4; i < p.size(); ++i) {
         if (p[i] == QLatin1String("cpu")) s.inference.device = ComputeDevice::Cpu;
         else if (p[i] == QLatin1String("tta")) s.inference.tta = true;
         else if (p[i] == QLatin1String("gray")) s.encode.forceGrayscale = true;
         else if (p[i] == QLatin1String("exif")) s.encode.keepExif = true;
+        else if (p[i] == QLatin1String("grain")) s.inference.grain = true;
+        else if (p[i].startsWith(QLatin1String("grain="))) {
+            s.inference.grain = true;
+            s.inference.grainStrength = p[i].mid(6).toDouble();
+        }
         else if (p[i] != QLatin1String("gpu")) return false;
     }
     return true;
@@ -210,7 +216,7 @@ int main(int argc, char **argv)
         else files << a;
     }
     if (outDir.isEmpty() || jsonPath.isEmpty() || files.isEmpty()) {
-        std::fputs("usage: arx_verify --out DIR --json LOG [--job S:N:FMT[:TILE[:cpu|gpu][:tta][:gray][:exif]]]... FILE...\n"
+        std::fputs("usage: arx_verify --out DIR --json LOG [--job S:N:FMT[:TILE[:cpu|gpu][:tta][:gray][:exif][:grain[=S]]]]... FILE...\n"
                    "       [--cancel-at load|inference|encode] [--cancel-item N] [--cancel-delay-ms D]\n"
                    "       [--force-oom-tile T [--force-device-lost] [--fail-recovery rebuild|redo]]\n", stderr);
         return 64;

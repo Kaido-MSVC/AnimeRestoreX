@@ -30,7 +30,17 @@ struct InferenceOptions {
     ComputeDevice device = ComputeDevice::Gpu;
     // Test-time augmentation (nunif --tta): 8 flipped / rotated runs averaged, about 8x the time.
     bool tta = false;
+    // 2.1 film grain (nunif --grain / --grain-strength). grainStrength is nunif's grain_strength;
+    // for still images nunif applies half of it (waifu2x/ui_utils.py process_image).
+    bool grain = false;
+    double grainStrength = 0.2;
 };
+
+// nunif grain_strength: CLI default 0.2 (ui_utils.py), GUI choices 0.1-0.5 with 0.2 selected and
+// values up to 1.0 accepted (gui.py). 0 means "no grain" upstream, so the range starts above it.
+inline constexpr double kGrainStrengthDefault = 0.2;
+inline constexpr double kGrainStrengthMin = 0.05;
+inline constexpr double kGrainStrengthMax = 1.0;
 
 // Snapshot of all parameters for one job; copied into the worker so that
 // UI changes during processing do not affect the running job.
@@ -60,6 +70,7 @@ struct ItemResult {
     TileChoice tileChoice = TileChoice::Default;
     bool tta = false;    // the result is the TTA mean of 8 runs (set when ok)
     bool grayscale = false;  // saved as grayscale (source was grayscale, or forced; set when ok)
+    bool grain = false;      // film grain was added (set when ok)
     // The engine should release its sessions before the next item (after an
     // out-of-memory failure or a device error).
     bool resetEngine = false;

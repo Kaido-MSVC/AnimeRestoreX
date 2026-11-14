@@ -154,6 +154,7 @@ private slots:
     void ttaThroughTheJob();
     void grayscaleThroughTheJob();
     void iccAndExifThroughTheJob();
+    void grainThroughTheJob();
     void webp4xLossyAlpha();
     void webpLosslessAndJpeg();
     void sameNameGetsNumbered();
@@ -421,6 +422,53 @@ void TestPipeline::iccAndExifThroughTheJob()
     QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: IFD0 offset")), qPrintable(r.diagnostics));
     QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
     QCOMPARE(testimg::sha256(src), before);  // sources untouched
+    QVERIFY(leftovers().isEmpty());
+}
+
+void TestPipeline::grainThroughTheJob()
+{
+    const QString dir = QDir(m_outDir).filePath(QStringLiteral("grain"));
+    QVERIFY(QDir().mkpath(dir));
+    const QString png = QDir(m_srcDir).filePath(QStringLiteral("grain src.png"));
+    QVERIFY(testimg::make(96, 64, false).convertToFormat(QImage::Format_RGB888).save(png));
+    JobSpec s = spec(OutputFormat::Png, 2);
+    s.outputDir = dir;
+    FakeBackend b0, b1, b2, b3, b4;
+    const ItemResult plain = runOne(png, s, b0);
+    QVERIFY2(plain.ok, qPrintable(why(plain)));
+    QVERIFY(!plain.grain);
+    QVERIFY2(plain.diagnostics.contains(QStringLiteral("\ngrain: off")), qPrintable(plain.diagnostics));
+
+    // Same image, same settings: the same file, byte for byte.
+    s.inference.grain = true;
+    const ItemResult g1 = runOne(png, s, b1);
+    const ItemResult g2 = runOne(png, s, b2);
+    QVERIFY2(g1.ok && g2.ok, qPrintable(why(g1) + why(g2)));
+    QVERIFY(g1.grain && g2.grain);
+    QVERIFY2(g1.diagnostics.contains(QStringLiteral("\ngrain: on (strength 0.20, applied 0.100, seed 0x")),
+             qPrintable(g1.diagnostics));
+    QCOMPARE(testimg::sha256(g1.outputPath), testimg::sha256(g2.outputPath));
+    const QImage rgbPlain = QImage(plain.outputPath).convertToFormat(QImage::Format_RGB888);
+    const QImage rgbGrain = QImage(g1.outputPath).convertToFormat(QImage::Format_RGB888);
+    QVERIFY(rgbPlain != rgbGrain);
+
+    // Grayscale output: grain first, then Pillow L (nunif: noise in process_image, L in save_image).
+    s.encode.forceGrayscale = true;
+    const ItemResult gg = runOne(png, s, b3);
+    QVERIFY2(gg.ok, qPrintable(why(gg)));
+    const QImage gray(gg.outputPath);
+    QCOMPARE(gray.format(), QImage::Format_Grayscale8);
+    for (int y = 0; y < gray.height(); ++y)
+        for (int x = 0; x < gray.width(); ++x) {
+            const uchar *p = rgbGrain.constScanLine(y) + 3 * x;
+            QCOMPARE(gray.constScanLine(y)[x], ImageEncoder::luma(p[0], p[1], p[2]));
+        }
+
+    // An invalid strength is refused before the job starts.
+    s.inference.grainStrength = 2.0;
+    const ItemResult bad = runOne(png, s, b4);
+    QVERIFY(!bad.ok);
+    QVERIFY(bad.error.contains(QStringLiteral("grain")));
     QVERIFY(leftovers().isEmpty());
 }
 
