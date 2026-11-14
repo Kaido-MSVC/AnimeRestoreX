@@ -33,7 +33,9 @@ $VcVars  = '14.52'
 $CMake   = 'C:\Program Files\CMake\bin\cmake.exe'
 $CrtRel  = 'VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT'
 $CrtDir  = Join-Path $VsRoot $CrtRel
-$CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+# msvcp140_atomic_wait.dll: imported by AnimeRestoreX.exe since v2.1 (std::execution::par, P4).
+$CrtDlls = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'vcruntime140.dll',
+             'vcruntime140_1.dll')
 $ModelsSrc = Join-Path $Root 'third_party\models'
 $QtSrc   = Join-Path $Root 'third_party\_download\qt-src'
 $Work    = Join-Path $Root '.package'

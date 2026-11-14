@@ -19,7 +19,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | `translations/qt_zh_TW.qm`、`translations/qt_ja.qm` | Qt 內建字串翻譯 | 6.12.0 | LGPL-3.0-only | windeployqt 由 Qt 6.12.0 的 `qtbase_zh_TW.qm`／`qtbase_ja.qm` 合併產生（qttranslations） |
 | `onnxruntime.dll` | ONNX Runtime | 1.24.4 | MIT（見 §3） | NuGet `Microsoft.ML.OnnxRuntime.DirectML` 1.24.4 `runtimes/win-x64/native/`，未修改 |
 | `DirectML.dll` | DirectML | 1.15.4 | Microsoft Software License Terms – DirectML（見 §3） | NuGet `Microsoft.AI.DirectML` 1.15.4 `bin/x64-win/`，未修改 |
-| `msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` | Microsoft Visual C++ 執行階段 | 14.52.37029.0 | Microsoft Visual Studio「Distributable Code」條款（見 §5） | VS 2026 `VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT`（與建置工具集 14.52 相同；app-local） |
+| `msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`msvcp140_atomic_wait.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` | Microsoft Visual C++ 執行階段 | 14.52.37029.0 | Microsoft Visual Studio「Distributable Code」條款（見 §5） | VS 2026 `VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT`（與建置工具集 14.52 相同；app-local） |
 | `models/manifest.json` | 模型清單（來源、雜湊、I/O 契約） | — | 本專案 | 本專案 `models/manifest.json` |
 | `models/swin_unet_v3/art/*.onnx` | waifu2x swin_unet_v3/art 模型（1×、2×，9 個，經轉換） | nunif `0d3d92c` | MIT（見 §4） | **只在以 `-IncludeModels` 建立的封裝中**；預設封裝不含模型 |
 | `models/swin_unet/art/*.onnx` | waifu2x swin_unet/art 模型（4×，5 個，經轉換） | nunif 20250502 | MIT（見 §4） | 同上 |
@@ -99,7 +99,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 
 ## 5. Microsoft Visual C++ 執行階段
 
-`msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`（14.52.37029.0）取自 Visual Studio 2026 Community 的 `VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT`，對應建置 AnimeRestoreX 所用的 MSVC 工具集 14.52；以 app-local 方式放在程式資料夾。`AnimeRestoreX.exe` 與 Qt DLL 依賴這些檔案（`onnxruntime.dll` 與 `DirectML.dll` 不依賴）。
+`msvcp140.dll`、`msvcp140_1.dll`、`msvcp140_2.dll`、`msvcp140_atomic_wait.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`（14.52.37029.0）取自 Visual Studio 2026 Community 的 `VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT`，對應建置 AnimeRestoreX 所用的 MSVC 工具集 14.52；以 app-local 方式放在程式資料夾。`AnimeRestoreX.exe` 與 Qt DLL 依賴這些檔案（`onnxruntime.dll` 與 `DirectML.dll` 不依賴）。
 
 這些檔案屬於 Microsoft Visual Studio 授權條款中允許隨應用程式再散布的「Distributable Code」，清單見 <https://aka.ms/vs/18/redistribution>。版權屬 Microsoft Corporation。
 
