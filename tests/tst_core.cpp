@@ -7,6 +7,7 @@
 #include "core/ImageLimits.h"
 #include "core/ImageLoader.h"
 #include "core/ImageMetadata.h"
+#include "core/ImageOrientation.h"
 #include "core/OutputNaming.h"
 #include "core/ProcessJob.h"
 #include "core/Progress.h"
@@ -38,6 +39,8 @@ private slots:
     void rejectsCorruptAndUnsupported();
     void rejectsApng();
     void appliesOrientation();
+    void loaderAppliesExifOrientation();
+    void orientedSizeLimits();
     void opaqueAlphaIsDropped();
     void webpLosslessIsLossless();
     void webpLossyUsesVp8AndQuality();
@@ -228,6 +231,108 @@ void TestCore::appliesOrientation()
     QCOMPARE(r.image.size(), QSize(20, 40));
 }
 
+namespace {
+// The loader's working image and a reference PNG as 8-bit RGBA bytes, for an exact comparison.
+QImage asRgba(const QImage &img)
+{
+    QImage c = img.convertToFormat(QImage::Format_RGBA8888);
+    c.setColorSpace(QColorSpace());
+    return c;
+}
+
+bool samePixels(const QImage &a, const QImage &b)
+{
+    const QImage x = asRgba(a), y = asRgba(b);
+    if (x.size() != y.size())
+        return false;
+    for (int row = 0; row < x.height(); ++row)
+        if (memcmp(x.constScanLine(row), y.constScanLine(row), size_t(x.width()) * 4) != 0)
+            return false;
+    return true;
+}
+} // namespace
+
+void TestCore::loaderAppliesExifOrientation()
+{
+    // tests/data/orientation: PNG (eXIf) and lossless WebP (EXIF) with Orientation 1-8, and
+    // Pillow 13.0.0 ImageOps.exif_transpose of each (make_orientation_reference.py). PNG
+    // is RGBA for even orientations, WebP for odd ones.
+    const QDir dir(QStringLiteral(ARX_TEST_DATA "/orientation"));
+    for (const char *fmt : {"png", "webp"}) {
+        for (int n = 1; n <= 8; ++n) {
+            const QString src = dir.filePath(QStringLiteral("src_%1.%2").arg(n).arg(QLatin1String(fmt)));
+            const QImage ref(dir.filePath(QStringLiteral("ref_%1_%2.png").arg(QLatin1String(fmt)).arg(n)));
+            QVERIFY2(!ref.isNull(), qPrintable(src));
+            const bool alpha = (QByteArray(fmt) == "png") == (n % 2 == 0);
+            QCOMPARE(ref.hasAlphaChannel(), alpha);
+
+            // Job loader: exactly Pillow's pixels, alpha included, in the upright size.
+            const LoadResult r = ImageLoader::load(src);
+            QVERIFY2(r.ok, qPrintable(src + QStringLiteral(": ") + r.error));
+            QCOMPARE(r.hasAlpha, alpha);
+            QCOMPARE(r.orientationApplied, n != 1);
+            QCOMPARE(metadata::exifOrientation(r.meta.exif), n);
+            QVERIFY2(samePixels(r.image, ref), qPrintable(src));
+
+            // Preview / list thumbnail reader: same orientation and header size.
+            OrientedReader full(src);
+            QCOMPARE(full.storedSize(), QSize(7, 4));
+            QCOMPARE(full.size(), ref.size());
+            QCOMPARE(full.transformation(), orientation::fromExif(n));
+            QVERIFY2(samePixels(full.read(), ref), qPrintable(src));
+            OrientedReader thumb(src);
+            thumb.scaleToFit(4);  // 7 x 4 -> 4 x 2 stored, upright 2 x 4 for 5-8
+            const QImage t = thumb.read();
+            QCOMPARE(t.size(), orientation::applied(QSize(4, 2), orientation::fromExif(n)));
+        }
+    }
+
+    // Unusable EXIF: loaded as stored, nothing turned.
+    const QImage plain = testimg::make(6, 3, false).convertToFormat(QImage::Format_RGB888);
+    for (const QByteArray &exif : {testimg::makeExif(true, 9, false), QByteArray("II*\0\xff\xff\xff\x0f", 8)}) {
+        QBuffer buf;
+        buf.open(QIODevice::WriteOnly);
+        QVERIFY(QImageWriter(&buf, "png").write(plain));
+        auto withExif = metadata::embed(buf.data(), OutputFormat::Png, {}, exif);
+        QVERIFY(withExif.has_value());
+        const QString path = m_dir.filePath(QStringLiteral("bad_orientation.png"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(*withExif);
+        f.close();
+        const LoadResult r = ImageLoader::load(path);
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QVERIFY(!r.orientationApplied);
+        QVERIFY(samePixels(r.image, plain));
+    }
+}
+
+void TestCore::orientedSizeLimits()
+{
+    // A 90-degree turn swaps width and height before the size checks: stored 5000 x 500
+    // PNG, Orientation 6, loads as 500 x 5000, and the limits see that size.
+    QImage stored(5000, 500, QImage::Format_RGB888);
+    stored.fill(Qt::darkCyan);
+    QBuffer buf;
+    buf.open(QIODevice::WriteOnly);
+    QVERIFY(QImageWriter(&buf, "png").write(stored));
+    auto withExif = metadata::embed(buf.data(), OutputFormat::Png, {}, testimg::makeExif(false, 6, false));
+    QVERIFY(withExif.has_value());
+    const QString path = m_dir.filePath(QStringLiteral("tall.png"));
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(*withExif);
+    f.close();
+    const LoadResult r = ImageLoader::load(path);
+    QVERIFY2(r.ok, qPrintable(r.error));
+    QCOMPARE(r.image.size(), QSize(500, 5000));
+    QCOMPARE(OrientedReader(path).size(), QSize(500, 5000));
+    // 4x WebP: 2000 x 20000 -> the side limit names the upright size.
+    const QString msg = limits::Messages::forCheck(limits::check(r.image.size(), 4, OutputFormat::WebP),
+                                                   r.image.size(), 4, OutputFormat::WebP);
+    QVERIFY2(msg.contains(QStringLiteral("2000 x 20000")), qPrintable(msg));
+}
+
 void TestCore::opaqueAlphaIsDropped()
 {
     const QString path = m_dir.filePath(QStringLiteral("opaque_rgba.png"));
@@ -356,7 +461,7 @@ void TestCore::exifPrepare()
 {
     for (bool le : {true, false}) {
         const QByteArray in = makeExif(le, 6, true);
-        auto r = metadata::prepareExif(in, true, 300, 200);
+        auto r = metadata::prepareExif(in, 300, 200);
         QVERIFY2(r.has_value(), qPrintable(r ? QString() : r.error()));  // error() only without a value
         const QByteArray &o = *r;
         QCOMPARE(o.size(), 88);                  // IFD1 and the thumbnail cut off the end
@@ -368,13 +473,28 @@ void TestCore::exifPrepare()
         QCOMPARE(o.left(22), in.left(22));       // everything else byte for byte
         QCOMPARE(o.mid(34, 12), in.mid(34, 12));
 
-        // Orientation not applied by the loader (PNG / WebP): the stored value stays.
-        r = metadata::prepareExif(in, false, 300, 200);
+        // exifOrientation (v2.1 P5): the stored value; anything unusable counts as 1.
+        QCOMPARE(metadata::exifOrientation(in), 6);
+        for (quint16 v = 1; v <= 8; ++v)
+            QCOMPARE(metadata::exifOrientation(makeExif(le, v, false)), int(v));
+        QCOMPARE(metadata::exifOrientation(makeExif(le, 0, false)), 1);
+        QCOMPARE(metadata::exifOrientation(makeExif(le, 9, false)), 1);
+        QCOMPARE(metadata::exifOrientation(QByteArray()), 1);
+        QCOMPARE(metadata::exifOrientation(in.left(20)), 1);  // IFD0 table cut off
+        QByteArray asLong = makeExif(le, 6, false);           // LONG, as Pillow also accepts
+        auto p16 = [&](int off, quint16 v) { le ? qToLittleEndian(v, asLong.data() + off) : qToBigEndian(v, asLong.data() + off); };
+        auto p32 = [&](int off, quint32 v) { le ? qToLittleEndian(v, asLong.data() + off) : qToBigEndian(v, asLong.data() + off); };
+        p16(22 + 2, 4);
+        p32(22 + 8, 6);
+        QCOMPARE(metadata::exifOrientation(asLong), 6);
+        r = metadata::prepareExif(asLong, 300, 200);
         QVERIFY(r.has_value());
-        QCOMPARE(exifU16(*r, 22 + 8), quint16(6));
+        QCOMPARE(exifU32(*r, 22 + 8), 1u);  // LONG reset to 1 as well
+        p16(22 + 2, 2);  // ASCII: not an orientation
+        QCOMPARE(metadata::exifOrientation(asLong), 1);
 
         // SHORT too small for the size: the entry becomes LONG.
-        r = metadata::prepareExif(makeExif(le, 1, false), true, 70000, 64);
+        r = metadata::prepareExif(makeExif(le, 1, false), 70000, 64);
         QVERIFY(r.has_value());
         QCOMPARE(exifU16(*r, 60 + 2), quint16(4));
         QCOMPARE(exifU32(*r, 60 + 8), 70000u);
@@ -383,7 +503,7 @@ void TestCore::exifPrepare()
         QCOMPARE(r->size(), 88);
 
         // LONG dimensions stay LONG.
-        r = metadata::prepareExif(makeExif(le, 1, false, 4), true, 5, 7);
+        r = metadata::prepareExif(makeExif(le, 1, false, 4), 5, 7);
         QVERIFY(r.has_value());
         QCOMPARE(exifU32(*r, 60 + 8), 5u);
         QCOMPARE(exifU32(*r, 72 + 8), 7u);
@@ -393,25 +513,25 @@ void TestCore::exifPrepare()
 void TestCore::exifPrepareRejectsDamaged()
 {
     const QByteArray good = makeExif(true, 6, true);
-    QVERIFY(!metadata::prepareExif(QByteArray("II*\0", 4), true, 1, 1).has_value());  // too short
+    QVERIFY(!metadata::prepareExif(QByteArray("II*\0", 4), 1, 1).has_value());  // too short
     QByteArray b = good;
     b[0] = 'X';
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // no TIFF header
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // no TIFF header
     b = good;
     qToLittleEndian<quint32>(0x00FFFFF0, b.data() + 4);
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // IFD0 outside
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // IFD0 outside
     b = good;
     qToLittleEndian<quint16>(0x7FFF, b.data() + 8);
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // entry count past the end
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // entry count past the end
     b = good;
     qToLittleEndian<quint32>(5000, b.data() + 10 + 8);
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Make value outside
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // Make value outside
     b = good;
     qToLittleEndian<quint32>(8, b.data() + 34 + 8);
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Exif pointer back to IFD0
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // Exif pointer back to IFD0
     b = good;
     b.truncate(70);
-    QVERIFY(!metadata::prepareExif(b, true, 1, 1).has_value());  // Exif IFD cut off
+    QVERIFY(!metadata::prepareExif(b, 1, 1).has_value());  // Exif IFD cut off
 }
 
 void TestCore::metadataEmbedRoundTrip()

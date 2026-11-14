@@ -8,6 +8,7 @@ function(arx_add_test name)
     target_compile_definitions(${name} PRIVATE
         ARX_TEST_MANIFEST="${CMAKE_SOURCE_DIR}/models/manifest.json"
         ARX_TEST_VERSION="${PROJECT_VERSION}"
+        ARX_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
         ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
     add_test(NAME ${name} COMMAND ${name} ${ARX_TEST_ARGS_${name}})
     set_tests_properties(${name} PROPERTIES

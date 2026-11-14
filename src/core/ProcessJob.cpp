@@ -516,17 +516,16 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
             exifNote = QStringLiteral("not written: ") + loaded.meta.exifError;
         } else if (loaded.meta.exif.isEmpty()) {
             exifNote = QStringLiteral("none in source");
-        } else if (auto exif = metadata::prepareExif(loaded.meta.exif, loaded.orientationApplied, out.width,
-                                                     out.height);
-                   !exif) {
+        } else if (auto exif = metadata::prepareExif(loaded.meta.exif, out.width, out.height); !exif) {
             exifNote = QStringLiteral("not written: ") + exif.error();
         } else if (format == OutputFormat::Jpeg && exif->size() > metadata::kMaxJpegExif) {
             exifNote = QStringLiteral("not written: %1 bytes do not fit into a JPEG APP1 segment").arg(exif->size());
         } else {
             extras.exif = *exif;
-            exifNote = QStringLiteral("written (%1 bytes, orientation %2)")
+            // Every format is loaded upright (v2.1 P5), so the Orientation is always 1.
+            exifNote = QStringLiteral("written (%1 bytes, orientation 1%2)")
                            .arg(extras.exif.size())
-                           .arg(loaded.orientationApplied ? QStringLiteral("reset to 1") : QStringLiteral("as in source"));
+                           .arg(loaded.orientationApplied ? QStringLiteral(", pixels turned upright") : QString());
         }
     }
     loaded.meta = {};

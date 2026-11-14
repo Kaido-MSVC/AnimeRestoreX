@@ -36,12 +36,16 @@ SourceInfo read(const QString &path);
 // The data colour space of an ICC profile (header bytes 16-19): "RGB ", "GRAY", "CMYK", ...
 QByteArray iccColorSpace(const QByteArray &icc);
 
-// EXIF for the output: Orientation set to 1 when `orientationApplied` (the pixels were
-// already turned upright), PixelXDimension / PixelYDimension set to the output size if
-// present, the thumbnail (IFD1) removed. Everything else is kept byte for byte.
+// EXIF Orientation (IFD0 tag 0x0112, one SHORT or LONG value) of a TIFF stream: 1-8.
+// Returns 1 (as stored, nothing to turn) when there is no tag, the value is not 1-8, or the
+// header / IFD0 cannot be read.
+int exifOrientation(const QByteArray &tiff);
+
+// EXIF for the output: Orientation set to 1 (all formats are loaded upright, v2.1 P5),
+// PixelXDimension / PixelYDimension set to the output size if present, the thumbnail
+// (IFD1) removed. Everything else is kept byte for byte.
 // Fails with a reason if the TIFF structure is damaged; the caller writes no EXIF then.
-std::expected<QByteArray, QString> prepareExif(const QByteArray &tiff, bool orientationApplied, int width,
-                                               int height);
+std::expected<QByteArray, QString> prepareExif(const QByteArray &tiff, int width, int height);
 
 // Largest EXIF block that fits into one JPEG APP1 segment.
 inline constexpr qsizetype kMaxJpegExif = 65535 - 2 - 6;

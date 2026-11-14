@@ -30,6 +30,7 @@ qt_add_library(arxcore STATIC
     core/ImageLoader.h core/ImageLoader.cpp
     core/ImageEncoder.h core/ImageEncoder.cpp
     core/ImageMetadata.h core/ImageMetadata.cpp
+    core/ImageOrientation.h core/ImageOrientation.cpp
     core/OutputNaming.h core/OutputNaming.cpp
     core/ProcessJob.h core/ProcessJob.cpp
     core/BatchRunner.h core/BatchRunner.cpp

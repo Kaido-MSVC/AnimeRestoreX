@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -530,11 +531,11 @@ QByteArray iccColorSpace(const QByteArray &icc)
     return icc.size() >= 128 ? icc.mid(16, 4) : QByteArray();
 }
 
-std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, bool orientationApplied, int width,
-                                               int height)
+namespace {
+
+// TIFF header: byte order (sets t.little). The block must be at least 8 bytes.
+std::expected<void, QString> readTiffHeader(const QByteArray &b, Tiff &t)
 {
-    QByteArray b = tiffIn;
-    Tiff t(b);
     if (b.size() < 8)
         return std::unexpected(QStringLiteral("EXIF block too short (%1 bytes)").arg(b.size()));
     if (b.startsWith(QByteArray("II*\0", 4)))
@@ -543,6 +544,47 @@ std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, bool or
         t.little = false;
     else
         return std::unexpected(QStringLiteral("EXIF block has no TIFF header"));
+    return {};
+}
+
+// Orientation entry (IFD0 tag 0x0112) as Pillow reads it: one SHORT or LONG value.
+std::optional<quint32> orientationValue(const Tiff &t, const Entry &e)
+{
+    if (e.count != 1)
+        return std::nullopt;
+    if (e.type == 3)
+        return t.u16(e.at + 8);
+    if (e.type == 4)
+        return t.u32(e.at + 8);
+    return std::nullopt;
+}
+
+} // namespace
+
+int exifOrientation(const QByteArray &tiffIn)
+{
+    QByteArray b = tiffIn;  // Tiff wants a mutable buffer; QByteArray copies are shared until written
+    Tiff t(b);
+    if (!readTiffHeader(b, t))
+        return 1;
+    std::vector<Range> ranges;
+    qsizetype nextAt = 0;
+    const auto e0 = parseIfd(t, t.u32(4), "IFD0", ranges, &nextAt);
+    if (!e0)
+        return 1;
+    const Entry *o = findTag(*e0, 0x0112);
+    if (!o)
+        return 1;
+    const std::optional<quint32> v = orientationValue(t, *o);
+    return v && *v >= 1 && *v <= 8 ? int(*v) : 1;
+}
+
+std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, int width, int height)
+{
+    QByteArray b = tiffIn;
+    Tiff t(b);
+    if (auto h = readTiffHeader(b, t); !h)
+        return std::unexpected(h.error());
 
     std::vector<Range> kept{{0, 8}};
     qsizetype nextAt = 0;
@@ -575,9 +617,14 @@ std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, bool or
     if (!interopIfd)
         return std::unexpected(interopIfd.error());
 
-    // Orientation (IFD0, SHORT): the loader already turned the pixels upright.
-    if (const Entry *o = findTag(*e0, 0x0112); o && orientationApplied && o->type == 3 && o->count == 1)
-        t.put16(o->at + 8, 1);
+    // Orientation (IFD0, SHORT or LONG): the loader turned the pixels upright (JPEG by Qt,
+    // PNG / WebP by ImageOrientation), or the value was invalid and nothing was turned.
+    if (const Entry *o = findTag(*e0, 0x0112); o && orientationValue(t, *o)) {
+        if (o->type == 3)
+            t.put16(o->at + 8, 1);
+        else
+            t.put32(o->at + 8, 1);
+    }
     // PixelXDimension / PixelYDimension (Exif IFD, SHORT or LONG): the output size.
     for (auto [tag, v] : {std::pair<quint16, int>{0xA002, width}, std::pair<quint16, int>{0xA003, height}}) {
         const Entry *e = findTag(*exifIfd, tag);

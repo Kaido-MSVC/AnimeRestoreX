@@ -1,6 +1,7 @@
 #include "core/ImageLoader.h"
 #include "core/ImageLimits.h"
 #include "core/ImageMetadata.h"
+#include "core/ImageOrientation.h"
 
 #include <QColorSpace>
 #include <QFile>
@@ -78,9 +79,11 @@ LoadResult ImageLoader::load(const QString &path)
 {
     LoadResult r;
 
-    QImageReader reader(path);
-    reader.setDecideFormatFromContent(true);
-    reader.setAutoTransform(true);
+    // Metadata first (container structure only): the EXIF orientation of PNG / WebP, the ICC
+    // profile and the grayscale check (before any RGB conversion).
+    r.meta = metadata::read(path);
+    OrientedReader oriented(path, &r.meta);
+    QImageReader &reader = oriented.reader();
 
     if (!reader.canRead()) {
         r.error = tr("Cannot read image: %1").arg(reader.errorString());
@@ -98,20 +101,21 @@ LoadResult ImageLoader::load(const QString &path)
         r.error = tr("Animated or multi-frame images are not supported.");
         return r;
     }
-    r.meta = metadata::read(path);
 
     if (isHighBitDepth(reader.imageFormat())) {
         r.error = tr("16-bit or HDR images are not supported. Please convert to 8 bits per channel first.");
         return r;
     }
 
-    const QSize declared = reader.size();
+    // Upright header size (the pixel count is the same either way; the message shows the
+    // size the user sees).
+    const QSize declared = oriented.size();
     if (declared.isValid() && limits::pixelCount(declared) > limits::kMaxInputPixels) {
         r.error = limits::Messages::inputTooLarge(declared);
         return r;
     }
 
-    QImage img = reader.read();
+    QImage img = oriented.read();  // upright: JPEG by Qt, PNG / WebP from their EXIF
     if (img.isNull()) {
         r.error = tr("Cannot decode image: %1").arg(reader.errorString());
         return r;
@@ -125,9 +129,9 @@ LoadResult ImageLoader::load(const QString &path)
         return r;
     }
 
-    // With autoTransform, Qt applies the orientation it reports (Qt 6.12: JPEG EXIF only;
-    // PNG eXIf and WebP EXIF are read as stored and report TransformationNone).
-    r.orientationApplied = reader.transformation() != QImageIOHandler::TransformationNone;
+    // The image is upright now; the size checks below and in ProcessJob (limits::check) use
+    // this size, i.e. width and height after a 90-degree turn.
+    r.orientationApplied = oriented.transformation() != QImageIOHandler::TransformationNone;
 
     // Colour (v2.1 P3): an embedded RGB ICC profile, or a GRAY profile on a grayscale source,
     // is kept as is: the pixels stay in that colour space and the output gets the same

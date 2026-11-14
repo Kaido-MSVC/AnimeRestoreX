@@ -16,6 +16,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QImageReader>
+#include <QImageWriter>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -422,6 +423,50 @@ void TestPipeline::iccAndExifThroughTheJob()
     QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: IFD0 offset")), qPrintable(r.diagnostics));
     QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
     QCOMPARE(testimg::sha256(src), before);  // sources untouched
+    QVERIFY(leftovers().isEmpty());
+
+    // v2.1 P5: PNG (eXIf) and WebP (EXIF) with Orientation 6 / 8 are turned upright too,
+    // and their EXIF goes out with Orientation 1, into every output format.
+    const QImage plain = testimg::make(96, 64, false).convertToFormat(QImage::Format_RGB888);
+    struct Case { const char *name; OutputFormat in; int orientation; };
+    for (const Case c : {Case{"rot6.png", OutputFormat::Png, 6}, Case{"rot8.webp", OutputFormat::WebP, 8}}) {
+        QBuffer enc;
+        QVERIFY(enc.open(QIODevice::WriteOnly));
+        QImageWriter w(&enc, c.in == OutputFormat::Png ? "png" : "webp");
+        if (c.in == OutputFormat::WebP)
+            w.setQuality(100);  // Qt: 100 = lossless
+        QVERIFY(w.write(plain));
+        auto tagged = metadata::embed(enc.data(), c.in, {}, testimg::makeExif(true, quint16(c.orientation), false));
+        QVERIFY(tagged.has_value());
+        const QString path = QDir(m_srcDir).filePath(QLatin1String(c.name));
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(*tagged);
+        }
+        for (OutputFormat outFmt : {OutputFormat::Png, OutputFormat::Jpeg, OutputFormat::WebP}) {
+            for (bool keep : {false, true}) {
+                JobSpec ps = spec(outFmt, 2);
+                ps.outputDir = dir;
+                ps.encode.keepExif = keep;
+                FakeBackend fb;
+                r = runOne(path, ps, fb);
+                QVERIFY2(r.ok, qPrintable(why(r)));
+                QCOMPARE(QImageReader(r.outputPath).size(), QSize(128, 192));  // upright
+                out = metadata::read(r.outputPath);
+                if (!keep) {
+                    QVERIFY(out.exif.isEmpty());
+                    continue;
+                }
+                QVERIFY2(r.diagnostics.contains(QStringLiteral("orientation 1, pixels turned upright")),
+                         qPrintable(r.diagnostics));
+                QCOMPARE(metadata::exifOrientation(out.exif), 1);
+                QCOMPARE(testimg::exifU16(out.exif, 22 + 8), quint16(1));
+                QCOMPARE(testimg::exifU16(out.exif, 60 + 8), quint16(128));
+                QCOMPARE(testimg::exifU16(out.exif, 72 + 8), quint16(192));
+            }
+        }
+    }
     QVERIFY(leftovers().isEmpty());
 }
 
