@@ -75,6 +75,10 @@ struct ProcessOptions {
     // Runs once, right before that restart. Must release the sessions: after either error the
     // D3D device is unusable, and the same session fails with 887A0006 (P2 redo report §4.4).
     std::function<void()> beforeRetry;
+    // Film grain (nunif waifu2x/ui_utils.py process_image, --grain): apply_rgb_noise strength on the
+    // final float RGB (after the TTA merge, before quantize256); 0 = off. For still images nunif
+    // passes grain_strength * 0.5. The noise field is seeded by grainSeed(output size, strength).
+    float grainStrength = 0.0f;
     uint64_t maxOutputPixels = 75'000'000;  // plan §8.1 independent output guard
     const std::atomic<bool>* cancel = nullptr;  // checked before every tile
     std::function<void(const Progress&)> progress;  // after every tile
@@ -86,6 +90,7 @@ struct ProcessStats {
     int tilesRun = 0;            // Runs in the successful attempt (both passes)
     bool alphaPassed = false;    // a non-blank alpha went through the alpha model
     bool tta = false;            // the result is the TTA mean of 8 renders
+    uint64_t grainSeed = 0;      // film grain applied with this seed (0 = no grain)
     Status firstAttemptError;    // the error that caused a restart, if any
 };
 
@@ -113,6 +118,33 @@ struct TtaMap {
     std::ptrdiff_t a = 0, b = 0, c = 1;
 };
 TtaMap ttaMap(int k, std::ptrdiff_t H, std::ptrdiff_t W);
+
+// ---- Film grain: nunif/utils/rgb_noise.py (0d3d92c) with a fixed seed ----
+// Upstream draws torch.randn without a seed; here the noise is a pure function of (seed, channel,
+// position): a counter-based generator (SplitMix64 hash of seed, stream and index -> two uniforms
+// -> Box-Muller cosine branch), so no noise field is stored and the same image with the same
+// settings always gets the same grain. std::normal_distribution is not used (its algorithm
+// differs between standard libraries).
+uint64_t grainSeed(int width, int height, float strength);
+// One standard normal value N(0,1) for (seed, stream, index).
+float grainNormal(uint64_t seed, uint64_t stream, uint64_t index);
+// rgb_noise_like(level=2) for an H x W image: 0.5 * full-resolution noise (stream 0) +
+// 0.5 * half-resolution noise (stream 1, H//2 x W//2, nearest upscaled as F.interpolate(mode="nearest")).
+class GrainField {
+public:
+    GrainField(uint64_t seed, int width, int height);
+    float at(int c, int y, int x) const;
+    // F.interpolate(size=out, mode="nearest") source index: min(floor(dst * (in / out)), in - 1).
+    static int nearestSource(int dst, int in, int out);
+
+private:
+    uint64_t m_seed;
+    int m_w, m_h, m_hw, m_hh;
+    std::vector<int> m_srcX;
+};
+// apply_rgb_noise(rgb, noise, strength, gamma=2.2, light_decay=True, light_decay_strength=0.8) for
+// one value in [0,1], in float32 as torch evaluates it.
+float applyGrain(float v, float noise, float strength);
 
 // AlphaBorderPadding.forward (nunif/utils/alpha.py:46-64) on planar float RGB (3*W*H) in place.
 void alphaBorderPadding(float* rgb, const float* alpha, int width, int height, int iterations);

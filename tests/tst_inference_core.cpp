@@ -350,6 +350,139 @@ static void testTtaMap() {
 // with values like (a+b)/(2+1e-7), and the 8-term float sum * 1/8 of tta_merge moves ~2.7% of
 // such values across a quantize256 rounding boundary (checked by brute force; opaque pixels
 // hold k/255 and never do). Those may differ by 1; their alpha is 0 either way.
+// Film grain, apply step: fixed noise values against tests/data/grain_reference.txt (numpy float32
+// version of nunif apply_rgb_noise; it matches the torch original with 8-bit max diff 0). Max diff 1.
+static void testGrainMatchesUpstream(const char* dataDir) {
+    std::ifstream f(fs::path(dataDir) / "grain_reference.txt");
+    CHECK(f.good());
+    int lines = 0, maxDiff = 0, differ = 0, values = 0;
+    std::string strength;
+    while (f >> strength) {
+        const float s = std::stof(strength);
+        for (int k = 0; k < 256; ++k)
+            for (int j = 0; j <= 16; ++j) {
+                int want = -1;
+                f >> want;
+                const float v = (float)k / 255.0f, n = ((float)j - 8.0f) / 4.0f;
+                const int got = quantize256(applyGrain(v, n, s));
+                const int d = std::abs(got - want);
+                maxDiff = std::max(maxDiff, d);
+                differ += d != 0;
+                ++values;
+            }
+        ++lines;
+    }
+    std::printf("  grain vs numpy reference: %d strengths, %d values, %d differ, max diff %d\n", lines, values, differ,
+                maxDiff);
+    CHECK(lines == 3 && values == 3 * 256 * 17);
+    CHECK(maxDiff <= 1);
+    // Zero noise or zero strength leaves the value unchanged up to the gamma round trip.
+    for (int k = 0; k < 256; ++k) CHECK(quantize256(applyGrain((float)k / 255.0f, 0.0f, 0.1f)) == k);
+}
+
+// Film grain, noise field: N(0,1) values, level-2 mix of full and half resolution, nearest index
+// as ATen, and the seed as a pure function of size and strength.
+static void testGrainField() {
+    // grainNormal: mean 0, variance 1 (1e6 samples), and a pure function of its arguments.
+    double sum = 0, sq = 0;
+    const int N = 1'000'000;
+    for (int i = 0; i < N; ++i) {
+        const double v = grainNormal(12345, 0, (uint64_t)i);
+        sum += v;
+        sq += v * v;
+    }
+    const double mean = sum / N, var = sq / N - mean * mean;
+    std::printf("  grainNormal: mean %.5f, variance %.5f\n", mean, var);
+    CHECK(std::abs(mean) < 0.005 && std::abs(var - 1.0) < 0.01);
+    CHECK(grainNormal(7, 1, 99) == grainNormal(7, 1, 99));
+    CHECK(grainNormal(7, 1, 99) != grainNormal(8, 1, 99) && grainNormal(7, 0, 99) != grainNormal(7, 1, 99));
+
+    // F.interpolate(size=5, mode="nearest") from 2: [0,0,0,1,1]; 2x: dst >> 1; same size: dst.
+    const int idx5[] = {0, 0, 0, 1, 1};
+    for (int x = 0; x < 5; ++x) CHECK(GrainField::nearestSource(x, 2, 5) == idx5[x]);
+    for (int x = 0; x < 8; ++x) CHECK(GrainField::nearestSource(x, 4, 8) == x / 2);
+    CHECK(GrainField::nearestSource(3, 1, 1) == 3);
+
+    // at() = 0.5 * full(c,y,x) + 0.5 * half(c, y', x'); the half field repeats in 2x2 blocks.
+    const uint64_t seed = grainSeed(7, 5, 0.1f);
+    const GrainField g(seed, 7, 5);  // half field 3 x 2: odd sizes use the general nearest index
+    bool mix = true;
+    for (int c = 0; c < 3; ++c)
+        for (int y = 0; y < 5; ++y)
+            for (int x = 0; x < 7; ++x) {
+                const float n1 = grainNormal(seed, 0, ((uint64_t)c * 5 + y) * 7 + x);
+                const int sy = GrainField::nearestSource(y, 2, 5), sx = GrainField::nearestSource(x, 3, 7);
+                const float n2 = grainNormal(seed, 1, ((uint64_t)c * 2 + sy) * 3 + sx);
+                mix = mix && g.at(c, y, x) == n1 * 0.5f + 0.5f * n2;
+            }
+    CHECK(mix);
+    CHECK(grainSeed(7, 5, 0.1f) == seed && grainSeed(5, 7, 0.1f) != seed && grainSeed(7, 5, 0.25f) != seed);
+    const GrainField one(seed, 1, 1);  // upstream randn(0, 0) would fail; one half-res pixel here
+    CHECK(std::isfinite(one.at(2, 0, 0)));
+}
+
+// Film grain through upscaleImage: applied to the final float RGB before quantize256 (TTA too),
+// alpha untouched, same seed and same result every time, off = no change at all.
+static void testGrainThroughUpscale() {
+    const float s = 0.1f;
+    for (int c : {3, 4}) {
+        TestImage in = makeImage(61, 37, c, 1, 77u + c);
+        ProcessOptions o;
+        o.tile = 64;
+        FakeEngine e0(P2), a0(P2), e1(P2), a1(P2), e2(P2), a2(P2), e3(P2), a3(P2);
+        const auto plain = upscaleImage(in.view(), P2, e0, &P2, &a0, o);
+        o.grainStrength = s;
+        ProcessStats st;
+        const auto g1 = upscaleImage(in.view(), P2, e1, &P2, &a1, o, &st);
+        const auto g2 = upscaleImage(in.view(), P2, e2, &P2, &a2, o);
+        CHECK(plain && g1 && g2);
+        if (!plain || !g1 || !g2) continue;
+        CHECK(g1->pixels == g2->pixels);  // deterministic
+        CHECK(st.grainSeed == grainSeed(122, 74, s));
+        // Expected: grain on the nearest-upscaled input value (the fake model's exact output; the
+        // seam blend may move it by float rounding, hence max diff 1 and only rarely).
+        const GrainField field(st.grainSeed, 122, 74);
+        int maxDiff = 0, differ = 0, changed = 0;
+        bool alphaSame = true;
+        for (int y = 0; y < g1->height; ++y)
+            for (int x = 0; x < g1->width; ++x) {
+                const size_t i = ((size_t)y * g1->width + x) * c;
+                if (c == 4) alphaSame = alphaSame && g1->pixels[i + 3] == plain->pixels[i + 3];
+                // alpha = 0: alpha border padding replaced the RGB, the input is not the model input.
+                if (c == 4 && in.at(x / 2, y / 2, 3) == 0) continue;
+                for (int ch = 0; ch < 3; ++ch) {
+                    const float v = (float)in.at(x / 2, y / 2, ch) / 255.0f;
+                    const int want = quantize256(applyGrain(v, field.at(ch, y, x), s));
+                    const int d = std::abs(want - (int)g1->pixels[i + ch]);
+                    maxDiff = std::max(maxDiff, d);
+                    differ += d != 0;
+                    changed += g1->pixels[i + ch] != plain->pixels[i + ch];
+                }
+            }
+        std::printf("  grain c=%d: %d of %d values changed by the grain; vs expected %d differ, max %d\n", c, changed,
+                    g1->width * g1->height * 3, differ, maxDiff);
+        CHECK(maxDiff <= 1 && changed > 0);
+        CHECK(alphaSame);
+        // TTA: grain after the merge, same field.
+        o.tta = true;
+        const auto t = upscaleImage(in.view(), P2, e3, &P2, &a3, o);
+        CHECK(t.has_value());
+        if (t) {
+            int td = 0;
+            for (size_t i = 0; i < t->pixels.size(); ++i)
+                td = std::max(td, std::abs((int)t->pixels[i] - (int)g1->pixels[i]));
+            CHECK(td <= 1);
+        }
+    }
+    // Strength outside (0, 1] is rejected before any Run.
+    TestImage in = makeImage(8, 8, 3, 0, 1);
+    FakeEngine e(P2);
+    ProcessOptions o;
+    o.grainStrength = 1.5f;
+    const auto r = upscaleImage(in.view(), P2, e, nullptr, nullptr, o);
+    CHECK(!r && r.error().kind == ErrorKind::InvalidArgument && e.calls == 0);
+}
+
 static void testTtaMatchesPlain() {
     struct Case { int w, h, c; bool holes; };
     const Case cases[] = {{37, 23, 3, false},  {257, 131, 3, false}, {1, 70, 3, false},
@@ -525,10 +658,13 @@ static void testManifest(const fs::path& manifest, const fs::path& scratch) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::printf("usage: core_tests <models/manifest.json> <scratch dir>\n");
+    if (argc < 4) {
+        std::printf("usage: core_tests <models/manifest.json> <scratch dir> <tests/data dir>\n");
         return 64;
     }
+    testGrainMatchesUpstream(argv[3]);
+    testGrainField();
+    testGrainThroughUpscale();
     testCoverage();
     testPlanMatchesUpstream();
     testTileRule();

@@ -21,7 +21,8 @@ arx_add_test(tst_core arxcore)
 add_executable(tst_inference_core tst_inference_core.cpp)
 target_link_libraries(tst_inference_core PRIVATE arxinfer)
 add_test(NAME tst_inference_core COMMAND tst_inference_core
-    "${CMAKE_SOURCE_DIR}/models/manifest.json" "${CMAKE_CURRENT_BINARY_DIR}/tst_inference_core-scratch")
+    "${CMAKE_SOURCE_DIR}/models/manifest.json" "${CMAKE_CURRENT_BINARY_DIR}/tst_inference_core-scratch"
+    "${CMAKE_CURRENT_SOURCE_DIR}/data")
 # The pipeline test (fake backend, plus one real-runtime test when the DLLs and models are
 # deployed) also writes its full log to tests/tst_pipeline-last.txt in the build folder,
 # so a one-off failure can be traced even if the console output is lost.

@@ -1,11 +1,13 @@
 #include "TileProcessor.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <format>
 #include <limits>
 #include <mdspan>
 #include <new>
+#include <optional>
 #include <ranges>
 
 namespace arx::core {
@@ -30,6 +32,69 @@ uint8_t quantize256(float v) {
     if (!(t >= 0.0f)) t = 0.0f;  // also maps NaN to 0 (never expected: the model clamps)
     if (t > 255.0f) t = 255.0f;
     return (uint8_t)t;
+}
+
+// ---- Film grain ----
+namespace {
+// SplitMix64 (Steele, Lea, Flood 2014): increment, then the variant-13 finalizer.
+uint64_t splitMix(uint64_t z) {
+    z += 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
+}  // namespace
+
+uint64_t grainSeed(int width, int height, float strength) {
+    // Output size and strength (its float bits); "ARXGRAIN" marks version 1 of the noise.
+    uint64_t h = splitMix(0x41525847'5241494Eull ^ (uint64_t)(uint32_t)width);
+    h = splitMix(h ^ (uint64_t)(uint32_t)height);
+    h = splitMix(h ^ (uint64_t)std::bit_cast<uint32_t>(strength));
+    return h ? h : 1;
+}
+
+float grainNormal(uint64_t seed, uint64_t stream, uint64_t index) {
+    const uint64_t base = splitMix(seed ^ splitMix(stream + 1));
+    const uint64_t a = splitMix(base + 2 * index), b = splitMix(base + 2 * index + 1);
+    const double u1 = (double)((a >> 11) + 1) * 0x1p-53;  // (0, 1]: log(u1) is finite
+    const double u2 = (double)(b >> 11) * 0x1p-53;        // [0, 1)
+    return (float)(std::sqrt(-2.0 * std::log(u1)) * std::cos(6.283185307179586 * u2));
+}
+
+int GrainField::nearestSource(int dst, int in, int out) {
+    // ATen nearest_idx: same size -> dst; double size -> dst >> 1; else floorf(dst * (float)in/out).
+    if (out == in) return dst;
+    if (out == 2 * in) return dst >> 1;
+    const float scale = (float)in / (float)out;
+    return std::min((int)std::floor((float)dst * scale), in - 1);
+}
+
+GrainField::GrainField(uint64_t seed, int width, int height)
+    // torch.randn(H // 2, W // 2) fails upstream for a 1-pixel side; one row / column here.
+    : m_seed(seed), m_w(width), m_h(height), m_hw(std::max(1, width / 2)), m_hh(std::max(1, height / 2)),
+      m_srcX(width) {
+    for (int x = 0; x < width; ++x) m_srcX[x] = nearestSource(x, m_hw, width);
+}
+
+float GrainField::at(int c, int y, int x) const {
+    // noise = randn_like(base); noise.mul_(0.5).add_(noise2_upscaled, alpha=0.5)
+    const float n1 = grainNormal(m_seed, 0, ((uint64_t)c * m_h + y) * m_w + x);
+    const int sy = nearestSource(y, m_hh, m_h);
+    const float n2 = grainNormal(m_seed, 1, ((uint64_t)c * m_hh + sy) * m_hw + m_srcX[x]);
+    return n1 * 0.5f + 0.5f * n2;
+}
+
+float applyGrain(float v, float noise, float strength) {
+    // rgb_noise.py apply_rgb_noise, float32 throughout:
+    //   output = rgb ** gamma; correlated_noise = noise * output
+    //   light_decay = ((1 - output) * light_decay_strength + (1 - light_decay_strength)) ** gamma
+    //   output = (output + correlated_noise * light_decay * strength).clamp_(0, 1) ** (1 / gamma)
+    constexpr float kGamma = 2.2f, kInvGamma = (float)(1.0 / 2.2), kDecay = 0.8f, kDecayRest = (float)(1.0 - 0.8);
+    float out = std::pow(v, kGamma);
+    const float correlated = noise * out;
+    const float decay = std::pow((1.0f - out) * kDecay + kDecayRest, kGamma);
+    out = out + correlated * (decay * strength);
+    return std::pow(std::clamp(out, 0.0f, 1.0f), kInvGamma);
 }
 
 std::expected<TilePlan, Status> makeTilePlan(int width, int height, const TileParams& p, int tile) {
@@ -173,6 +238,7 @@ struct RenderCtx {
     const ProcessOptions& opt;
     Progress& prog;
     int& tilesRun;
+    const GrainField* grain = nullptr;  // film grain on the final RGB (Sink::Rgb), or none
 };
 
 bool cancelled(const ProcessOptions& o) { return o.cancel && o.cancel->load(std::memory_order_relaxed); }
@@ -319,6 +385,11 @@ Status tiledRender(const RenderSource& src, const TilePlan& plan, const TilePara
         float v[3];
         for (int c = 0; c < 3; ++c) v[c] = std::clamp(sum[c * on + i] / w, 0.0f, 1.0f);
         uint8_t* o = out.pixels.data() + i * C;
+        if (target.sink == Sink::Rgb && ctx.grain) {
+            // process_image: apply_rgb_noise on the converted RGB, then to_image (quantize256).
+            const int y = (int)(i / (size_t)plan.outWidth), x = (int)(i % (size_t)plan.outWidth);
+            for (int c = 0; c < 3; ++c) v[c] = applyGrain(v[c], ctx.grain->at(c, y, x), ctx.opt.grainStrength);
+        }
         if (target.sink == Sink::Rgb) {
             o[0] = quantize256(v[0]);
             o[1] = quantize256(v[1]);
@@ -330,12 +401,17 @@ Status tiledRender(const RenderSource& src, const TilePlan& plan, const TilePara
     return Status::success();
 }
 
-// tta_merge tail: avg *= 1 / 8.0; clamp_(avg, 0, 1); then quantize256 into channels 0..2.
-void writeTtaMean(const float* acc, size_t on, Image8& out) {
+// tta_merge tail: avg *= 1 / 8.0; clamp_(avg, 0, 1); [film grain;] then quantize256 into channels 0..2.
+void writeTtaMean(const float* acc, size_t on, Image8& out, const GrainField* grain, float strength) {
     const int C = out.channels;
     for (size_t i = 0; i < on; ++i) {
         uint8_t* o = out.pixels.data() + i * C;
-        for (int c = 0; c < 3; ++c) o[c] = quantize256(std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f));
+        for (int c = 0; c < 3; ++c) {
+            float v = std::clamp(acc[c * on + i] * 0.125f, 0.0f, 1.0f);
+            if (grain)
+                v = applyGrain(v, grain->at(c, (int)(i / (size_t)out.width), (int)(i % (size_t)out.width)), strength);
+            o[c] = quantize256(v);
+        }
     }
 }
 
@@ -410,6 +486,17 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
         }
     }
 
+    // Film grain: one noise field for the output size (no storage, values computed per pixel).
+    std::optional<GrainField> grain;
+    uint64_t seed = 0;
+    if (opt.grainStrength > 0.0f) {
+        if (!(opt.grainStrength <= 1.0f))
+            return std::unexpected(Status::fail(ErrorKind::InvalidArgument, "grain strength must be in (0, 1]"));
+        const int ow = in.width * rgbModel.scale, oh = in.height * rgbModel.scale;
+        seed = grainSeed(ow, oh, opt.grainStrength);
+        grain.emplace(seed, ow, oh);
+    }
+
     Image8 out;
     int tile = opt.tile;
     for (int attempt = 1;; ++attempt) {
@@ -446,7 +533,7 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
         prog.totalPixels = outPixels * (uint64_t)(rgbRenders + (alphaPass ? 1 : 0));
         prog.tilesTotal = (opt.tta ? 4 * (plan.tiles() + rotPlan.tiles()) : plan.tiles()) + (alphaPass ? aplan.tiles() : 0);
         st.tilesRun = 0;
-        RenderCtx ctx{opt, prog, st.tilesRun};
+        RenderCtx ctx{opt, prog, st.tilesRun, grain ? &*grain : nullptr};
 
         const RenderSource whole{rgb.data(), n, in.width, in.height, {}, true};
         Status s;
@@ -462,7 +549,7 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
                                        ttaMap(k, plan.outHeight, plan.outWidth)};
                 s = tiledRender(k == 0 ? whole : src, rot ? rotPlan : plan, rgbModel, rgbEngine, dst, ctx);
             }
-            if (s.ok()) writeTtaMean(ttaAcc.data(), (size_t)outPixels, out);
+            if (s.ok()) writeTtaMean(ttaAcc.data(), (size_t)outPixels, out, ctx.grain, opt.grainStrength);
         }
         if (s.ok() && hasAlpha) {
             if (rgbModel.scale == 1) {
@@ -497,6 +584,7 @@ std::expected<Image8, Status> upscaleImage(const ImageView& in, const TileParams
             st.attempts = attempt;
             st.alphaPassed = alphaPass;
             st.tta = opt.tta;
+            st.grainSeed = seed;
             return out;
         }
         out.clear();
