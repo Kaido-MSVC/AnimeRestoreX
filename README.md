@@ -118,8 +118,9 @@ pwsh -File tools/package.ps1 -IncludeModels   # dist/AnimeRestoreX-<ver>-win64-w
 The script configures and builds a clean Release in `.package/build` (tests off),
 assembles a fresh staging folder from an explicit allowlist (nothing is taken from
 `build/` or `dist/`), and refuses to zip if any file is not on the allowlist, an
-old-engine file appears, a copy differs from its source, `onnxruntime.dll` /
-`DirectML.dll` do not match the version and SHA-256 in `models/manifest.json`, or a
+old-engine file appears, a copy differs from its source, the runtime DLLs
+(`onnxruntime.dll`, `DirectML.dll`, `Microsoft.Windows.AI.MachineLearning.dll`) do not
+match the version and SHA-256 in `models/manifest.json`, or a
 shipped binary imports a DLL that is neither shipped nor part of Windows. The zip is
 re-extracted and compared file by file. While `models/manifest.json` says the model
 licence is `UNRESOLVED`, a package with models is written to
@@ -130,8 +131,11 @@ Publish together: the zip, the three Qt 6.12.0 source archives copied next to it
 License texts: `LICENSE` (MIT, Kaido-MSVC), `THIRD_PARTY_NOTICES.md.in`, `licenses/`
 (regenerate with `tools/collect-licenses.ps1`). The build writes
 `THIRD_PARTY_NOTICES.md` next to the executable and copies `LICENSE` and `licenses/`
-there; the package ships them. There is no first-run agreement: Help > About >
-Licenses and Notices shows every licence and third-party notice.
+there; the package ships them. Help > About > Licenses and Notices shows every licence
+and third-party notice. Since v2.2 (Windows ML runtime) the first start asks for consent
+to the Microsoft Windows ML Runtime license terms (`licenses/WindowsML/license.txt`,
+embedded in the exe) before the runtime DLLs load; Help > About > License Agreement
+shows them again.
 
 Icons: `resources/icons/app.svg` is the source; the committed `app.ico` and
 `app_<size>.png` are regenerated with `pwsh -File tools/make-icons.ps1`
@@ -153,10 +157,11 @@ pwsh -File build.ps1 -Preset debug -Test    # with developer tests (some use the
 `tst_ui_layout` runs the window size / layout checks on the real `windows`
 platform (windows flash briefly); the other UI tests run offscreen.
 
-The pinned ONNX Runtime 1.24.4 and DirectML 1.15.4 packages are fetched and
-SHA-256-checked by `tools/fetch-runtime.ps1` (`build.ps1 -OrtFlavor windowsml` builds
-against the Windows ML 2.5.96 package instead; `tools/package.ps1` does not package
-it); the nunif models are fetched, converted and checked against `models/manifest.json` by
+The pinned Windows ML package `Microsoft.Windows.AI.MachineLearning` 2.5.96 (ONNX
+Runtime 1.28.3, DirectML 1.15.4) is fetched and SHA-256-checked by
+`tools/fetch-runtime.ps1` (`build.ps1 -OrtFlavor upstream` builds against the upstream
+ONNX Runtime 1.24.4 + DirectML 1.15.4 packages of v2.0 / v2.1 instead; `tools/package.ps1`
+packages the flavor named in `models/manifest.json`); the nunif models are fetched, converted and checked against `models/manifest.json` by
 `tools/fetch-models.ps1`. Neither is stored in git.
 
 Specification: `設計規劃.md`, `docs/可行性評估.md`; build/decision log: `docs/開發記錄.md`.

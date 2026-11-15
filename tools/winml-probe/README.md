@@ -4,6 +4,15 @@
 對 nunif swin_unet/art 模型跑單一 tile，比較 DirectML 與 CPU 的結果。
 不屬於主程式建置，不隨發行包散布。結果與結論見 `docs/v2.0-P0-P1報告.md`。
 
+## v2.2：Windows ML 套件 2.5.96（ORT 1.28.3）上重跑（`docs/v2.2-WinML-P0-P1報告.md`）
+
+```powershell
+pwsh -File tools\winml-probe\build.ps1 -Runtime winml -Clean   # 輸出 build\
+pwsh -File tools\winml-probe\run-v22p0.ps1                     # 原始／rewrite_pad／兩步，v3 與舊 4×，對 PyTorch
+```
+
+其餘項目用 `run-p1redo.ps1 -Exe build\winml_probe.exe -RuntimeDir <third_party\windowsml\2.5.96\runtimes\win-x64\native> -ExpectOrt 1.28.3 -OutDir _work\v22p0`（`load`、`rawpad`、`tile`、`cancel`），指令見報告 §8。
+
 ## P1 重做：上游 runtime 與新匯出模型（`docs/v2.0-P1重做報告.md`）
 
 ```powershell

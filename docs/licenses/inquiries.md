@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | 1 | nagadomi/nunif（模型授權） | <https://github.com/nagadomi/nunif/discussions/751> | 2026-11-03 | 已回覆／結案（2026-11-03） |
 | 2 | microsoft/WindowsML（runtime 散布） | <https://github.com/microsoft/WindowsML/issues/27> | 2026-11-04 | 未回覆；改在 #3 詢問 |
-| 3 | microsoft/WindowsAppSDK（runtime 散布、EULA） | <https://github.com/microsoft/WindowsAppSDK/issues/6950> | 2026-11-05 | 部分回覆，EULA 待答（2026-11-06） |
+| 3 | microsoft/WindowsAppSDK（runtime 散布、EULA） | <https://github.com/microsoft/WindowsAppSDK/issues/6950> | 2026-11-05 | 部分回覆，EULA 待答（2026-11-06）；2026-11-15 使用者決定先加同意畫面並改用 Windows ML（見 §3） |
 
 ---
 
@@ -136,4 +136,13 @@
 
 - `onnxruntime.dll`、`DirectML.dll` 可以放進 ZIP 散布。
 - 如果換回 Windows ML，`Microsoft.Windows.AI.MachineLearning.dll` 一起散布，維持在官方支援的配置；更新 NuGet 套件前要完整測試。這推翻 §2「不散布 `Microsoft.Windows.AI.MachineLearning.dll`」的做法。
-- EULA 答覆前不換 runtime，也不修改任何程式或封裝檔案。
+- EULA 答覆前不換 runtime，也不修改任何程式或封裝檔案。（2026-11-15 由使用者的決定取代，見下方。）
+
+### 使用者的決定（2026-11-15，EULA 仍未回覆）
+
+- 第 3 題（EULA）到 2026-11-15 仍沒有回覆。使用者決定**在沒有回覆的情況下**，v2.2 起改用 Windows ML 套件（`Microsoft.Windows.AI.MachineLearning` 2.5.96），並加上第一次啟動的同意畫面，以符合 §3(b)(ii) 的保守解讀。
+- 做法：第一次啟動時、載入 runtime DLL 之前，顯示套件附的 `license.txt` 全文（英文原文），使用者勾選並同意後才繼續；不同意就結束程式。同意記錄為條款檔的 SHA-256（`v2/eula/windowsMlTerms`），條款改變時再詢問。「關於 → 授權條款」可再次查看。
+- `Microsoft.Windows.AI.MachineLearning.dll` 一起散布（第 2 題的答覆），但本程式不呼叫它；只用套件內附的 DirectML 與 CPU EP，不呼叫 `ExecutionProviderCatalog`，不下載任何 EP。
+- 這推翻 2026-11-06 的「換回的條件是 EULA 不要求使用者同意」與「EULA 答覆前不換 runtime」。v2.0 移除首次同意畫面的決策只適用於上游 runtime。
+- 修改的檔案：`CMakeLists.txt`、`tools/fetch-runtime.ps1`、`tools/package.ps1`、`tools/collect-licenses.ps1`、`models/manifest.json`（只有 `runtime`）、`src/ui/EulaDialog.*`、`licenses/WindowsML/`、`THIRD_PARTY_NOTICES.md.in`、`packaging/README.txt`。驗證見 `docs/v2.2-WinML-P0-P1報告.md`。
+- 收到第 3 題的回覆後：把原文貼到「回覆原文」，再判斷同意畫面要保留、調整或移除。
