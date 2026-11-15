@@ -38,6 +38,10 @@ every file is checked against the SHA256 in models\manifest.json.
 使用方式
 --------
 1. 將整個資料夾解壓縮到任意位置後，執行 AnimeRestoreX.exe。
+   第一次啟動時會顯示 Microsoft Windows ML Runtime 的授權條款（英文原文），
+   同意後才會繼續；不同意時程式會關閉。條款改變時會再詢問一次。
+   On the first start, AnimeRestoreX shows the Microsoft Windows ML Runtime license
+   terms; it continues only if you accept them, otherwise it closes.
 2. 「匯入圖片…」或「匯入資料夾…」加入 PNG / JPEG / WebP 圖片，
    也可以直接把圖片或資料夾從檔案總管拖曳到清單
    （資料夾只匯入該層，不含子資料夾）。
@@ -112,12 +116,16 @@ AnimeRestoreX (shared with AnimeRestoreX 1.x; the 2.x-only settings are under "v
 
 授權 / License
 --------------
-- 所有授權與第三方聲明可在「說明 → 關於 AnimeRestoreX → 授權與聲明」查看。
+- 所有授權與第三方聲明可在「說明 → 關於 AnimeRestoreX → 授權與聲明」查看；
+  第一次啟動時同意的 Microsoft 條款可在「授權條款」再次查看
+  （licenses\WindowsML\license.txt）。
   轉送給他人時，請保持整個資料夾完整、不做修改（含 LICENSE、
-  THIRD_PARTY_NOTICES.md 與 licenses 資料夾）；不得單獨散布 DirectML.dll。
+  THIRD_PARTY_NOTICES.md 與 licenses 資料夾）；不得單獨散布 onnxruntime.dll、
+  DirectML.dll 或 Microsoft.Windows.AI.MachineLearning.dll。
 - AnimeRestoreX: MIT License, Copyright (c) 2026 Kaido-MSVC（LICENSE）
-- 第三方元件（Qt 6.12.0 LGPLv3、ONNX Runtime MIT、DirectML、Visual C++ 執行階段、
-  模型等）各自適用原授權，詳見 THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
+- 第三方元件（Qt 6.12.0 LGPLv3、Microsoft Windows ML Runtime（ONNX Runtime、
+  DirectML）、Visual C++ 執行階段、模型等）各自適用原授權，詳見
+  THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
 - Qt 6.12.0 對應原始碼（qtbase / qtimageformats / qttranslations，未修改）
   與本 zip 一同發布於同一位置；檔名與 SHA256 見 THIRD_PARTY_NOTICES.md §2。
 - 各檔案的 SHA256 見 MANIFEST.txt。

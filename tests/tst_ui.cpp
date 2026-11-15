@@ -1015,18 +1015,28 @@ void TestUi::licensesAndNotices()
     // Real deployment: the shipped texts of every component are listed and readable.
     const QString app = QCoreApplication::applicationDirPath();
     const QStringList files = LicensesDialog::licenseFiles(app);
-    for (const char *name : {"LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/ONNXRuntime/LICENSE",
-                             "licenses/ONNXRuntime/ThirdPartyNotices.txt", "licenses/DirectML/LICENSE.txt",
-                             "licenses/DirectML/ThirdPartyNotices.txt", "licenses/nunif/LICENSE",
-                             "licenses/nunif/NOTICE", "licenses/Qt/LGPL-3.0-only.txt"})
-        QVERIFY2(files.contains(QString::fromLatin1(name)), name);
+    // Runtime texts: the Windows ML package (default) or the upstream ORT / DirectML packages.
+#ifdef ARX_TEST_EULA_SHA256
+    const QString runtimeTerms = QStringLiteral("licenses/WindowsML/license.txt");
+    const QStringList runtimeTexts{runtimeTerms, QStringLiteral("licenses/WindowsML/ThirdPartyNotices.txt")};
+#else
+    const QString runtimeTerms = QStringLiteral("licenses/DirectML/LICENSE.txt");
+    const QStringList runtimeTexts{QStringLiteral("licenses/ONNXRuntime/LICENSE"),
+                                   QStringLiteral("licenses/ONNXRuntime/ThirdPartyNotices.txt"), runtimeTerms,
+                                   QStringLiteral("licenses/DirectML/ThirdPartyNotices.txt")};
+#endif
+    for (const QString &name : runtimeTexts + QStringList{QStringLiteral("LICENSE"), QStringLiteral("THIRD_PARTY_NOTICES.md"),
+                                                          QStringLiteral("licenses/nunif/LICENSE"),
+                                                          QStringLiteral("licenses/nunif/NOTICE"),
+                                                          QStringLiteral("licenses/Qt/LGPL-3.0-only.txt")})
+        QVERIFY2(files.contains(name), qPrintable(name));
     {
         LicensesDialog dlg(app);
-        QVERIFY(dlg.selectFile(QStringLiteral("licenses/DirectML/LICENSE.txt")));
+        QVERIFY(dlg.selectFile(runtimeTerms));
         QVERIFY(dlg.textView()->toPlainText().startsWith(QStringLiteral("MICROSOFT SOFTWARE LICENSE TERMS")));
     }
 
-    // About opens it, and no agreement is left anywhere.
+    // About opens it (the Windows ML consent dialog is tested in licenseAgreement).
     AboutDialog about;
     QVERIFY(about.licensesButton());
     QCOMPARE(about.licensesButton()->text(), QStringLiteral("Licenses and Notices"));

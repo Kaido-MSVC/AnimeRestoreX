@@ -6,10 +6,12 @@
 # Nothing is taken from build\ or dist\: the release is configured and built in
 # .package\build (deleted first), the staging folder is .package\stage (deleted first).
 # Sources: the clean build (exe, THIRD_PARTY_NOTICES.md), the Qt 6.12.0 install (windeployqt),
-# the VS 2026 VC redist folder, the pinned upstream runtime (third_party\onnxruntime\1.24.4,
-# third_party\directml\1.15.4; models\manifest.json "runtime"), the hash-checked models
-# (third_party\models, only with -IncludeModels) and files tracked in git (LICENSE, README.txt,
-# models\manifest.json, licenses\). Only the upstream runtime flavor is packaged.
+# the VS 2026 VC redist folder, the pinned runtime named by models\manifest.json "runtime" (flavor,
+# files, hashes: since v2.2 the Windows ML package third_party\windowsml\2.5.96 with onnxruntime.dll,
+# DirectML.dll and Microsoft.Windows.AI.MachineLearning.dll; the upstream ORT 1.24.4 + DirectML 1.15.4
+# flavor still works), the hash-checked models (third_party\models, only with -IncludeModels) and
+# files tracked in git (LICENSE, README.txt, models\manifest.json, licenses\). The build is configured
+# with the same ARX_ORT_FLAVOR as the manifest.
 #
 # Models: not included by default. -IncludeModels adds the 14 models; if a source in
 # models\manifest.json says license UNRESOLVED, such a package is INTERNAL: it is
@@ -48,7 +50,17 @@ if (-not $Version) { throw 'Cannot read the project version from CMakeLists.txt'
 
 $ManifestPath = Join-Path $Root 'models\manifest.json'
 $Manifest = Get-Content -Raw -Encoding utf8 $ManifestPath | ConvertFrom-Json
-if ($Manifest.runtime.flavor -ne 'upstream') { throw 'models\manifest.json: only the upstream runtime is packaged' }
+$Flavor = $Manifest.runtime.flavor
+if ($Flavor -notin 'windowsml', 'upstream') { throw "models\manifest.json: unknown runtime flavor '$Flavor'" }
+$RuntimeFiles = @($Manifest.runtime.files.file)
+# Licence texts each flavor needs in the package, and the folders of the other flavor (stale).
+$RuntimeLicenses = if ($Flavor -eq 'windowsml') {
+    @('licenses\WindowsML\license.txt', 'licenses\WindowsML\ThirdPartyNotices.txt')
+} else {
+    @('licenses\ONNXRuntime\LICENSE', 'licenses\ONNXRuntime\ThirdPartyNotices.txt',
+      'licenses\DirectML\LICENSE.txt', 'licenses\DirectML\ThirdPartyNotices.txt')
+}
+$StaleLicenseDirs = if ($Flavor -eq 'windowsml') { @('licenses\ONNXRuntime', 'licenses\DirectML') } else { @('licenses\WindowsML') }
 $ModelSources = @($Manifest.sources.PSObject.Properties.Value)
 $ModelLicense = (@($ModelSources.license) | Sort-Object -Unique) -join ', '
 $ModelLicenseResolved = $ModelLicense -and @($ModelSources | Where-Object license -eq 'UNRESOLVED').Count -eq 0 -and
@@ -63,6 +75,7 @@ $StageRoot = Join-Path $Work 'stage'
 $Stage = Join-Path $StageRoot $Name
 
 Write-Host "Package : $Name"
+Write-Host "Runtime : $Flavor ($($RuntimeFiles -join ', '))"
 Write-Host "Models  : $(if ($IncludeModels) { "included (licence: $ModelLicense)" } else { 'not included' })"
 if ($Internal) {
     Write-Warning "Model licence is ${ModelLicense}: INTERNAL test package, written to $OutDir. Do not distribute."
@@ -79,14 +92,14 @@ if (-not $env:VSCMD_VER) {
 $Dumpbin = (Get-Command dumpbin.exe -ErrorAction Stop).Source
 
 if (-not $SkipBuild) {
-    & (Join-Path $Root 'tools\fetch-runtime.ps1')
+    & (Join-Path $Root 'tools\fetch-runtime.ps1') -Flavor $Flavor
     if ($LASTEXITCODE) { throw 'fetch-runtime failed' }
     & (Join-Path $Root 'tools\fetch-models.ps1')
     if ($LASTEXITCODE) { throw 'fetch-models failed' }
     if (Test-Path $Build) { Remove-Item -LiteralPath $Build -Recurse -Force }
     Push-Location $Root
     try {
-        & $CMake --preset release -B $Build -DARX_BUILD_TESTS=OFF
+        & $CMake --preset release -B $Build -DARX_BUILD_TESTS=OFF "-DARX_ORT_FLAVOR=$Flavor"
         if ($LASTEXITCODE) { throw 'configure failed' }
         & $CMake --build $Build
         if ($LASTEXITCODE) { throw 'build failed' }
@@ -97,6 +110,7 @@ if (-not $SkipBuild) {
 $cache = Get-Content (Join-Path $Build 'CMakeCache.txt') -Raw
 if ($cache -notmatch '(?m)^CMAKE_BUILD_TYPE:STRING=Release\r?$') { throw "$Build is not a Release build" }
 if ($cache -notmatch '(?m)^ARX_BUILD_TESTS:BOOL=OFF\r?$') { throw "$Build was configured with tests" }
+if ($cache -notmatch "(?m)^ARX_ORT_FLAVOR:STRING=$Flavor\r?$") { throw "$Build was not configured with ARX_ORT_FLAVOR=$Flavor" }
 
 # ---------------------------------------------------------------- fresh staging
 if (Test-Path $StageRoot) { Remove-Item -LiteralPath $StageRoot -Recurse -Force }
@@ -146,9 +160,11 @@ foreach ($dll in $CrtDlls) {
     Add-File (Join-Path $CrtDir $dll) $dll "VS 2026 $CrtRel"
 }
 
-# 4. Runtime: only the two DLLs the app loads (ONNX Runtime C API + DirectML).
+# 4. Runtime: exactly the DLLs the app pins (manifest "runtime" files).
 foreach ($f in $Manifest.runtime.files) {
-    Add-File (Join-Path $Root ($f.path -replace '/', '\')) $f.file "NuGet $($f.package) $($f.version) (unmodified)"
+    $pkgVer = @($Manifest.runtime.packages | Where-Object id -eq $f.package)[0].version
+    if (-not $pkgVer) { throw "models\manifest.json: package $($f.package) of $($f.file) not listed" }
+    Add-File (Join-Path $Root ($f.path -replace '/', '\')) $f.file "NuGet $($f.package) $pkgVer, $($f.product) $($f.version) (unmodified)"
 }
 
 # 5. Models: manifest always (it documents the models and their licence state); model files only on request
@@ -187,8 +203,9 @@ $allow = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ord
 foreach ($p in @('AnimeRestoreX.exe', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll',
                  'platforms\qwindows.dll', 'imageformats\qjpeg.dll', 'imageformats\qwebp.dll',
                  'translations\qt_zh_TW.qm', 'translations\qt_ja.qm',
-                 'onnxruntime.dll', 'DirectML.dll', 'models\manifest.json',
-                 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls) { [void]$allow.Add($p) }
+                 'models\manifest.json', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'README.txt') + $CrtDlls + $RuntimeFiles) {
+    [void]$allow.Add($p)
+}
 foreach ($f in $tracked) { [void]$allow.Add(($f -replace '/', '\')) }
 if ($IncludeModels) { foreach ($m in $Manifest.models) { [void]$allow.Add('models\' + ($m.file -replace '/', '\')) } }
 $present = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -202,17 +219,20 @@ $listed = [System.Collections.Generic.HashSet[string]]::new([string[]]$entries.P
 foreach ($p in $present) { if (-not $listed.Contains($p)) { $problems.Add("no recorded origin: $p") } }
 
 # b) Old engine and unwanted files, by name (defence in depth).
-$forbiddenName = '(?i)(waifu2x|ncnn|cunet|vcomp1\d\d|\.param$|\.bin$|Microsoft\.Windows\.AI|WinML|onnxruntime_providers|opengl32sw|d3dcompiler|dxcompiler|dxil|Qt6Svg|Qt6Network|vulkan-1)'
+# Windows ML: only the one Microsoft.Windows.AI.MachineLearning.dll of the manifest; upstream: none.
+$forbiddenName = '(?i)(waifu2x|ncnn|cunet|vcomp1\d\d|\.param$|\.bin$|onnxruntime_providers|opengl32sw|d3dcompiler|dxcompiler|dxil|Qt6Svg|Qt6Network|vulkan-1|WinML' +
+    $(if ($Flavor -eq 'upstream') { '|Microsoft\.Windows\.AI' } else { '' }) + ')'
 foreach ($fi in $all) {
     $rel = & $relOf $fi
     if ($rel -match $forbiddenName -and $rel -notlike 'licenses\*') { $problems.Add("forbidden file: $rel") }
-    if ($rel -like 'licenses\WindowsML*') { $problems.Add("Windows ML licence left in the package: $rel") }
+    foreach ($d in $StaleLicenseDirs) { if ($rel -like "$d\*") { $problems.Add("licence of the other runtime left in the package: $rel") } }
 }
 if (-not $IncludeModels -and ($all | Where-Object Extension -eq '.onnx')) { $problems.Add('model files present without -IncludeModels') }
 # ...and by content of our own text files (licence texts are upstream copies and skipped).
 foreach ($p in 'README.txt', 'THIRD_PARTY_NOTICES.md', 'models\manifest.json') {
     $t = Get-Content -LiteralPath (Join-Path $Stage $p) -Raw -Encoding utf8
-    foreach ($word in 'ncnn', 'models-cunet', 'vcomp140', 'Vulkan GPU', 'Windows ML', 'EULA') {
+    $words = @('ncnn', 'models-cunet', 'vcomp140', 'Vulkan GPU') + $(if ($Flavor -eq 'upstream') { @('Windows ML', 'EULA') } else { @() })
+    foreach ($word in $words) {
         if ($t.Contains($word)) { $problems.Add("$p mentions '$word'") }
     }
 }
@@ -239,9 +259,7 @@ if ($ModelLicense -match 'UNRESOLVED' -and $Manifest.status -notlike '*licence u
     $problems.Add('models\manifest.json: license UNRESOLVED but status does not say so')
 }
 # The notices the DLLs need: the licence terms of the runtime and their third-party notices.
-foreach ($p in 'licenses\ONNXRuntime\LICENSE', 'licenses\ONNXRuntime\ThirdPartyNotices.txt',
-               'licenses\DirectML\LICENSE.txt', 'licenses\DirectML\ThirdPartyNotices.txt',
-               'licenses\nunif\LICENSE', 'licenses\nunif\NOTICE') {
+foreach ($p in $RuntimeLicenses + @('licenses\nunif\LICENSE', 'licenses\nunif\NOTICE')) {
     if (-not (Test-Path -LiteralPath (Join-Path $Stage $p))) { $problems.Add("licence text missing: $p") }
 }
 
@@ -261,7 +279,7 @@ foreach ($fi in $all | Where-Object Extension -in '.exe', '.dll') {
         if ($shipped.Contains($d)) { continue }
         if ($d -match '^(api|ext)-ms-win-') { continue }
         if (Test-Path (Join-Path $env:SystemRoot "System32\$d")) {
-            if ($d -match '(?i)^(msvcp|vcruntime|concrt|vcomp|Qt6|onnxruntime|DirectML)') {
+            if ($d -match '(?i)^(msvcp|vcruntime|concrt|vcomp|Qt6|onnxruntime|DirectML|Microsoft\.Windows\.AI)') {
                 $problems.Add("$(& $relOf $fi) imports $d, which would come from System32") }
             continue
         }

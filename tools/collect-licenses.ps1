@@ -2,8 +2,14 @@
 # Upstream files are downloaded from pinned commits (byte-for-byte); Qt files are
 # copied out of the official Qt 6.12.0 source archives (fetch-qt-sources.ps1).
 # Re-running produces the same tree; the result is committed to git.
+#   -Flavor windowsml (default since v2.2): runtime texts from the Windows ML package (WindowsML/)
+#   -Flavor upstream : runtime texts from the upstream ORT / DirectML packages (ONNXRuntime/, DirectML/)
+# Only the texts of the runtime that is packaged are kept (models\manifest.json "runtime").
 [CmdletBinding()]
-param()
+param(
+    [ValidateSet('windowsml', 'upstream')]
+    [string]$Flavor = 'windowsml'
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -37,9 +43,12 @@ foreach ($old in 'waifu2x-ncnn-vulkan', 'ncnn', 'glslang', 'libwebp', 'libjpeg-t
     if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Host "  removed licenses\$old" }
 }
 
-# Windows ML is no longer shipped either; its texts were replaced by ONNXRuntime/ and DirectML/.
-$winmlOld = Join-Path $Out 'WindowsML'
-if (Test-Path $winmlOld) { Remove-Item $winmlOld -Recurse -Force; Write-Host '  removed licenses\WindowsML' }
+# Runtime texts of the other flavor are removed (only one runtime is packaged).
+$otherRuntime = if ($Flavor -eq 'windowsml') { @('ONNXRuntime', 'DirectML') } else { @('WindowsML') }
+foreach ($old in $otherRuntime) {
+    $p = Join-Path $Out $old
+    if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Host "  removed licenses\$old" }
+}
 
 # ---- nunif (the project the models come from), at the commit of the v3 export. The models
 # are MIT (docs/licenses/inquiries.md); 31c0137, the commit of the 20250502 4x graphs, has
@@ -54,11 +63,20 @@ foreach ($u in $upstream) {
     }
 }
 
-# ---- ONNX Runtime 1.24.4 and DirectML 1.15.4 (onnxruntime.dll, DirectML.dll): the licence and
-# third-party notices from the pinned, hash-checked NuGet packages (tools/fetch-runtime.ps1),
-# copied byte for byte. LICENSE-CODE.txt of the DirectML package covers its include/ and build/
-# folders, which are neither shipped nor compiled in (docs/v2.0-P2重做報告.md).
-$runtimeTexts = @(
+# ---- Runtime texts from the pinned, hash-checked NuGet packages (tools/fetch-runtime.ps1), copied
+# byte for byte.
+# windowsml: Microsoft.Windows.AI.MachineLearning 2.5.96 (onnxruntime.dll, DirectML.dll,
+#   Microsoft.Windows.AI.MachineLearning.dll): the package licence (also shown for first-run
+#   consent) and its third-party notices.
+# upstream: ONNX Runtime 1.24.4 and DirectML 1.15.4. LICENSE-CODE.txt of the DirectML package
+#   covers its include/ and build/ folders, which are neither shipped nor compiled in
+#   (docs/v2.0-P2重做報告.md).
+$runtimeTexts = if ($Flavor -eq 'windowsml') { @(
+    @{ pkg = 'third_party\windowsml\2.5.96'; dir = 'WindowsML'; file = 'license.txt'
+       sha = '66395f8cb219087fae2bd025010bd9076b736c14f03b48f20295471c0c376814' },
+    @{ pkg = 'third_party\windowsml\2.5.96'; dir = 'WindowsML'; file = 'ThirdPartyNotices.txt'
+       sha = 'fb0af774b4d7cffc5b9d046f2aaeade2f37df2f80abf8033c95dfffcc77a8866' }
+) } else { @(
     @{ pkg = 'third_party\onnxruntime\1.24.4'; dir = 'ONNXRuntime'; file = 'LICENSE'
        sha = 'c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674' },
     @{ pkg = 'third_party\onnxruntime\1.24.4'; dir = 'ONNXRuntime'; file = 'ThirdPartyNotices.txt'
@@ -67,7 +85,7 @@ $runtimeTexts = @(
        sha = 'a05138e3a085ff60a44881eedfa58dccb03ecc1d7b1f6ae888418e8c2fec4b8d' },
     @{ pkg = 'third_party\directml\1.15.4'; dir = 'DirectML'; file = 'ThirdPartyNotices.txt'
        sha = '2c95795c13ff48a58b6ed916f37901c23d964b5d9d601af422f17ad2172e7950' }
-)
+) }
 foreach ($t in $runtimeTexts) {
     $src = Join-Path $Root (Join-Path $t.pkg $t.file)
     if (-not (Test-Path $src)) { throw "Missing $src; run tools/fetch-runtime.ps1" }
