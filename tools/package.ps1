@@ -1,7 +1,12 @@
 # Builds AnimeRestoreX from a clean build folder, assembles a fresh staging folder from an
 # explicit allowlist, checks it, writes MANIFEST.txt, zips it and writes SHA256SUMS.
 #
-#   pwsh -File tools/package.ps1 [-Suffix <tag>] [-IncludeModels] [-SkipBuild]
+#   pwsh -File tools/package.ps1 [-Suffix <tag>] [-IncludeModels] [-SkipBuild] [-Force]
+#
+# Existing outputs are never overwritten by default: if <name>.zip or SHA256SUMS-<name>.txt
+# already exists in the output folder, the script stops before building. -Force overwrites
+# them. The name comes from the version in CMakeLists.txt, so a trial build while the version
+# is unchanged would hit the released zip: use -Suffix <tag> for trials instead of -Force.
 #
 # Nothing is taken from build\ or dist\: the release is configured and built in
 # .package\build (deleted first), the staging folder is .package\stage (deleted first).
@@ -22,7 +27,9 @@ param(
     [string]$Suffix = '',
     [switch]$IncludeModels,
     # Reuse .package\build from the previous run of this script (never build\).
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    # Overwrite an existing <name>.zip / SHA256SUMS-<name>.txt in the output folder.
+    [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -76,6 +83,17 @@ $Stage = Join-Path $StageRoot $Name
 
 Write-Host "Package : $Name"
 Write-Host "Runtime : $Flavor ($($RuntimeFiles -join ', '))"
+
+# Never replace a package that may already be published, unless asked to.
+$existing = @("$Name.zip", "SHA256SUMS-$Name.txt") | ForEach-Object { Join-Path $OutDir $_ } |
+    Where-Object { Test-Path -LiteralPath $_ }
+if ($existing) {
+    if (-not $Force) {
+        throw ("Output already exists (nothing was built or changed): $($existing -join ', '). " +
+               'Use -Suffix <tag> for a trial build, or -Force to overwrite.')
+    }
+    Write-Warning "-Force: overwriting $($existing -join ', ')"
+}
 Write-Host "Models  : $(if ($IncludeModels) { "included (licence: $ModelLicense)" } else { 'not included' })"
 if ($Internal) {
     Write-Warning "Model licence is ${ModelLicense}: INTERNAL test package, written to $OutDir. Do not distribute."

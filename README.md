@@ -114,6 +114,10 @@ pwsh -File tools/package.ps1 -IncludeModels   # dist/AnimeRestoreX-<ver>-win64-w
 ```
 
 `-Suffix <tag>` adds a test-build tag to the package name and to `MANIFEST.txt`.
+If `<name>.zip` or `SHA256SUMS-<name>.txt` already exists in the output folder, the script
+stops before building; `-Force` overwrites them. The name comes from the project version,
+so use `-Suffix` for trial builds while the version is unchanged (the released zip has the
+same name).
 
 The script configures and builds a clean Release in `.package/build` (tests off),
 assembles a fresh staging folder from an explicit allowlist (nothing is taken from
