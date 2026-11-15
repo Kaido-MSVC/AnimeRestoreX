@@ -61,8 +61,8 @@ int exifOrientation(const QByteArray &tiff);
 // (IFD1) removed: unlinked, its table, values and the single JPEG / strip data cleared, and
 // cut off when it is at the end. Everything else is kept byte for byte.
 // Fails with a reason if the TIFF structure is damaged, or if the thumbnail cannot be removed
-// for certain (IFD1 unreadable or linking on, several strips, offset / length missing or
-// invalid, data overlapping kept data); the caller writes no EXIF then.
+// for certain (IFD1 unreadable, linking on or with a repeated tag, several strips, offset /
+// length missing or invalid, data overlapping kept data); the caller writes no EXIF then.
 std::expected<QByteArray, QString> prepareExif(const QByteArray &tiff, int width, int height);
 
 // Largest EXIF block that fits into one JPEG APP1 segment.

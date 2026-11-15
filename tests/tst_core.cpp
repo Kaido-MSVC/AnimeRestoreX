@@ -1001,6 +1001,19 @@ void TestCore::exifThumbnailRemovedOrNoExif()
         b = in;
         p32(b, 114, 88);
         rejected(b, "IFD1 next pointer");
+
+        // R-01 (docs/v2.2-安全複查.md): IFD1 with a repeated tag, thumbnails followed by kept
+        // data (so nothing is cut off).
+        auto dup = metadata::prepareExif(testimg::makeExifTwoThumbnails(le, true), 10, 10);
+        QVERIFY(!dup.has_value());
+        QVERIFY2(dup.error() == QStringLiteral("thumbnail cannot be removed: IFD1 has tag 0x0201 more than once"),
+                 qPrintable(dup.error()));
+        // The same layout with one pair: cleared in place (kept data after it, so not cut off).
+        auto single = metadata::prepareExif(testimg::makeExifTwoThumbnails(le, false), 10, 10);
+        QVERIFY2(single.has_value(), qPrintable(single ? QString() : single.error()));
+        QCOMPARE(single->size(), 2408);
+        QVERIFY(!single->contains('\xAB'));
+        QCOMPARE(single->mid(2400, 8), QByteArray("ARXTest\0", 8));
     }
 }
 

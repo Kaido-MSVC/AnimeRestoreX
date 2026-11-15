@@ -442,6 +442,32 @@ void TestPipeline::iccAndExifThroughTheJob()
     QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: thumbnail cannot be removed")),
              qPrintable(r.diagnostics));
     QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
+
+    // R-01: two JPEGInterchangeFormat / Length pairs with kept data behind them -> no EXIF;
+    // the same layout with a single pair keeps its EXIF, without the thumbnail bytes.
+    for (bool twoPairs : {true, false}) {
+        auto dupJpeg = metadata::embed(buf.data(), OutputFormat::Jpeg, {}, testimg::makeExifTwoThumbnails(false, twoPairs));
+        QVERIFY(dupJpeg.has_value());
+        const QString dupSrc = QDir(m_srcDir).filePath(twoPairs ? QStringLiteral("dup thumb.jpg") : QStringLiteral("one thumb.jpg"));
+        {
+            QFile f(dupSrc);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(*dupJpeg);
+        }
+        FakeBackend bd;
+        r = runOne(dupSrc, s, bd);
+        QVERIFY2(r.ok, qPrintable(why(r)));
+        const QByteArray outExif = metadata::read(r.outputPath).exif;
+        if (twoPairs) {
+            QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: thumbnail cannot be removed: IFD1 has tag 0x0201")),
+                     qPrintable(r.diagnostics));
+            QVERIFY(outExif.isEmpty());
+        } else {
+            QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: written")), qPrintable(r.diagnostics));
+            QCOMPARE(outExif.size(), 2408);
+            QVERIFY(!outExif.contains('\xAB'));
+        }
+    }
     QCOMPARE(testimg::sha256(src), before);  // sources untouched
     QVERIFY(leftovers().isEmpty());
 

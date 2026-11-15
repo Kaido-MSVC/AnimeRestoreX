@@ -92,6 +92,42 @@ inline QByteArray makeExif(bool le, quint16 orientation, bool thumbnail, quint16
     return b;
 }
 
+// R-01 layout (docs/v2.2-安全複查.md): IFD0 at 8 (Make, 8 bytes at 2400, next = 40), IFD1
+// at 40 with LONG entries JPEGInterchangeFormat 256 [and 1280] / ...Length 1024 [twice];
+// thumbnail A [256, 1280) = 0xAB, B [1280, 2304) = 0xCD; the kept Make value comes after
+// them, so the block cannot be cut off behind the thumbnails.
+inline QByteArray makeExifTwoThumbnails(bool le, bool twoPairs)
+{
+    QByteArray b(2408, '\0');
+    auto p16 = [&](int off, quint16 v) { le ? qToLittleEndian(v, b.data() + off) : qToBigEndian(v, b.data() + off); };
+    auto p32 = [&](int off, quint32 v) { le ? qToLittleEndian(v, b.data() + off) : qToBigEndian(v, b.data() + off); };
+    b.replace(0, 4, le ? QByteArray("II*\0", 4) : QByteArray("MM\0*", 4));
+    p32(4, 8);
+    p16(8, 1);
+    p16(10, 0x010F);
+    p16(12, 2);
+    p32(14, 8);
+    p32(18, 2400);
+    p32(22, 40);
+    const QList<QPair<quint16, quint32>> e1 =
+        twoPairs ? QList<QPair<quint16, quint32>>{{0x0201, 256}, {0x0201, 1280}, {0x0202, 1024}, {0x0202, 1024}}
+                 : QList<QPair<quint16, quint32>>{{0x0201, 256}, {0x0202, 1024}};
+    p16(40, quint16(e1.size()));
+    for (int i = 0; i < e1.size(); ++i) {
+        const int at = 42 + 12 * i;
+        p16(at, e1[i].first);
+        p16(at + 2, 4);
+        p32(at + 4, 1);
+        p32(at + 8, e1[i].second);
+    }
+    p32(42 + 12 * int(e1.size()), 0);
+    b.replace(256, 1024, QByteArray(1024, '\xAB'));
+    if (twoPairs)
+        b.replace(1280, 1024, QByteArray(1024, '\xCD'));
+    b.replace(2400, 8, QByteArray("ARXTest\0", 8));
+    return b;
+}
+
 inline quint32 exifU32(const QByteArray &b, int off)
 {
     return b.startsWith("II") ? qFromLittleEndian<quint32>(b.constData() + off) : qFromBigEndian<quint32>(b.constData() + off);

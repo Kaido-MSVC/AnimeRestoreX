@@ -724,6 +724,13 @@ std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, int wid
             return fail(e1.error());
         if (t.u32(ifd1NextAt) != 0)
             return fail(QStringLiteral("IFD1 links to a further IFD"));
+        // R-01: a repeated tag (e.g. two JPEGInterchangeFormat / Length pairs) is ambiguous;
+        // findTag would clear only the first one. No guessing which one counts.
+        for (size_t i = 0; i < e1->size(); ++i)
+            for (size_t j = i + 1; j < e1->size(); ++j)
+                if ((*e1)[i].tag == (*e1)[j].tag)
+                    return fail(QStringLiteral("IFD1 has tag 0x%1 more than once")
+                                    .arg((*e1)[i].tag, 4, 16, QLatin1Char('0')));
         for (auto [offTag, lenTag] : {std::pair<quint16, quint16>{0x0201, 0x0202}, {0x0111, 0x0117}}) {
             const Entry *o = findTag(*e1, offTag), *l = findTag(*e1, lenTag);
             if (!o && !l)
