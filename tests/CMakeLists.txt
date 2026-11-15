@@ -20,7 +20,13 @@ function(arx_add_test name)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")
 endfunction()
 
-arx_add_test(tst_core arxcore)
+# Test-only: zlib's deflate, to build large compressed iCCP streams (S-01) from small buffers.
+# The app itself has inflate only.
+add_library(arx_zlib_deflate_test STATIC ${ARX_ZLIB_DIR}/deflate.c ${ARX_ZLIB_DIR}/trees.c)
+target_link_libraries(arx_zlib_deflate_test PUBLIC arx_zlib)
+target_compile_definitions(arx_zlib_deflate_test PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
+
+arx_add_test(tst_core arxcore arx_zlib_deflate_test)
 
 # Inference core (no Qt, no GPU): fake engine, real models/manifest.json, scratch folder
 # for the hash / path tests. Moved from tools/winml-probe in P3.

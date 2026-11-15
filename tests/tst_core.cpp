@@ -23,10 +23,92 @@
 #include <QtEndian>
 #include <QtTest>
 
+#include <zlib.h>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
+
 #include <array>
+#include <atomic>
 #include <limits>
+#include <thread>
 
 using namespace arx;
+
+namespace {
+
+// One PNG chunk: length, type, data, CRC (over type and data).
+QByteArray pngChunk(const QByteArray &type, const QByteArray &data)
+{
+    QByteArray c(4, Qt::Uninitialized);
+    qToBigEndian<quint32>(quint32(data.size()), c.data());
+    const QByteArray body = type + data;
+    QByteArray crc(4, Qt::Uninitialized);
+    qToBigEndian<quint32>(metadata::crc32(body.constData(), body.size()), crc.data());
+    return c + body + crc;
+}
+
+// zlib stream of `zeros` zero bytes, built in 1 MiB steps (never holds the plain data).
+QByteArray zlibOfZeros(qint64 zeros)
+{
+    z_stream s{};
+    if (deflateInit(&s, 9) != Z_OK)
+        return {};
+    const std::vector<char> in(1 << 20, '\0');
+    std::array<char, 64 * 1024> step;
+    QByteArray out;
+    qint64 left = zeros;
+    int flush = Z_NO_FLUSH;
+    do {
+        const qint64 n = std::min<qint64>(left, qint64(in.size()));
+        left -= n;
+        flush = left ? Z_NO_FLUSH : Z_FINISH;
+        s.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(in.data()));
+        s.avail_in = uInt(n);
+        do {
+            s.next_out = reinterpret_cast<Bytef *>(step.data());
+            s.avail_out = uInt(step.size());
+            deflate(&s, flush);
+            out.append(step.data(), qsizetype(step.size() - s.avail_out));
+        } while (s.avail_out == 0);
+    } while (flush != Z_FINISH);
+    deflateEnd(&s);
+    return out;
+}
+
+qint64 privateBytes()
+{
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof(pmc));
+    return qint64(pmc.PrivateUsage);
+}
+
+// Largest rise of the private bytes above the level at the start while `fn` runs (sampled
+// every millisecond on another thread).
+template <class F>
+qint64 peakPrivateRise(F &&fn)
+{
+    const qint64 base = privateBytes();
+    std::atomic<bool> done{false};
+    std::atomic<qint64> peak{base};
+    std::thread sampler([&] {
+        while (!done.load()) {
+            const qint64 v = privateBytes();
+            if (v > peak.load())
+                peak.store(v);
+            Sleep(1);
+        }
+    });
+    fn();
+    done.store(true);
+    sampler.join();
+    return std::max<qint64>(0, std::max(peak.load(), privateBytes()) - base);
+}
+
+} // namespace
 
 class TestCore : public QObject {
     Q_OBJECT
@@ -51,6 +133,7 @@ private slots:
     void exifPrepareRejectsDamaged();
     void metadataEmbedRoundTrip();
     void loaderKeepsIccAndDetectsGray();
+    void iccInflateIsBounded();
     void folderScanTopLevelNaturalOrder();
     void sizeMessagesIncludeValues();
     void languageFromUiTag_data();
@@ -716,6 +799,66 @@ void TestCore::loaderKeepsIccAndDetectsGray()
     r = ImageLoader::load(palPath);
     QVERIFY2(r.ok, qPrintable(r.error));
     QVERIFY(!r.meta.grayscale);
+}
+
+void TestCore::iccInflateIsBounded()
+{
+    // S-01 (docs/v2.2-安全審查.md): PNG iCCP is decompressed with a hard output limit.
+    const QByteArray p3 = QColorSpace(QColorSpace::DisplayP3).iccProfile();
+    const QByteArray z = qCompress(p3).mid(4);  // zlib stream without Qt's 4-byte size prefix
+    auto profile = metadata::inflateLimited(z, metadata::kMaxIcc);
+    QVERIFY2(profile.has_value(), qPrintable(profile ? QString() : profile.error()));
+    QCOMPARE(*profile, p3);
+    auto cut = metadata::inflateLimited(z.left(z.size() / 2), metadata::kMaxIcc);
+    QVERIFY(!cut.has_value());
+    QVERIFY2(cut.error().contains(QStringLiteral("truncated")), qPrintable(cut.error()));
+    QByteArray bad = z;
+    bad[0] = '\x00';  // not a zlib header
+    QVERIFY(!metadata::inflateLimited(bad, metadata::kMaxIcc).has_value());
+    QVERIFY(!metadata::inflateLimited(QByteArray(), metadata::kMaxIcc).has_value());
+    const QByteArray mib = zlibOfZeros(1 << 20);
+    QVERIFY(metadata::inflateLimited(mib, 1 << 20).has_value());         // exactly the limit
+    QVERIFY(!metadata::inflateLimited(mib, (1 << 20) - 1).has_value());  // one byte over
+
+    // A small PNG whose iCCP inflates to 1 GiB (the chunk itself is about 1 MB).
+    const QImage src = testimg::make(40, 30, false).convertToFormat(QImage::Format_RGB888);
+    QBuffer buf;
+    QVERIFY(buf.open(QIODevice::WriteOnly));
+    QVERIFY(src.save(&buf, "png"));
+    QByteArray png = buf.data();
+    const QByteArray bomb = zlibOfZeros(qint64(1) << 30);
+    QVERIFY(bomb.size() > 0 && bomb.size() < (2 << 20));
+    png.insert(8 + 25, pngChunk("iCCP", QByteArray("bomb\0\0", 6) + bomb));  // after IHDR
+    const QString path = m_dir.filePath(QStringLiteral("icc_bomb.png"));
+    {
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        QCOMPARE(f.write(png), png.size());
+    }
+
+    LoadResult r;
+    const qint64 rise = peakPrivateRise([&] { r = ImageLoader::load(path); });
+    qInfo("iCCP of 1 GiB: private bytes rose by %.1f MiB while loading (limit %lld MiB)",
+          double(rise) / (1 << 20), qlonglong(metadata::kMaxIcc >> 20));
+    QVERIFY2(r.ok, qPrintable(r.error));
+    QVERIFY(r.meta.icc.isEmpty());  // skipped
+    QVERIFY2(r.meta.iccError.contains(QStringLiteral("exceeds")), qPrintable(r.meta.iccError));
+    QCOMPARE(r.image, src);  // pixels as usual
+    QVERIFY2(rise < (qint64(128) << 20), "loading must stay near the 32 MiB limit, not the 1 GiB profile");
+
+    // Preview / thumbnails: the orientation reader reads EXIF only, no ICC at all.
+    QImage oriented;
+    const qint64 riseOriented = peakPrivateRise([&] { oriented = OrientedReader(path).read(); });
+    qInfo("orientation reader: private bytes rose by %.1f MiB", double(riseOriented) / (1 << 20));
+    QVERIFY(!oriented.isNull());
+    const metadata::SourceInfo exifOnly = metadata::read(path, metadata::Parts::ExifOnly);
+    QVERIFY(exifOnly.icc.isEmpty() && exifOnly.iccError.isEmpty());  // not even looked at
+    QVERIFY(riseOriented < (qint64(32) << 20));
+
+    // The ICC note of a job says why the profile is missing.
+    const metadata::SourceInfo all = metadata::read(path);
+    QVERIFY(all.icc.isEmpty());
+    QVERIFY(all.iccError.startsWith(QStringLiteral("iCCP: decompressed size exceeds")));
 }
 
 void TestCore::folderScanTopLevelNaturalOrder()

@@ -19,6 +19,9 @@ struct SourceInfo {
     // Embedded ICC profile as stored in the file (PNG iCCP decompressed; JPEG APP2 parts
     // joined). Empty if there is none or it could not be read.
     QByteArray icc;
+    // Why an embedded ICC profile was skipped (larger than kMaxIcc, damaged zlib data, ...);
+    // empty if fine or absent. The image itself is processed as usual.
+    QString iccError;
     // TIFF stream of the EXIF block ("II*\0..." / "MM\0*..."), without "Exif\0\0".
     QByteArray exif;
     // Why the EXIF block could not be read from the container (empty if fine or absent).
@@ -29,9 +32,21 @@ struct SourceInfo {
     bool grayscale = false;
 };
 
+// Largest ICC profile that is read (PNG: compressed and decompressed size).
+inline constexpr qsizetype kMaxIcc = 32 * 1024 * 1024;
+
+// What read() collects. ExifOnly (orientation for the preview and the list thumbnails) never
+// reads or decompresses an ICC profile.
+enum class Parts { All, ExifOnly };
+
 // Reads the metadata of a PNG, JPEG or WebP file from the start of `dev` (left open).
-SourceInfo read(QIODevice &dev);
-SourceInfo read(const QString &path);
+SourceInfo read(QIODevice &dev, Parts parts = Parts::All);
+SourceInfo read(const QString &path, Parts parts = Parts::All);
+
+// zlib stream (PNG iCCP) -> bytes, decompressed in steps and stopped as soon as the output
+// would pass `limit` bytes. Fails with a reason for damaged or truncated data and for a too
+// large result; never allocates more than `limit` (plus one step) for the output.
+std::expected<QByteArray, QString> inflateLimited(const QByteArray &zlibData, qsizetype limit);
 
 // The data colour space of an ICC profile (header bytes 16-19): "RGB ", "GRAY", "CMYK", ...
 QByteArray iccColorSpace(const QByteArray &icc);

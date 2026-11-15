@@ -3,8 +3,11 @@
 #include <QFile>
 #include <QtEndian>
 
+#include <zlib.h>  // zlib 1.4, inflate only (tools/fetch-zlib.ps1)
+
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <map>
 #include <optional>
 #include <utility>
@@ -14,7 +17,6 @@ namespace arx::metadata {
 
 namespace {
 
-constexpr qsizetype kMaxIcc = 32 * 1024 * 1024;   // larger profiles are not read
 constexpr qsizetype kMaxExif = 4 * 1024 * 1024;   // larger EXIF blocks are not read
 const QByteArray kPngSig("\x89PNG\r\n\x1a\n", 8);
 const QByteArray kExifHeader("Exif\0\0", 6);
@@ -39,22 +41,7 @@ bool skip(QIODevice &dev, qint64 n)
     return dev.skip(n) == n;
 }
 
-// zlib stream (PNG iCCP) -> bytes. qUncompress takes the expected size as a 4-byte prefix;
-// the hint is raised until the profile fits.
-QByteArray inflate(const QByteArray &z)
-{
-    for (qsizetype hint = std::max<qsizetype>(4096, z.size() * 4); hint <= kMaxIcc; hint *= 4) {
-        QByteArray in(4, Qt::Uninitialized);
-        qToBigEndian<quint32>(quint32(hint), in.data());
-        in += z;
-        QByteArray out = qUncompress(in);
-        if (!out.isEmpty())
-            return out;
-    }
-    return {};
-}
-
-void readPng(QIODevice &dev, SourceInfo &info)
+void readPng(QIODevice &dev, SourceInfo &info, Parts parts)
 {
     char hdr[8];
     for (int guard = 0; guard < 1'000'000; ++guard) {
@@ -64,12 +51,15 @@ void readPng(QIODevice &dev, SourceInfo &info)
         const QByteArray type(hdr + 4, 4);
         if (len > 0x7FFFFFFFu)
             return;
-        const bool want = type == "IHDR" || (type == "iCCP" && info.icc.isEmpty()) ||
+        const bool want = type == "IHDR" ||
+                          (type == "iCCP" && parts == Parts::All && info.icc.isEmpty() && info.iccError.isEmpty()) ||
                           (type == "eXIf" && info.exif.isEmpty() && info.exifError.isEmpty());
         if (want) {
             if ((type == "iCCP" && len > kMaxIcc) || (type == "eXIf" && len > kMaxExif)) {
                 if (type == "eXIf")
                     info.exifError = QStringLiteral("eXIf chunk too large (%1 bytes)").arg(len);
+                else
+                    info.iccError = QStringLiteral("iCCP chunk too large (%1 bytes)").arg(len);
                 if (!skip(dev, qint64(len) + 4))
                     return;
                 continue;
@@ -88,8 +78,16 @@ void readPng(QIODevice &dev, SourceInfo &info)
                 info.grayscale = (colourType == 0 || colourType == 4) && depth >= 2;
             } else if (type == "iCCP") {
                 const qsizetype nul = d.indexOf('\0');
-                if (nul > 0 && nul < 80 && nul + 2 <= d.size() && d[nul + 1] == 0)
-                    info.icc = inflate(d.mid(nul + 2));
+                if (nul > 0 && nul < 80 && nul + 2 <= d.size() && d[nul + 1] == 0) {
+                    // Hard output limit while decompressing (S-01); qUncompress has none.
+                    auto icc = inflateLimited(d.mid(nul + 2), kMaxIcc);
+                    if (icc)
+                        info.icc = std::move(*icc);
+                    else
+                        info.iccError = QStringLiteral("iCCP: ") + icc.error();
+                } else {
+                    info.iccError = QStringLiteral("iCCP chunk has no valid profile name / method");
+                }
             } else if (type == "eXIf") {
                 info.exif = stripExifHeader(d);
             }
@@ -102,7 +100,7 @@ void readPng(QIODevice &dev, SourceInfo &info)
     }
 }
 
-void readJpeg(QIODevice &dev, SourceInfo &info)
+void readJpeg(QIODevice &dev, SourceInfo &info, Parts parts)
 {
     std::map<int, QByteArray> iccParts;
     int iccCount = 0;
@@ -131,7 +129,7 @@ void readJpeg(QIODevice &dev, SourceInfo &info)
             break;
         const int n = len - 2;
         const bool sof = m >= 0xC0 && m <= 0xCF && m != 0xC4 && m != 0xC8 && m != 0xCC;
-        if (m == 0xE1 || m == 0xE2 || sof) {
+        if (m == 0xE1 || (m == 0xE2 && parts == Parts::All) || sof) {
             QByteArray d(n, Qt::Uninitialized);
             if (!readExact(dev, d.data(), n)) {
                 if (m == 0xE1 && info.exif.isEmpty())
@@ -160,10 +158,14 @@ void readJpeg(QIODevice &dev, SourceInfo &info)
             icc += part;
         if (icc.size() <= kMaxIcc)
             info.icc = icc;
+        else
+            info.iccError = QStringLiteral("APP2 ICC profile too large (%1 bytes)").arg(icc.size());
+    } else if (iccBad || iccCount) {
+        info.iccError = QStringLiteral("APP2 ICC profile parts are missing or inconsistent");
     }
 }
 
-void readWebP(QIODevice &dev, SourceInfo &info)
+void readWebP(QIODevice &dev, SourceInfo &info, Parts parts)
 {
     char hdr[12];
     if (!readExact(dev, hdr, 12) || QByteArray(hdr, 4) != "RIFF" || QByteArray(hdr + 8, 4) != "WEBP")
@@ -175,10 +177,13 @@ void readWebP(QIODevice &dev, SourceInfo &info)
         const QByteArray type(ch, 4);
         const quint32 len = qFromLittleEndian<quint32>(ch + 4);
         const qint64 padded = qint64(len) + (len & 1);
-        const bool want = (type == "ICCP" && info.icc.isEmpty() && len <= kMaxIcc) ||
+        const bool wantIcc = type == "ICCP" && parts == Parts::All && info.icc.isEmpty() && info.iccError.isEmpty();
+        const bool want = (wantIcc && len <= kMaxIcc) ||
                           (type == "EXIF" && info.exif.isEmpty() && info.exifError.isEmpty());
         if (type == "EXIF" && len > kMaxExif) {
             info.exifError = QStringLiteral("EXIF chunk too large (%1 bytes)").arg(len);
+        } else if (wantIcc && len > kMaxIcc) {
+            info.iccError = QStringLiteral("ICCP chunk too large (%1 bytes)").arg(len);
         } else if (want) {
             QByteArray d(qsizetype(len), Qt::Uninitialized);
             if (!readExact(dev, d.data(), len)) {
@@ -502,28 +507,64 @@ quint32 crc32(const char *data, qsizetype size, quint32 crc)
     return ~crc;
 }
 
-SourceInfo read(QIODevice &dev)
+SourceInfo read(QIODevice &dev, Parts parts)
 {
     SourceInfo info;
     const QByteArray head = dev.peek(12);
     if (head.startsWith(kPngSig)) {
         dev.skip(8);
-        readPng(dev, info);
+        readPng(dev, info, parts);
     } else if (head.size() >= 3 && quint8(head[0]) == 0xFF && quint8(head[1]) == 0xD8) {
         dev.skip(2);
-        readJpeg(dev, info);
+        readJpeg(dev, info, parts);
     } else if (head.size() == 12 && head.startsWith("RIFF") && head.mid(8, 4) == "WEBP") {
-        readWebP(dev, info);
+        readWebP(dev, info, parts);
     }
     return info;
 }
 
-SourceInfo read(const QString &path)
+SourceInfo read(const QString &path, Parts parts)
 {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
         return {};
-    return read(f);
+    return read(f, parts);
+}
+
+std::expected<QByteArray, QString> inflateLimited(const QByteArray &zlibData, qsizetype limit)
+{
+    if (zlibData.size() > std::numeric_limits<uInt>::max())
+        return std::unexpected(QStringLiteral("compressed data too large"));
+    z_stream s{};
+    if (inflateInit(&s) != Z_OK)
+        return std::unexpected(QStringLiteral("zlib inflateInit failed"));
+    s.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(zlibData.constData()));
+    s.avail_in = uInt(zlibData.size());
+    QByteArray out;
+    std::array<char, 64 * 1024> step;
+    int rc = Z_OK;
+    do {
+        s.next_out = reinterpret_cast<Bytef *>(step.data());
+        s.avail_out = uInt(step.size());
+        rc = ::inflate(&s, Z_NO_FLUSH);
+        if (rc != Z_OK && rc != Z_STREAM_END) {
+            // Z_BUF_ERROR: no progress possible (data ends before the stream does).
+            const QString why = rc == Z_BUF_ERROR
+                                    ? QStringLiteral("zlib data is truncated")
+                                    : QStringLiteral("zlib data is damaged (%1)")
+                                          .arg(s.msg ? QString::fromLatin1(s.msg) : QString::number(rc));
+            inflateEnd(&s);
+            return std::unexpected(why);
+        }
+        const qsizetype produced = qsizetype(step.size()) - qsizetype(s.avail_out);
+        if (produced > limit - out.size()) {
+            inflateEnd(&s);
+            return std::unexpected(QStringLiteral("decompressed size exceeds %1 bytes").arg(limit));
+        }
+        out.append(step.data(), produced);
+    } while (rc != Z_STREAM_END);
+    inflateEnd(&s);
+    return out;
 }
 
 QByteArray iccColorSpace(const QByteArray &icc)

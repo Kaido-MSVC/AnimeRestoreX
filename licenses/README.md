@@ -13,6 +13,7 @@ Files are unmodified copies; they were collected by `tools/collect-licenses.ps1`
 
 `tools/collect-licenses.ps1 -Flavor upstream` puts back the texts of the upstream ONNX Runtime
 1.24.4 / DirectML 1.15.4 packages (`ONNXRuntime/`, `DirectML/`) when that runtime is packaged.
+| `zlib/LICENSE` | zlib 1.4 (inflate files compiled into `AnimeRestoreX.exe`) | `zlib-1.4.tar.gz` (`tools/fetch-zlib.ps1`), `LICENSE` |
 | `nunif/LICENSE`, `nunif/NOTICE` | nagadomi/nunif, the project the waifu2x models come from (MIT; see `THIRD_PARTY_NOTICES.md` §4) | nagadomi/nunif @ 0d3d92c, the commit of the swin_unet_v3 export |
 
 The Microsoft Visual C++ runtime files are redistributed under the Visual Studio

@@ -96,6 +96,15 @@ foreach ($t in $runtimeTexts) {
     Write-Host "  $($t.dir) $($t.file)"
 }
 
+# ---- zlib 1.4 (inflate files compiled into AnimeRestoreX.exe; tools/fetch-zlib.ps1), byte for byte.
+$zlibLicense = Join-Path $Root 'third_party\zlib\1.4\LICENSE'
+if (-not (Test-Path $zlibLicense)) { throw "Missing $zlibLicense; run tools/fetch-zlib.ps1" }
+$h = (Get-FileHash $zlibLicense -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($h -ne 'e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2') { throw "SHA256 mismatch for $zlibLicense ($h)" }
+New-Item -ItemType Directory -Force (Join-Path $Out 'zlib') | Out-Null
+Copy-Item $zlibLicense (Join-Path $Out 'zlib\LICENSE') -Force
+Write-Host '  zlib LICENSE'
+
 # ---- Qt 6.12.0 (LGPLv3) and third-party code built into the shipped Qt binaries
 $qtLicenseFiles = @(
     @{ zip = 'qtbase'; entry = 'LICENSES/LGPL-3.0-only.txt'; dest = 'Qt\LGPL-3.0-only.txt' }

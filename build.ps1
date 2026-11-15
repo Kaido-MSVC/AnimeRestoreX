@@ -23,6 +23,8 @@ $Root     = $PSScriptRoot
 if ($LASTEXITCODE) { throw "fetch-runtime failed" }
 & (Join-Path $Root 'tools\fetch-models.ps1')
 if ($LASTEXITCODE) { throw "fetch-models failed" }
+& (Join-Path $Root 'tools\fetch-zlib.ps1')
+if ($LASTEXITCODE) { throw "fetch-zlib failed" }
 
 if (-not $env:VSCMD_VER) {
     Import-Module (Join-Path $VsRoot 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')

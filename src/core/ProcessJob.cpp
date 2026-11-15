@@ -496,7 +496,8 @@ ItemResult ProcessJob::run(const QString &sourcePath, const JobSpec &spec, core:
 
     // ICC: the pixels were never converted, so the source profile goes back as it was, if it
     // still describes the output: an RGB profile on RGB(A) pixels, a GRAY profile on a gray plane.
-    QString iccNote = QStringLiteral("none");
+    QString iccNote = loaded.meta.iccError.isEmpty() ? QStringLiteral("none")
+                                                     : QStringLiteral("skipped: ") + loaded.meta.iccError;
     if (!loaded.meta.icc.isEmpty()) {
         const QByteArray space = metadata::iccColorSpace(loaded.meta.icc);
         if (space == (grayPlane ? "GRAY" : "RGB ") && (space == "GRAY" || !gray)) {

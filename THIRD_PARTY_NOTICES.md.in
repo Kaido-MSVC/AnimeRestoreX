@@ -12,6 +12,7 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
 | 路徑 | 元件 | 版本 | 授權 | 來源 |
 |---|---|---|---|---|
 | `AnimeRestoreX.exe` | AnimeRestoreX | @PROJECT_VERSION@ | MIT | 以本專案原始碼建置（MSVC 14.52.37025、Qt 6.12.0） |
+| （靜態連結於 `AnimeRestoreX.exe`） | zlib（只有解壓縮部分） | 1.4 | Zlib（見 §7） | 官方原始碼 `zlib-1.4.tar.gz`，未修改 |
 | `Qt6Core.dll`、`Qt6Gui.dll`、`Qt6Widgets.dll` | Qt | 6.12.0 | LGPL-3.0-only | Qt 官方 6.12.0 `msvc2022_64` 二進位檔，未修改（見 §2） |
 | `platforms/qwindows.dll` | Qt Windows 平台外掛 | 6.12.0 | LGPL-3.0-only | 同上 |
 | `imageformats/qjpeg.dll` | Qt JPEG 外掛（內含 libjpeg-turbo） | 6.12.0 | LGPL-3.0-only；libjpeg-turbo：IJG AND BSD-3-Clause | 同上 |
@@ -112,3 +113,9 @@ AnimeRestoreX 自有程式碼採 MIT 授權（見 `LICENSE`，Copyright (c) 2026
   - 灰階換算的整數公式（2.1）與 PNG／WebP 的 EXIF 方向對應表（2.1）比照 Pillow 13.0.0 的行為（`Image.convert("L")`、`ImageOps.exif_transpose`），以 Pillow 的輸出驗證；沒有複製 Pillow 的程式碼。
   - 底片顆粒的亂數（2.1）依 SplitMix64（Steele、Lea、Flood，OOPSLA 2014）與 Box–Muller 轉換自行實作，沒有使用第三方程式碼。
 - Qt 內含的 Vulkan 相關程式碼（`vulkan-xml-spec`、`vulkanmemoryallocator`）仍編入 Qt 二進位檔，其通知保留在 §2；本程式本身不使用 Vulkan。
+
+## 7. zlib 1.4
+
+- 用途：解壓 PNG 的 iCCP（內嵌 ICC 描述檔），解壓過程中限制輸出大小。只把 `adler32.c`、`crc32.c`、`inffast.c`、`inflate.c`、`inftrees.c`、`zutil.c` 靜態編入 `AnimeRestoreX.exe`，沒有壓縮與 gz 檔案函式。Qt 本身另有內附的 zlib（§2），兩者互不影響。
+- 來源：官方原始碼 `zlib-1.4.tar.gz`（<https://github.com/madler/zlib/releases/tag/v1.4>，SHA256 `02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584`，Mark Adler 的簽章已驗證），由 `tools/fetch-zlib.ps1` 固定並檢查。**未修改**。
+- 授權：zlib License，Copyright (C) 1995-2026 Jean-loup Gailly and Mark Adler，原文在 `licenses/zlib/LICENSE`。

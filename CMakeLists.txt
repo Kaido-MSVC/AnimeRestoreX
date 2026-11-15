@@ -22,7 +22,8 @@ find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets LinguistTools)
 qt_standard_project_setup()
 
 if(MSVC)
-    add_compile_options(/W4 /permissive- /utf-8)
+    # C++ only: the C language is enabled just for the third-party zlib files.
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/W4;/permissive-;/utf-8>")
 endif()
 
 # AI runtime (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
@@ -65,6 +66,18 @@ else()
     message(FATAL_ERROR "ARX_ORT_FLAVOR must be windowsml or upstream, got '${ARX_ORT_FLAVOR}'")
 endif()
 message(STATUS "AI runtime: ${ARX_ORT_FLAVOR}, ONNX Runtime ${ARX_ORT_VERSION}")
+# zlib 1.4 source (SHA-256 pinned in tools/fetch-zlib.ps1): only the inflate files are built,
+# statically, for PNG iCCP with a hard output limit (src/core/ImageMetadata.cpp).
+set(ARX_ZLIB_DIR "${CMAKE_SOURCE_DIR}/third_party/zlib/1.4" CACHE PATH "Extracted zlib 1.4 source")
+enable_language(C)
+if(NOT EXISTS "${ARX_ZLIB_DIR}/zlib.h")
+    message(FATAL_ERROR "zlib source not found in ${ARX_ZLIB_DIR}; run tools/fetch-zlib.ps1")
+endif()
+file(STRINGS "${ARX_ZLIB_DIR}/zlib.h" ARX_ZLIB_VERSION_LINE REGEX "^#define ZLIB_VERSION \"1\\.4\"$")
+if(NOT ARX_ZLIB_VERSION_LINE)
+    message(FATAL_ERROR "${ARX_ZLIB_DIR}/zlib.h is not zlib 1.4")
+endif()
+
 # Rewritten nunif models checked against models/manifest.json; see tools/fetch-models.ps1.
 set(ARX_MODELS_DIR "${CMAKE_SOURCE_DIR}/third_party/models"
     CACHE PATH "Folder holding the models listed in models/manifest.json")

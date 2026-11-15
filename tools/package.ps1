@@ -114,6 +114,8 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE) { throw 'fetch-runtime failed' }
     & (Join-Path $Root 'tools\fetch-models.ps1')
     if ($LASTEXITCODE) { throw 'fetch-models failed' }
+    & (Join-Path $Root 'tools\fetch-zlib.ps1')
+    if ($LASTEXITCODE) { throw 'fetch-zlib failed' }
     if (Test-Path $Build) { Remove-Item -LiteralPath $Build -Recurse -Force }
     Push-Location $Root
     try {
@@ -277,7 +279,7 @@ if ($ModelLicense -match 'UNRESOLVED' -and $Manifest.status -notlike '*licence u
     $problems.Add('models\manifest.json: license UNRESOLVED but status does not say so')
 }
 # The notices the DLLs need: the licence terms of the runtime and their third-party notices.
-foreach ($p in $RuntimeLicenses + @('licenses\nunif\LICENSE', 'licenses\nunif\NOTICE')) {
+foreach ($p in $RuntimeLicenses + @('licenses\nunif\LICENSE', 'licenses\nunif\NOTICE', 'licenses\zlib\LICENSE')) {
     if (-not (Test-Path -LiteralPath (Join-Path $Stage $p))) { $problems.Add("licence text missing: $p") }
 }
 

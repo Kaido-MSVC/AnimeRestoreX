@@ -5,6 +5,7 @@
 /third_party/onnxruntime/
 /third_party/directml/
 /third_party/models/
+/third_party/zlib/
 /dist/
 *.user
 .vs/

@@ -62,8 +62,10 @@ OrientedReader::OrientedReader(const QString &path, const metadata::SourceInfo *
     m_stored = m_reader.size();
     if (m_applyHere) {
         // Unreadable EXIF or an invalid value: exifOrientation gives 1, nothing is turned.
+        // Preview / thumbnails pass no metadata: only the EXIF is read, the ICC profile is
+        // neither read nor decompressed (S-01).
         const int o = meta ? metadata::exifOrientation(meta->exif)
-                           : metadata::exifOrientation(metadata::read(path).exif);
+                           : metadata::exifOrientation(metadata::read(path, metadata::Parts::ExifOnly).exif);
         m_transform = orientation::fromExif(o);
     } else {
         m_transform = m_reader.transformation();

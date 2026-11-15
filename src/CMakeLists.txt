@@ -29,6 +29,16 @@ endif()
 target_link_libraries(arxort PUBLIC arxinfer ${ARX_ORT_TARGET} dxgi delayimp)
 target_link_options(arxort INTERFACE /DELAYLOAD:onnxruntime.dll)
 
+# zlib 1.4, inflate only (no deflate, no gz* file functions). Unprefixed C symbols; Qt6Core
+# exports its own zlib with the z_ prefix, so the two do not clash. Compiled as C with the
+# compiler's default warning level (the project's /W4 applies to C++ only).
+add_library(arx_zlib STATIC
+    ${ARX_ZLIB_DIR}/adler32.c ${ARX_ZLIB_DIR}/crc32.c ${ARX_ZLIB_DIR}/inffast.c
+    ${ARX_ZLIB_DIR}/inflate.c ${ARX_ZLIB_DIR}/inftrees.c ${ARX_ZLIB_DIR}/zutil.c
+)
+target_include_directories(arx_zlib SYSTEM PUBLIC ${ARX_ZLIB_DIR})
+target_compile_definitions(arx_zlib PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
+
 qt_add_library(arxcore STATIC
     core/ImageLimits.h core/ImageLimits.cpp
     core/ImageLoader.h core/ImageLoader.cpp
@@ -45,7 +55,7 @@ qt_add_library(arxcore STATIC
     core/Progress.h core/Progress.cpp
 )
 target_include_directories(arxcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(arxcore PUBLIC Qt6::Core Qt6::Gui arxort)
+target_link_libraries(arxcore PUBLIC Qt6::Core Qt6::Gui arxort PRIVATE arx_zlib)
 # The ORT version the app requires (checked against onnxruntime.dll at start-up, shown in About).
 target_compile_definitions(arxcore PUBLIC ARX_ORT_VERSION="${ARX_ORT_VERSION}")
 
