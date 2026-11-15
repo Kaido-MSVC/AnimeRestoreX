@@ -41,9 +41,17 @@ bool skip(QIODevice &dev, qint64 n)
     return dev.skip(n) == n;
 }
 
+// A declared length is only allocated if the rest of a seekable device can hold it (S-02).
+// Sequential devices have no known size; the per-chunk caps (kMaxIcc, kMaxExif) still apply.
+bool fitsRemaining(const QIODevice &dev, qint64 n)
+{
+    return dev.isSequential() || n <= dev.size() - dev.pos();
+}
+
 void readPng(QIODevice &dev, SourceInfo &info, Parts parts)
 {
     char hdr[8];
+    bool first = true;
     for (int guard = 0; guard < 1'000'000; ++guard) {
         if (!readExact(dev, hdr, 8))
             return;
@@ -51,8 +59,26 @@ void readPng(QIODevice &dev, SourceInfo &info, Parts parts)
         const QByteArray type(hdr + 4, 4);
         if (len > 0x7FFFFFFFu)
             return;
-        const bool want = type == "IHDR" ||
-                          (type == "iCCP" && parts == Parts::All && info.icc.isEmpty() && info.iccError.isEmpty()) ||
+        // IHDR: exactly the first chunk, exactly 13 bytes, read into a fixed buffer. Anything
+        // else (wrong length, missing, repeated, later) is a malformed PNG: no metadata at all.
+        const bool isIhdr = type == "IHDR";
+        if (isIhdr != first || (isIhdr && len != 13)) {
+            info = {};
+            return;
+        }
+        first = false;
+        if (isIhdr) {
+            std::array<char, 13> d;
+            if (!readExact(dev, d.data(), 13) || !skip(dev, 4)) {  // data, CRC
+                info = {};
+                return;
+            }
+            const int depth = quint8(d[8]), colourType = quint8(d[9]);
+            // Pillow: colour type 0 -> "1" (1 bit) or "L"; 4 -> "LA". nunif keeps L / LA.
+            info.grayscale = (colourType == 0 || colourType == 4) && depth >= 2;
+            continue;
+        }
+        const bool want = (type == "iCCP" && parts == Parts::All && info.icc.isEmpty() && info.iccError.isEmpty()) ||
                           (type == "eXIf" && info.exif.isEmpty() && info.exifError.isEmpty());
         if (want) {
             if ((type == "iCCP" && len > kMaxIcc) || (type == "eXIf" && len > kMaxExif)) {
@@ -64,19 +90,20 @@ void readPng(QIODevice &dev, SourceInfo &info, Parts parts)
                     return;
                 continue;
             }
-            QByteArray d(qsizetype(len), Qt::Uninitialized);
-            if (!readExact(dev, d.data(), len)) {
+            // Check the declared length against the file before allocating it.
+            QByteArray d;
+            if (fitsRemaining(dev, len))
+                d.resize(qsizetype(len));
+            if (d.size() != qsizetype(len) || !readExact(dev, d.data(), len)) {
                 if (type == "eXIf")
                     info.exifError = QStringLiteral("eXIf chunk is truncated");
+                else
+                    info.iccError = QStringLiteral("iCCP chunk is truncated");
                 return;
             }
             if (!skip(dev, 4))  // CRC
                 return;
-            if (type == "IHDR" && len == 13) {
-                const int depth = quint8(d[8]), colourType = quint8(d[9]);
-                // Pillow: colour type 0 -> "1" (1 bit) or "L"; 4 -> "LA". nunif keeps L / LA.
-                info.grayscale = (colourType == 0 || colourType == 4) && depth >= 2;
-            } else if (type == "iCCP") {
+            if (type == "iCCP") {
                 const qsizetype nul = d.indexOf('\0');
                 if (nul > 0 && nul < 80 && nul + 2 <= d.size() && d[nul + 1] == 0) {
                     // Hard output limit while decompressing (S-01); qUncompress has none.
@@ -185,10 +212,14 @@ void readWebP(QIODevice &dev, SourceInfo &info, Parts parts)
         } else if (wantIcc && len > kMaxIcc) {
             info.iccError = QStringLiteral("ICCP chunk too large (%1 bytes)").arg(len);
         } else if (want) {
-            QByteArray d(qsizetype(len), Qt::Uninitialized);
-            if (!readExact(dev, d.data(), len)) {
+            QByteArray d;
+            if (fitsRemaining(dev, len))
+                d.resize(qsizetype(len));
+            if (d.size() != qsizetype(len) || !readExact(dev, d.data(), len)) {
                 if (type == "EXIF")
                     info.exifError = QStringLiteral("EXIF chunk is truncated");
+                else
+                    info.iccError = QStringLiteral("ICCP chunk is truncated");
                 return;
             }
             if (type == "ICCP")

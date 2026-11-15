@@ -134,6 +134,7 @@ private slots:
     void metadataEmbedRoundTrip();
     void loaderKeepsIccAndDetectsGray();
     void iccInflateIsBounded();
+    void pngChunkLengthsCheckedFirst();
     void folderScanTopLevelNaturalOrder();
     void sizeMessagesIncludeValues();
     void languageFromUiTag_data();
@@ -859,6 +860,79 @@ void TestCore::iccInflateIsBounded()
     const metadata::SourceInfo all = metadata::read(path);
     QVERIFY(all.icc.isEmpty());
     QVERIFY(all.iccError.startsWith(QStringLiteral("iCCP: decompressed size exceeds")));
+}
+
+void TestCore::pngChunkLengthsCheckedFirst()
+{
+    // S-02 (docs/v2.2-安全審查.md): declared PNG chunk lengths are checked before memory is
+    // allocated for them; a malformed IHDR gives no metadata at all.
+    const QByteArray sig("\x89PNG\r\n\x1a\n", 8);
+    QImage g = testimg::make(16, 12, false).convertToFormat(QImage::Format_Grayscale8);
+    QBuffer gb;
+    QVERIFY(gb.open(QIODevice::WriteOnly));
+    QVERIFY(g.save(&gb, "png"));
+    const QByteArray gray = gb.data();
+    const QByteArray ihdr = gray.mid(8, 25);  // the whole IHDR chunk (length, type, 13 bytes, CRC)
+    QCOMPARE(ihdr.mid(4, 4), QByteArray("IHDR"));
+    const QByteArray rest = gray.mid(8 + 25);
+    const QByteArray exifChunk = pngChunk("eXIf", testimg::makeExif(true, 6, false));
+    auto readBytes = [](const QByteArray &bytes) {
+        QBuffer b;
+        b.setData(bytes);
+        b.open(QIODevice::ReadOnly);
+        return metadata::read(b);
+    };
+    auto header = [](quint32 len, const char *type) {
+        QByteArray h(4, Qt::Uninitialized);
+        qToBigEndian<quint32>(len, h.data());
+        return h + QByteArray(type, 4);
+    };
+    auto isEmpty = [](const metadata::SourceInfo &i) {
+        return i.icc.isEmpty() && i.iccError.isEmpty() && i.exif.isEmpty() && i.exifError.isEmpty() && !i.grayscale;
+    };
+
+    // Reference: the well-formed file with an eXIf is read.
+    const metadata::SourceInfo good = readBytes(sig + ihdr + exifChunk + rest);
+    QVERIFY(good.grayscale);
+    QCOMPARE(metadata::exifOrientation(good.exif), 6);
+
+    // IHDR declaring ~2 GiB in a short file: nothing large is allocated.
+    const QByteArray hugeIhdr = sig + header(0x7FFFFFF0u, "IHDR") + QByteArray(20, '\x01');
+    metadata::SourceInfo info;
+    qint64 rise = peakPrivateRise([&] { info = readBytes(hugeIhdr); });
+    qInfo("IHDR declaring 2 GiB: private bytes rose by %.1f MiB", double(rise) / (1 << 20));
+    QVERIFY(isEmpty(info));
+    QVERIFY(rise < (qint64(16) << 20));
+    // The same through the loader (file): no crash, a normal "cannot read" error.
+    const QString path = m_dir.filePath(QStringLiteral("huge_ihdr.png"));
+    {
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(hugeIhdr);
+    }
+    LoadResult lr;
+    rise = peakPrivateRise([&] { lr = ImageLoader::load(path); });
+    QVERIFY(!lr.ok);
+    QVERIFY(rise < (qint64(16) << 20));
+
+    // IHDR length other than 13, a repeated IHDR, an IHDR that is not the first chunk:
+    // malformed, so no metadata (not even the eXIf that follows).
+    QVERIFY(isEmpty(readBytes(sig + header(12, "IHDR") + ihdr.mid(8, 12) + QByteArray(4, '\0') + exifChunk + rest)));
+    QVERIFY(isEmpty(readBytes(sig + header(14, "IHDR") + ihdr.mid(8, 13) + QByteArray(5, '\0') + exifChunk + rest)));
+    QVERIFY(isEmpty(readBytes(sig + ihdr + ihdr + exifChunk + rest)));
+    QVERIFY(isEmpty(readBytes(sig + ihdr + exifChunk + ihdr + rest)));
+    QVERIFY(isEmpty(readBytes(sig + exifChunk + ihdr + rest)));
+    QVERIFY(isEmpty(readBytes(sig + ihdr.left(20))));  // IHDR cut off
+
+    // iCCP / eXIf declaring more than the file holds: refused before allocating.
+    info = {};
+    rise = peakPrivateRise([&] { info = readBytes(sig + ihdr + header(30u << 20, "iCCP") + QByteArray(64, 'x')); });
+    QVERIFY2(info.iccError.contains(QStringLiteral("truncated")), qPrintable(info.iccError));
+    QVERIFY(info.grayscale);
+    QVERIFY(rise < (qint64(16) << 20));
+    info = readBytes(sig + ihdr + header(4u << 20, "eXIf") + QByteArray(64, 'x'));
+    QVERIFY2(info.exifError.contains(QStringLiteral("truncated")), qPrintable(info.exifError));
+    QVERIFY(info.exif.isEmpty());
 }
 
 void TestCore::folderScanTopLevelNaturalOrder()
