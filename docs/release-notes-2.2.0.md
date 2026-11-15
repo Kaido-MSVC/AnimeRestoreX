@@ -19,6 +19,7 @@ AnimeRestoreX v2.2.0 把 AI 執行環境改為 Microsoft Windows ML Runtime，�
 - TTA 很慢、很耗記憶體；ICC 不做色彩轉換；含透明的灰階輸出存成三個相同的色彩通道；只讀 EXIF 的方向（與 v2.1 相同）。
 - 編碼中取消要等目前檔案編碼完成；Tile 大小會讓結果略有不同；每批第一張會慢幾秒。
 - 只在 Windows 11 25H2 + NVIDIA GeForce GTX 1060 6GB 上實測；AMD／Intel GPU、Windows 10 未測試。
+- 如果遇到問題，2.1.0 仍可在 Releases 頁面下載。
 
 ## 系統需求
 
