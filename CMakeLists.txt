@@ -27,10 +27,13 @@ endif()
 
 # AI runtime (ONNX Runtime C/C++ API + DirectML), pinned; see tools/fetch-runtime.ps1.
 # Only these packages are used, nothing from the system.
-#   upstream  : Microsoft.ML.OnnxRuntime.DirectML 1.24.4 + Microsoft.AI.DirectML 1.15.4 (default)
-#   windowsml : Microsoft.Windows.AI.MachineLearning 2.5.96 (ONNX Runtime 1.28.3), for switching
-#               back; tools/package.ps1 refuses it, and models need checking on it first.
-set(ARX_ORT_FLAVOR "upstream" CACHE STRING "AI runtime: upstream or windowsml")
+#   windowsml : Microsoft.Windows.AI.MachineLearning 2.5.96 (ONNX Runtime 1.28.3, DirectML 1.15.4;
+#               default since v2.2). Only the bundled DirectML and CPU EPs: no Windows ML API
+#               call (no ExecutionProviderCatalog), Microsoft.Windows.AI.MachineLearning.dll is
+#               shipped and pinned next to the exe (supported layout), but never called.
+#   upstream  : Microsoft.ML.OnnxRuntime.DirectML 1.24.4 + Microsoft.AI.DirectML 1.15.4, the v2.0 /
+#               v2.1 runtime, kept as a fallback.
+set(ARX_ORT_FLAVOR "windowsml" CACHE STRING "AI runtime: windowsml or upstream")
 set_property(CACHE ARX_ORT_FLAVOR PROPERTY STRINGS upstream windowsml)
 if(ARX_ORT_FLAVOR STREQUAL "upstream")
     # ARX_ORT_VERSION: what the app requires from the loaded onnxruntime.dll.
@@ -52,13 +55,16 @@ elseif(ARX_ORT_FLAVOR STREQUAL "windowsml")
         CACHE PATH "Extracted Microsoft.Windows.AI.MachineLearning package")
     find_package(microsoft.windows.ai.machinelearning CONFIG REQUIRED
         PATHS "${ARX_WINML_DIR}/build/cmake" NO_DEFAULT_PATH)
+    if(NOT WINML_VERSION STREQUAL "2.5.96")
+        message(FATAL_ERROR "Windows ML package ${WINML_VERSION} found in ${ARX_WINML_DIR}, expected 2.5.96")
+    endif()
     set(ARX_ORT_TARGET WindowsML::OnnxRuntime)
-    set(ARX_RUNTIME_DLLS "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}")
+    set(ARX_RUNTIME_DLLS "${WINML_BINARY_DIR}/onnxruntime.dll" "${WINML_DIRECTML_DLL}"
+                         "${WINML_BINARY_DIR}/Microsoft.Windows.AI.MachineLearning.dll")
 else()
-    message(FATAL_ERROR "ARX_ORT_FLAVOR must be upstream or windowsml, got '${ARX_ORT_FLAVOR}'")
+    message(FATAL_ERROR "ARX_ORT_FLAVOR must be windowsml or upstream, got '${ARX_ORT_FLAVOR}'")
 endif()
 message(STATUS "AI runtime: ${ARX_ORT_FLAVOR}, ONNX Runtime ${ARX_ORT_VERSION}")
-
 # Rewritten nunif models checked against models/manifest.json; see tools/fetch-models.ps1.
 set(ARX_MODELS_DIR "${CMAKE_SOURCE_DIR}/third_party/models"
     CACHE PATH "Folder holding the models listed in models/manifest.json")

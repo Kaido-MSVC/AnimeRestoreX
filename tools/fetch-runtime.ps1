@@ -1,15 +1,16 @@
-# Fetch the pinned AI runtime into third_party\. Only the ONNX Runtime C/C++ API, onnxruntime.dll
-# and DirectML.dll are used by the build.
+# Fetch the pinned AI runtime into third_party\ from nuget.org; every .nupkg is SHA-256 checked
+# before it is extracted. The build uses the ONNX Runtime C/C++ API and the runtime DLLs only.
 #
-#   -Flavor upstream  (default): Microsoft.ML.OnnxRuntime.DirectML 1.24.4 + Microsoft.AI.DirectML
-#                     1.15.4, verified in docs/v2.0-P1重做報告.md
-#   -Flavor windowsml : Microsoft.Windows.AI.MachineLearning 2.5.96 (ONNX Runtime 1.28.3,
-#                     DirectML 1.15.4), the runtime of the earlier 2.0 work, kept for switching
-#                     back (docs/v2.0-P0-P1報告.md). tools\package.ps1 does not package it.
+#   -Flavor windowsml (default since v2.2): Microsoft.Windows.AI.MachineLearning 2.5.96 (ONNX
+#                     Runtime 1.28.3, DirectML 1.15.4; the newest stable version on 2026-11-15),
+#                     verified in docs/v2.2-WinML-P0-P1報告.md. Ships onnxruntime.dll, DirectML.dll
+#                     and Microsoft.Windows.AI.MachineLearning.dll.
+#   -Flavor upstream  : Microsoft.ML.OnnxRuntime.DirectML 1.24.4 + Microsoft.AI.DirectML 1.15.4,
+#                     the v2.0 / v2.1 runtime (docs/v2.0-P1重做報告.md), kept as a fallback.
 [CmdletBinding()]
 param(
-    [ValidateSet('upstream', 'windowsml')]
-    [string]$Flavor = 'upstream',
+    [ValidateSet('windowsml', 'upstream')]
+    [string]$Flavor = 'windowsml',
     # Folder that may already hold the .nupkg files (e.g. tools\winml-probe\_work\dl\nupkg-upstream);
     # used only if the SHA-256 matches.
     [string]$Cache = '',

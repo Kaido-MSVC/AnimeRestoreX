@@ -41,37 +41,41 @@
   },
   "runtime": {
     "comment": "The runtime these models are verified with. tools/package.ps1 requires the shipped DLLs to match exactly; the app checks the ONNX Runtime version at start-up.",
-    "flavor": "upstream",
+    "flavor": "windowsml",
     "packages": [
       {
-        "id": "Microsoft.ML.OnnxRuntime.DirectML",
-        "version": "1.24.4",
-        "nupkg_sha256": "57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681"
-      },
-      {
-        "id": "Microsoft.AI.DirectML",
-        "version": "1.15.4",
-        "nupkg_sha256": "4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9"
+        "id": "Microsoft.Windows.AI.MachineLearning",
+        "version": "2.5.96",
+        "nupkg_sha256": "35d6e84feb4142e8cecaf36704fa3ab0fc8251d892850fb80e8341f7d09653a3"
       }
     ],
     "files": [
       {
         "file": "onnxruntime.dll",
-        "path": "third_party/onnxruntime/1.24.4/runtimes/win-x64/native/onnxruntime.dll",
-        "package": "Microsoft.ML.OnnxRuntime.DirectML",
+        "path": "third_party/windowsml/2.5.96/runtimes/win-x64/native/onnxruntime.dll",
+        "package": "Microsoft.Windows.AI.MachineLearning",
         "product": "ONNX Runtime",
-        "version": "1.24.4",
-        "file_version": "1.24.20260316.9.2d92497",
-        "sha256": "e7eedec6a6f26dc39dc948276a75ef6d2bee3fff944d874ceed0bbd3b97bff40"
+        "version": "1.28.3",
+        "file_version": "1.28.3.20261013.1.1b92d6e",
+        "sha256": "f4904f839c48216fa98c83847a9eb8ded25e3258105630cad98916329a0538ef"
       },
       {
         "file": "DirectML.dll",
-        "path": "third_party/directml/1.15.4/bin/x64-win/DirectML.dll",
-        "package": "Microsoft.AI.DirectML",
+        "path": "third_party/windowsml/2.5.96/runtimes/win-x64/native/DirectML.dll",
+        "package": "Microsoft.Windows.AI.MachineLearning",
         "product": "DirectML",
         "version": "1.15.4",
         "file_version": "1.15.4+241025-1615.1.dml-1.15.fac7597",
-        "sha256": "9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1"
+        "sha256": "82c6e345cc62a9d1e06874aac4e3e1f990432a2baeae5888477933e26b2c0894"
+      },
+      {
+        "file": "Microsoft.Windows.AI.MachineLearning.dll",
+        "path": "third_party/windowsml/2.5.96/runtimes/win-x64/native/Microsoft.Windows.AI.MachineLearning.dll",
+        "package": "Microsoft.Windows.AI.MachineLearning",
+        "product": "Windows ML",
+        "version": "2.5.96",
+        "file_version": "2.5.96.5615",
+        "sha256": "8205a572b36423860a7a584e67d6c4f2dd2ece497ab8a3c82129c114fb6d7be0"
       }
     ]
   },

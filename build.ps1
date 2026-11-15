@@ -4,9 +4,9 @@
 param(
     [ValidateSet('debug', 'release')]
     [string]$Preset = 'release',
-    # AI runtime: pinned upstream ONNX Runtime + DirectML, or the Windows ML package.
-    [ValidateSet('upstream', 'windowsml')]
-    [string]$OrtFlavor = 'upstream',
+    # AI runtime: the pinned Windows ML package (default), or upstream ONNX Runtime + DirectML.
+    [ValidateSet('windowsml', 'upstream')]
+    [string]$OrtFlavor = 'windowsml',
     [switch]$Test,
     [switch]$Clean
 )

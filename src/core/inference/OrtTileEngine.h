@@ -12,7 +12,8 @@
 
 namespace arx::core {
 
-// Loads onnxruntime.dll / DirectML.dll from `dllDir` only (absolute LoadLibraryExW after
+// Loads DirectML.dll / onnxruntime.dll (and, for the Windows ML package,
+// Microsoft.Windows.AI.MachineLearning.dll) from `dllDir` only (absolute LoadLibraryExW after
 // SetDefaultDllDirectories), checks that exactly that file is loaded, calls Ort::InitApi()
 // and checks GetVersionString() == expectedVersion. `info` receives the resolved paths.
 Status initOrtRuntime(const std::filesystem::path& dllDir, const std::string& expectedVersion, std::string& info);

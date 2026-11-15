@@ -57,7 +57,16 @@ uint32_t findHresult(const std::string& msg) {
 
 Status initOrtRuntime(const fs::path& dllDir, const std::string& expectedVersion, std::string& info) {
     SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
-    for (const wchar_t* n : {L"DirectML.dll", L"onnxruntime.dll"}) {
+    // Load order: each DLL's imports are already in the process when it loads.
+    // Windows ML: Microsoft.Windows.AI.MachineLearning.dll imports onnxruntime.dll. It is only
+    // pinned here (the package's supported layout ships it); none of its APIs is called, so no
+    // execution provider is ever downloaded or registered.
+    static constexpr const wchar_t* kDlls[] = {L"DirectML.dll", L"onnxruntime.dll",
+#ifdef ARX_ORT_WINDOWSML
+                                               L"Microsoft.Windows.AI.MachineLearning.dll",
+#endif
+    };
+    for (const wchar_t* n : kDlls) {
         const fs::path want = dllDir / n;
         if (!fs::exists(want)) return Status::fail(ErrorKind::ModelNotFound, "missing " + want.string());
         HMODULE h = LoadLibraryExW(want.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);

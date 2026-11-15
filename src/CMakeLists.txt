@@ -22,6 +22,10 @@ add_library(arxort STATIC
 )
 target_compile_definitions(arxort PUBLIC ORT_API_MANUAL_INIT
     PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+# windowsml: Microsoft.Windows.AI.MachineLearning.dll is pinned to the program folder as well.
+if(ARX_ORT_FLAVOR STREQUAL "windowsml")
+    target_compile_definitions(arxort PUBLIC ARX_ORT_WINDOWSML=1)
+endif()
 target_link_libraries(arxort PUBLIC arxinfer ${ARX_ORT_TARGET} dxgi delayimp)
 target_link_options(arxort INTERFACE /DELAYLOAD:onnxruntime.dll)
 
