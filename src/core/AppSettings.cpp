@@ -32,6 +32,9 @@ const QString kGrainKey = QStringLiteral("v2/output/grain");     // 2.1; missing
 const QString kGrainStrengthKey = QStringLiteral("v2/output/grainStrength");  // 2.1; missing = 0.2
 const QString kProgressDeviceKey = QStringLiteral("v2/progress/lastDevice");
 const QString kOldEulaKey = QStringLiteral("v2/eula/acceptedVersion");  // early 2.0 test builds; removed by schema 2
+// 2.2: SHA-256 of the accepted Windows ML Runtime license terms (a new key, so the schema 2
+// clean-up of kOldEulaKey never touches it).
+const QString kEulaTermsKey = QStringLiteral("v2/eula/windowsMlTerms");
 
 // "v2/progress/rates/<device>"; "/" and "\" separate QSettings groups, so they
 // are replaced in the device name.
@@ -84,6 +87,17 @@ std::optional<Language> AppSettings::storedManualLanguage()
 {
     const QSettings s;  // reading never writes
     return languageFromCode(s.value(kLanguageKey).toString());
+}
+
+QString AppSettings::acceptedEulaTerms()
+{
+    const QSettings s;  // reading never writes
+    return s.value(kEulaTermsKey).toString();
+}
+
+void AppSettings::setAcceptedEulaTerms(const QString &termsId)
+{
+    m_s->setValue(kEulaTermsKey, termsId);
 }
 
 std::optional<Language> AppSettings::manualLanguage() const

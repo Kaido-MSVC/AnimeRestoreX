@@ -34,6 +34,11 @@ public:
     // Read-only access at start-up: does not create an AppSettings object, so nothing (not
     // even the schema migration) is written before the language is applied.
     static std::optional<Language> storedManualLanguage();
+    // "v2/eula/windowsMlTerms": SHA-256 of the accepted Windows ML Runtime license terms; empty
+    // if never accepted. Read-only like storedManualLanguage (nothing is written before consent).
+    static QString acceptedEulaTerms();
+    // Recorded only after the user accepted those terms.
+    void setAcceptedEulaTerms(const QString &termsId);
 
     // Only a valid, explicitly chosen language is returned.
     std::optional<Language> manualLanguage() const;

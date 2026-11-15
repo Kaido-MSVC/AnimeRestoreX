@@ -24,6 +24,10 @@
         <translation>第三方元件</translation>
     </message>
     <message>
+        <source>AI inference runtime: ONNX Runtime %1 and DirectML %2; runs the models on the GPU through DirectML, or on the CPU (Microsoft Software License Terms).</source>
+        <translation>AI 推論執行階段：ONNX Runtime %1 與 DirectML %2；透過 DirectML 在 GPU 上執行模型，或在 CPU 上執行（Microsoft 軟體授權條款）。</translation>
+    </message>
+    <message>
         <source>AI inference runtime; runs the models on the GPU through DirectML, or on the CPU (MIT License).</source>
         <translation>AI 推論執行階段；透過 DirectML 在 GPU 上執行模型，或在 CPU 上執行（MIT 授權）。</translation>
     </message>
@@ -66,6 +70,10 @@
     <message>
         <source>Processing device: %1</source>
         <translation>處理裝置：%1</translation>
+    </message>
+    <message>
+        <source>License Agreement</source>
+        <translation>授權條款</translation>
     </message>
     <message>
         <source>Open License Files</source>
@@ -168,6 +176,39 @@
     <message>
         <source>Copy</source>
         <translation>複製</translation>
+    </message>
+</context>
+<context>
+    <name>EulaDialog</name>
+    <message>
+        <source>Your acceptance of the license terms could not be saved. You will be asked again the next time AnimeRestoreX starts.</source>
+        <translation>無法儲存您對授權條款的同意。下次啟動 AnimeRestoreX 時會再次詢問。</translation>
+    </message>
+    <message>
+        <source>Microsoft Windows ML Runtime License Terms</source>
+        <translation>Microsoft Windows ML Runtime 授權條款</translation>
+    </message>
+    <message>
+        <source>AnimeRestoreX comes with files of the Microsoft Windows ML Runtime (onnxruntime.dll, DirectML.dll, Microsoft.Windows.AI.MachineLearning.dll). Before you use AnimeRestoreX, please read the Microsoft license terms for these files below. The terms are shown in their original English.
+If you do not agree, AnimeRestoreX will close.</source>
+        <translation>AnimeRestoreX 隨附 Microsoft Windows ML Runtime 的檔案（onnxruntime.dll、DirectML.dll、Microsoft.Windows.AI.MachineLearning.dll）。使用 AnimeRestoreX 之前，請閱讀下方這些檔案的 Microsoft 授權條款。條款以英文原文顯示。
+如果不同意，AnimeRestoreX 將會關閉。</translation>
+    </message>
+    <message>
+        <source>I have read and accept the Microsoft Windows ML Runtime license terms.</source>
+        <translation>我已閱讀並接受 Microsoft Windows ML Runtime 授權條款。</translation>
+    </message>
+    <message>
+        <source>I Agree</source>
+        <translation>我同意</translation>
+    </message>
+    <message>
+        <source>I Do Not Agree</source>
+        <translation>我不同意</translation>
+    </message>
+    <message>
+        <source>License terms for onnxruntime.dll, DirectML.dll and Microsoft.Windows.AI.MachineLearning.dll (original English text).</source>
+        <translation>onnxruntime.dll、DirectML.dll 與 Microsoft.Windows.AI.MachineLearning.dll 的授權條款（英文原文）。</translation>
     </message>
 </context>
 <context>

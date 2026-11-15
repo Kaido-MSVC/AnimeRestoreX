@@ -1,5 +1,6 @@
 #include "ui/AboutDialog.h"
 #include "ui/AppIcon.h"
+#include "ui/EulaDialog.h"
 #include "ui/LicensesDialog.h"
 
 #include "core/inference/EngineHost.h"
@@ -104,6 +105,13 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 
     auto *buttons = new QDialogButtonBox(this);
     m_licenses = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
+    if (EulaDialog::required()) {
+        m_eula = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
+        connect(m_eula, &QPushButton::clicked, this, [this] {
+            EulaDialog dlg(EulaDialog::Mode::View, this);
+            dlg.exec();
+        });
+    }
     m_openLicenses = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
     m_aboutQt = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
     m_close = buttons->addButton(QDialogButtonBox::Close);
@@ -140,11 +148,19 @@ void AboutDialog::retranslate()
     html += QStringLiteral("<p><b>%1</b></p><ul style='margin-top:0'>").arg(tr("Third-party components").toHtmlEscaped());
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString dml = fileVersion(QDir(appDir).filePath(QStringLiteral("DirectML.dll")));
+#ifdef ARX_WINML_VERSION
+    // Windows ML package: ONNX Runtime and DirectML come with it, under the Microsoft terms.
+    html += item(QStringLiteral("Windows ML Runtime %1 (Microsoft)").arg(QStringLiteral(ARX_WINML_VERSION)),
+                 tr("AI inference runtime: ONNX Runtime %1 and DirectML %2; runs the models on the GPU "
+                    "through DirectML, or on the CPU (Microsoft Software License Terms).")
+                     .arg(QStringLiteral(ARX_ORT_VERSION), dml.isEmpty() ? QStringLiteral("?") : dml));
+#else
     html += item(QStringLiteral("ONNX Runtime %1 (Microsoft)").arg(QStringLiteral(ARX_ORT_VERSION)),
                  tr("AI inference runtime; runs the models on the GPU through DirectML, or on the CPU "
                     "(MIT License)."));
     html += item(QStringLiteral("DirectML %1 (Microsoft)").arg(dml.isEmpty() ? QStringLiteral("?") : dml),
                  tr("GPU acceleration for AI inference (Microsoft Software License Terms)."));
+#endif
     html += item(QStringLiteral("waifu2x swin_unet_v3/art, swin_unet/art models (nagadomi/nunif)"),
                  tr("Trained models for anime-style illustrations, converted for DirectML (MIT License)."));
     for (const ModelSource &src : modelSources(QDir(appDir).filePath(QStringLiteral("models/manifest.json"))))
@@ -170,6 +186,8 @@ void AboutDialog::retranslate()
     m_body->setText(html);
 
     m_licenses->setText(tr("Licenses and Notices"));
+    if (m_eula)
+        m_eula->setText(tr("License Agreement"));
     m_openLicenses->setText(tr("Open License Files"));
     m_aboutQt->setText(tr("About Qt"));
 }

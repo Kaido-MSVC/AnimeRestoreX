@@ -10,6 +10,11 @@ function(arx_add_test name)
         ARX_TEST_VERSION="${PROJECT_VERSION}"
         ARX_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
         ARX_TEST_NOTICES="${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
+    if(ARX_ORT_FLAVOR STREQUAL "windowsml")
+        target_compile_definitions(${name} PRIVATE
+            ARX_TEST_WINML_LICENSE="${ARX_WINML_DIR}/license.txt"
+            ARX_TEST_EULA_SHA256="${ARX_EULA_SHA256}")
+    endif()
     add_test(NAME ${name} COMMAND ${name} ${ARX_TEST_ARGS_${name}})
     set_tests_properties(${name} PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${ARX_QT_BIN}")

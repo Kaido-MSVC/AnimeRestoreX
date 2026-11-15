@@ -16,6 +16,8 @@ public:
     void setDeviceName(const QString &device);
     QPushButton *openLicensesButton() const { return m_openLicenses; }
     QPushButton *licensesButton() const { return m_licenses; }
+    // Shows the Windows ML Runtime license terms; nullptr when the runtime has none to accept.
+    QPushButton *licenseAgreementButton() const { return m_eula; }
     QPushButton *aboutQtButton() const { return m_aboutQt; }
 
     // Both LICENSE and THIRD_PARTY_NOTICES.md exist in `dir`.
@@ -33,6 +35,7 @@ private:
     QLabel *m_body = nullptr;
     QPushButton *m_openLicenses = nullptr;
     QPushButton *m_licenses = nullptr;
+    QPushButton *m_eula = nullptr;
     QPushButton *m_aboutQt = nullptr;
     QPushButton *m_close = nullptr;
     QString m_device;

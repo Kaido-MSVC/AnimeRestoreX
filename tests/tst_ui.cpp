@@ -6,6 +6,7 @@
 #include "ui/AboutDialog.h"
 #include "ui/CompletionDialog.h"
 #include "ui/ElidedLabel.h"
+#include "ui/EulaDialog.h"
 #include "ui/LicensesDialog.h"
 #include "ui/LanguageManager.h"
 #include "ui/WindowPlacement.h"
@@ -88,6 +89,7 @@ private slots:
     void aboutDialogContents();
     void aboutDialogLicenseFolder();
     void licensesAndNotices();
+    void licenseAgreement();
     void progressResetsWhenListEmpties();
     void windowFitsCommonScreens_data();
     void windowFitsCommonScreens();
@@ -158,6 +160,8 @@ void TestUi::autoCloseNextModal(QString *captured)
             *captured = dlg->summaryText();
         else if (qobject_cast<LicensesDialog *>(w))
             *captured = w->findChild<QLabel *>()->text();
+        else if (auto *eula = qobject_cast<EulaDialog *>(w))
+            *captured = eula->introLabel()->text();
         else
             *captured = w->findChild<QLabel *>(QStringLiteral("qt_msgbox_label"))
                             ? w->findChild<QLabel *>(QStringLiteral("qt_msgbox_label"))->text()
@@ -1043,6 +1047,116 @@ void TestUi::licensesAndNotices()
         QVERIFY(!ja.windowTitle().contains(QStringLiteral("Licenses")));
     }
     LanguageManager::instance().apply(arx::Language::English);
+}
+
+void TestUi::licenseAgreement()
+{
+#ifndef ARX_TEST_EULA_SHA256
+    QVERIFY(!EulaDialog::required());
+    QVERIFY(EulaDialog::isAccepted(QString()));
+    QVERIFY(!AboutDialog().licenseAgreementButton());
+    QSKIP("upstream runtime: no license terms to accept");
+#else
+    // The embedded terms are the package's license.txt, unmodified (only line endings differ).
+    QVERIFY(EulaDialog::required());
+    QCOMPARE(EulaDialog::termsId(), QStringLiteral(ARX_TEST_EULA_SHA256));
+    const QString text = EulaDialog::agreementText();
+    QFile ms(QStringLiteral(ARX_TEST_WINML_LICENSE));
+    QVERIFY2(ms.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(ms.fileName()));
+    QCOMPARE(text, QString::fromUtf8(ms.readAll()));
+    QVERIFY(text.startsWith(QStringLiteral("MICROSOFT SOFTWARE LICENSE TERMS\nMicrosoft Windows ML Runtime")));
+    QVERIFY(text.contains(QStringLiteral("DISTRIBUTABLE CODE")));
+
+    QVERIFY(!EulaDialog::isAccepted(QString()));
+    QVERIFY(!EulaDialog::isAccepted(QStringLiteral("2.0.0-1")));  // early 2.0 test builds stored this
+    QVERIFY(!EulaDialog::isAccepted(QString(64, QLatin1Char('0'))));  // other terms ask again
+    QVERIFY(EulaDialog::isAccepted(EulaDialog::termsId()));
+
+    // Consent: "I Agree" only after the check box; declining (the default button) rejects.
+    {
+        EulaDialog dlg(EulaDialog::Mode::Consent);
+        QVERIFY(dlg.textView()->isReadOnly());
+        QCOMPARE(dlg.textView()->toPlainText(), text);
+        QVERIFY(dlg.acceptCheck() && dlg.agreeButton() && dlg.declineButton());
+        QVERIFY(!dlg.agreeButton()->isEnabled());
+        QVERIFY(dlg.declineButton()->isDefault());
+        dlg.acceptCheck()->setChecked(true);
+        QVERIFY(dlg.agreeButton()->isEnabled());
+        dlg.acceptCheck()->setChecked(false);
+        QVERIFY(!dlg.agreeButton()->isEnabled());
+        QVERIFY(dlg.introLabel()->text().contains(QStringLiteral("Microsoft.Windows.AI.MachineLearning.dll")));
+        dlg.show();
+        dlg.declineButton()->click();
+        QCOMPARE(dlg.result(), int(QDialog::Rejected));
+    }
+    {
+        EulaDialog dlg(EulaDialog::Mode::Consent);
+        dlg.show();
+        dlg.acceptCheck()->setChecked(true);
+        dlg.agreeButton()->click();
+        QCOMPARE(dlg.result(), int(QDialog::Accepted));
+    }
+    {
+        EulaDialog dlg(EulaDialog::Mode::View);
+        QVERIFY(!dlg.acceptCheck() && !dlg.agreeButton());
+        QCOMPARE(dlg.textView()->toPlainText(), text);
+    }
+
+    // Settings: the read-only helpers write nothing; acceptance is stored under v2/ and survives
+    // the schema migration (which removes the old early-2.0 key only).
+    {
+        QSettings raw;
+        raw.clear();
+        raw.setValue(QStringLiteral("v2/eula/acceptedVersion"), QStringLiteral("2.0.0-1"));
+        raw.sync();
+    }
+    QCOMPARE(arx::AppSettings::acceptedEulaTerms(), QString());
+    QCOMPARE(QSettings().allKeys(), QStringList{QStringLiteral("v2/eula/acceptedVersion")});
+    {
+        arx::AppSettings s;
+        s.setAcceptedEulaTerms(EulaDialog::termsId());
+        QVERIFY(s.sync());
+    }
+    QCOMPARE(QSettings().value(QStringLiteral("v2/eula/windowsMlTerms")).toString(), EulaDialog::termsId());
+    QVERIFY(!QSettings().contains(QStringLiteral("v2/eula/acceptedVersion")));
+    QVERIFY(EulaDialog::isAccepted(arx::AppSettings::acceptedEulaTerms()));
+    {
+        arx::AppSettings again;  // a second start keeps it
+        QVERIFY(again.sync());
+    }
+    QVERIFY(EulaDialog::isAccepted(arx::AppSettings::acceptedEulaTerms()));
+    for (const QString &k : QSettings().allKeys())
+        QVERIFY2(k.startsWith(QStringLiteral("v2/")), qPrintable(k));
+
+    // About shows the terms and the Windows ML runtime; interface text is translated, the terms
+    // stay in English.
+    AboutDialog about;
+    QVERIFY(about.licenseAgreementButton());
+    QCOMPARE(about.licenseAgreementButton()->text(), QStringLiteral("License Agreement"));
+    QVERIFY2(about.bodyText().contains(QStringLiteral("Windows ML Runtime 2.5.96")), qPrintable(about.bodyText()));
+    QString captured;
+    autoCloseNextModal(&captured);
+    about.licenseAgreementButton()->click();
+    QVERIFY2(captured.contains(QStringLiteral("original English")), qPrintable(captured));
+
+    LanguageManager::instance().apply(arx::Language::TraditionalChinese);
+    {
+        EulaDialog zh(EulaDialog::Mode::Consent);
+        QCOMPARE(zh.agreeButton()->text(), QStringLiteral("我同意"));
+        QCOMPARE(zh.declineButton()->text(), QStringLiteral("我不同意"));
+        QCOMPARE(zh.textView()->toPlainText(), text);
+        QVERIFY(!zh.windowTitle().contains(QStringLiteral("License Terms")));
+        AboutDialog zhAbout;
+        QVERIFY(zhAbout.licenseAgreementButton()->text() != QStringLiteral("License Agreement"));
+    }
+    LanguageManager::instance().apply(arx::Language::Japanese);
+    {
+        EulaDialog ja(EulaDialog::Mode::Consent);
+        QCOMPARE(ja.agreeButton()->text(), QStringLiteral("同意する"));
+        QVERIFY(!ja.windowTitle().contains(QStringLiteral("License Terms")));
+    }
+    LanguageManager::instance().apply(arx::Language::English);
+#endif
 }
 
 void TestUi::progressResetsWhenListEmpties()

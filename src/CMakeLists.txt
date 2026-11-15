@@ -59,6 +59,7 @@ qt_add_library(arxui STATIC
     ui/LanguageManager.h ui/LanguageManager.cpp
     ui/AboutDialog.h ui/AboutDialog.cpp
     ui/LicensesDialog.h ui/LicensesDialog.cpp
+    ui/EulaDialog.h ui/EulaDialog.cpp
     ui/ElidedLabel.h ui/ElidedLabel.cpp
     ui/WindowPlacement.h ui/WindowPlacement.cpp
     ui/AppIcon.h
@@ -66,6 +67,23 @@ qt_add_library(arxui STATIC
 )
 target_link_libraries(arxui PUBLIC arxcore Qt6::Widgets PRIVATE version)
 target_compile_definitions(arxui PRIVATE ARX_VERSION="${PROJECT_VERSION}")
+
+# Windows ML: first-run consent to the Microsoft license terms of the package (license.txt,
+# copied byte for byte and embedded). Acceptance is stored as the SHA-256 of that file, so a
+# package update with different terms asks again.
+if(ARX_ORT_FLAVOR STREQUAL "windowsml")
+    set(ARX_EULA_FILE "${CMAKE_BINARY_DIR}/legal/WindowsML-license.txt")
+    configure_file("${ARX_WINML_DIR}/license.txt" "${ARX_EULA_FILE}" COPYONLY)
+    file(SHA256 "${ARX_EULA_FILE}" ARX_EULA_SHA256)
+    set(ARX_EULA_SHA256 "${ARX_EULA_SHA256}" PARENT_SCOPE)
+    target_compile_definitions(arxui PUBLIC ARX_EULA_SHA256="${ARX_EULA_SHA256}"
+        ARX_WINML_VERSION="${WINML_VERSION}")
+    qt_add_resources(arxui "legal"
+        PREFIX "/legal"
+        BASE "${CMAKE_BINARY_DIR}/legal"
+        FILES "${ARX_EULA_FILE}"
+    )
+endif()
 
 # Window icon PNGs (pre-rendered from resources/icons/app.svg; see tools/make-icons.ps1).
 qt_add_resources(arxui "app_icons"
