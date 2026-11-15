@@ -135,6 +135,7 @@ private slots:
     void loaderKeepsIccAndDetectsGray();
     void iccInflateIsBounded();
     void pngChunkLengthsCheckedFirst();
+    void exifThumbnailRemovedOrNoExif();
     void folderScanTopLevelNaturalOrder();
     void sizeMessagesIncludeValues();
     void languageFromUiTag_data();
@@ -933,6 +934,74 @@ void TestCore::pngChunkLengthsCheckedFirst()
     info = readBytes(sig + ihdr + header(4u << 20, "eXIf") + QByteArray(64, 'x'));
     QVERIFY2(info.exifError.contains(QStringLiteral("truncated")), qPrintable(info.exifError));
     QVERIFY(info.exif.isEmpty());
+}
+
+void TestCore::exifThumbnailRemovedOrNoExif()
+{
+    // S-03 (docs/v2.2-安全審查.md). makeExif(.., thumbnail = true): IFD1 at 88 with
+    // JPEGInterchangeFormat (entry 90) = 118 and ...Length (entry 102) = 10, next at 114,
+    // thumbnail bytes 118..128 = 0xAB.
+    const QByteArray thumb(10, '\xAB');
+    for (bool le : {true, false}) {
+        auto p16 = [&](QByteArray &b, int off, quint16 v) { le ? qToLittleEndian(v, b.data() + off) : qToBigEndian(v, b.data() + off); };
+        auto p32 = [&](QByteArray &b, int off, quint32 v) { le ? qToLittleEndian(v, b.data() + off) : qToBigEndian(v, b.data() + off); };
+        const QByteArray in = makeExif(le, 1, true);
+        QVERIFY(in.contains(thumb));
+
+        // Normal single JPEG thumbnail at the end: EXIF written, thumbnail bytes gone.
+        auto r = metadata::prepareExif(in, 10, 10);
+        QVERIFY2(r.has_value(), qPrintable(r ? QString() : r.error()));
+        QCOMPARE(r->size(), 88);
+        QVERIFY(!r->contains(thumb));
+        QVERIFY(!r->contains('\xAB'));
+
+        // Unreferenced bytes after the thumbnail are cut off with it.
+        r = metadata::prepareExif(in + QByteArray("TAIL", 4), 10, 10);
+        QVERIFY(r.has_value());
+        QCOMPARE(r->size(), 88);
+        QVERIFY(!r->contains('\xAB') && !r->contains("TAIL"));
+
+        auto rejected = [&](const QByteArray &b, const char *why) {
+            auto x = metadata::prepareExif(b, 10, 10);
+            QVERIFY2(!x.has_value(), why);
+            QVERIFY2(x.error().startsWith(QStringLiteral("thumbnail cannot be removed: ")), qPrintable(x.error()));
+        };
+        // IFD1 damaged: entry count past the end.
+        QByteArray b = in;
+        p16(b, 88, 0x0400);
+        rejected(b, "IFD1 entry count");
+        // IFD1 offset outside the block.
+        b = in;
+        p32(b, 46, 5000);
+        rejected(b, "IFD1 outside");
+        // Thumbnail data overlapping kept data (the Make string at 50).
+        b = in;
+        p32(b, 90 + 8, 50);
+        rejected(b, "overlap");
+        // Several strips (count 2): only a single one is removed.
+        b = in;
+        p32(b, 90 + 4, 2);
+        p32(b, 102 + 4, 2);
+        p32(b, 90 + 8, 118);
+        p32(b, 102 + 8, 118);
+        rejected(b, "two strips");
+        // Offset without length, zero length, data past the end, wrong type, IFD1 linking on.
+        b = in;
+        p16(b, 102, 0x0123);  // the length tag becomes an unrelated tag
+        rejected(b, "offset without length");
+        b = in;
+        p32(b, 102 + 8, 0);
+        rejected(b, "zero length");
+        b = in;
+        p32(b, 102 + 8, 11);
+        rejected(b, "past the end");
+        b = in;
+        p16(b, 90 + 2, 5);  // RATIONAL
+        rejected(b, "type");
+        b = in;
+        p32(b, 114, 88);
+        rejected(b, "IFD1 next pointer");
+    }
 }
 
 void TestCore::folderScanTopLevelNaturalOrder()

@@ -710,35 +710,48 @@ std::expected<QByteArray, QString> prepareExif(const QByteArray &tiffIn, int wid
             t.put16(e->at + 8, quint16(v));
     }
 
-    // Thumbnail: unlink IFD1, then clear its table, values and image data where they do not
-    // overlap anything kept, and cut them off when they are at the end of the block.
+    // Thumbnail: unlink IFD1, then clear its table, values and image data, and cut them off
+    // when they are at the end of the block. If that cannot be done for certain, the whole
+    // EXIF is left out (S-03): only unlinking IFD1 would still carry the thumbnail bytes.
     const qsizetype ifd1 = t.u32(nextAt);
     t.put32(nextAt, 0);
     if (ifd1 != 0) {
+        auto fail = [](const QString &why) { return std::unexpected(QStringLiteral("thumbnail cannot be removed: ") + why); };
         std::vector<Range> dropped;
-        if (auto e1 = parseIfd(t, ifd1, "IFD1", dropped)) {
-            for (auto [offTag, lenTag] : {std::pair<quint16, quint16>{0x0201, 0x0202}, {0x0111, 0x0117}}) {
-                const Entry *o = findTag(*e1, offTag), *l = findTag(*e1, lenTag);
-                if (!o || !l || o->count != 1 || l->count != 1)
-                    continue;
-                auto value = [&](const Entry *e) -> qsizetype { return e->type == 3 ? t.u16(e->at + 8) : t.u32(e->at + 8); };
-                const qsizetype off = value(o), len = value(l);
-                if (t.has(off, len))
-                    dropped.push_back({off, off + len});
-            }
-            const bool clash = std::ranges::any_of(dropped, [&](const Range &d) {
-                return std::ranges::any_of(kept, [&](const Range &k) { return overlaps(d, k); });
-            });
-            if (!clash) {
-                for (const Range &d : dropped)
-                    std::fill(b.begin() + d.begin, b.begin() + d.end, '\0');
-                qsizetype keptEnd = 0;
-                for (const Range &k : kept)
-                    keptEnd = std::max(keptEnd, k.end);
-                if (std::ranges::all_of(dropped, [&](const Range &d) { return d.begin >= keptEnd; }))
-                    b.truncate(keptEnd);
-            }
+        qsizetype ifd1NextAt = 0;
+        auto e1 = parseIfd(t, ifd1, "IFD1", dropped, &ifd1NextAt);
+        if (!e1)
+            return fail(e1.error());
+        if (t.u32(ifd1NextAt) != 0)
+            return fail(QStringLiteral("IFD1 links to a further IFD"));
+        for (auto [offTag, lenTag] : {std::pair<quint16, quint16>{0x0201, 0x0202}, {0x0111, 0x0117}}) {
+            const Entry *o = findTag(*e1, offTag), *l = findTag(*e1, lenTag);
+            if (!o && !l)
+                continue;
+            if (!o || !l)
+                return fail(QStringLiteral("offset tag 0x%1 without its length tag, or the reverse").arg(offTag, 4, 16, QLatin1Char('0')));
+            if (o->count != 1 || l->count != 1)
+                return fail(QStringLiteral("%1 strips (only a single one is removed)").arg(std::max(o->count, l->count)));
+            if ((o->type != 3 && o->type != 4) || (l->type != 3 && l->type != 4))
+                return fail(QStringLiteral("offset / length of type %1 / %2").arg(o->type).arg(l->type));
+            auto value = [&](const Entry *e) -> qsizetype { return e->type == 3 ? t.u16(e->at + 8) : t.u32(e->at + 8); };
+            const qsizetype off = value(o), len = value(l);
+            if (len <= 0 || !t.has(off, len))
+                return fail(QStringLiteral("data at %1, %2 bytes, is not inside the EXIF block").arg(off).arg(len));
+            dropped.push_back({off, off + len});
         }
+        const bool clash = std::ranges::any_of(dropped, [&](const Range &d) {
+            return std::ranges::any_of(kept, [&](const Range &k) { return overlaps(d, k); });
+        });
+        if (clash)
+            return fail(QStringLiteral("its data overlaps data that is kept"));
+        for (const Range &d : dropped)
+            std::fill(b.begin() + d.begin, b.begin() + d.end, '\0');
+        qsizetype keptEnd = 0;
+        for (const Range &k : kept)
+            keptEnd = std::max(keptEnd, k.end);
+        if (std::ranges::all_of(dropped, [&](const Range &d) { return d.begin >= keptEnd; }))
+            b.truncate(keptEnd);
     }
     return b;
 }

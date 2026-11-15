@@ -422,6 +422,26 @@ void TestPipeline::iccAndExifThroughTheJob()
     QVERIFY2(r.ok, qPrintable(why(r)));
     QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: IFD0 offset")), qPrintable(r.diagnostics));
     QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
+
+    // S-03: a thumbnail that cannot be removed for certain (here: two strips) means no EXIF.
+    QByteArray strips = testimg::makeExif(false, 1, true);
+    qToBigEndian<quint32>(2, strips.data() + 90 + 4);   // JPEGInterchangeFormat count 2
+    qToBigEndian<quint32>(2, strips.data() + 102 + 4);  // ...Length count 2
+    qToBigEndian<quint32>(118, strips.data() + 90 + 8); // two LONGs at 118: offsets
+    auto stripJpeg = metadata::embed(buf.data(), OutputFormat::Jpeg, {}, strips);
+    QVERIFY(stripJpeg.has_value());
+    const QString stripSrc = QDir(m_srcDir).filePath(QStringLiteral("strip exif.jpg"));
+    {
+        QFile f(stripSrc);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(*stripJpeg);
+    }
+    FakeBackend b4;
+    r = runOne(stripSrc, s, b4);
+    QVERIFY2(r.ok, qPrintable(why(r)));
+    QVERIFY2(r.diagnostics.contains(QStringLiteral("\nexif: not written: thumbnail cannot be removed")),
+             qPrintable(r.diagnostics));
+    QVERIFY(metadata::read(r.outputPath).exif.isEmpty());
     QCOMPARE(testimg::sha256(src), before);  // sources untouched
     QVERIFY(leftovers().isEmpty());
 
