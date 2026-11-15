@@ -2,7 +2,7 @@
 
 ## 繁體中文介紹
 
-AnimeRestoreX 是為動畫風格插畫設計的 Windows x64 桌面工具。它使用 waifu2x 模型，可在原尺寸進行 AI 降噪（1×），也可將圖片放大至 2× 或 4×。v2.0 以 ONNX Runtime 和 DirectML 使用 GPU，也可在設定中選擇 CPU 處理。
+AnimeRestoreX 是為動畫風格插畫設計的 Windows x64 桌面工具。它使用 waifu2x 模型，可在原尺寸進行 AI 降噪（1×），也可將圖片放大至 2× 或 4×。以 ONNX Runtime 和 DirectML 使用 GPU，也可在設定中選擇 CPU 處理；2.2 起這些元件改由 Microsoft Windows ML Runtime 提供。
 
 - 支援 PNG、JPEG 和 WebP 讀寫，WebP 可選有損或無損輸出。
 - 可拖放圖片或整個資料夾進行批次處理。工作清單顯示縮圖，並提供原圖與結果並排預覽、單張和整批進度及預估剩餘時間。
@@ -14,14 +14,19 @@ AnimeRestoreX 是為動畫風格插畫設計的 Windows x64 桌面工具。它�
   - **保留 EXIF**：複製相機、日期等資料。EXIF 可能包含拍攝位置等個人資訊，分享前請留意。
   - **底片顆粒**：AI 處理後加入類似底片的雜訊，強度可調；同一張圖、同樣設定，結果每次相同。
   - **PNG／WebP 依 EXIF 轉正**：和 JPEG 一樣依方向資訊轉正，預覽、清單縮圖與輸出一致。
+- 2.2 變更：
+  - **執行環境改為 Microsoft Windows ML Runtime 2.5.96**（內含 ONNX Runtime 1.28.3、DirectML 1.15.4），處理結果與 2.1 相同。**第一次啟動時會顯示 Microsoft 的授權條款**，同意後才能使用，不同意（或按 Esc、關閉視窗）程式就會結束；之後可在「說明 → 關於 → 授權條款」再看一次。
+  - **安全性修正**：開啟刻意做壞的圖片時，不再因為檔案裡宣稱的超大中繼資料而用掉大量記憶體（內嵌的色彩描述檔最多讀 32 MB，超過就略過，圖片照常處理）；開啟「保留 EXIF」時，若原圖的縮圖無法確實移除，就不寫入 EXIF，避免把原圖縮圖帶進輸出檔。
+  - 新增第三方元件 zlib 1.4（只用來解壓 PNG 內嵌的色彩描述檔），授權見 `licenses/zlib/LICENSE`。
 
-各版本與下載請見 [Releases](https://github.com/Kaido-MSVC/AnimeRestoreX/releases)。實測平台與硬體列於下方[系統需求](#system-requirements-v21)，模型與第三方元件的散布注意事項見[發行封裝說明](#release-package)。
+各版本與下載請見 [Releases](https://github.com/Kaido-MSVC/AnimeRestoreX/releases)。實測平台與硬體列於下方[系統需求](#system-requirements-v22)，模型與第三方元件的散布注意事項見[發行封裝說明](#release-package)。
 
 ## English overview
 
 Windows x64 desktop tool for AI denoising (1x) and 2x/4x upscaling of anime
 illustrations, using the waifu2x swin_unet_v3 and swin_unet models (nagadomi/nunif,
-ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
+ONNX) on ONNX Runtime + DirectML (since 2.2 from the Microsoft Windows ML Runtime) and
+Qt 6.12 Widgets.
 
 ## Features
 
@@ -45,6 +50,16 @@ ONNX) on ONNX Runtime + DirectML and Qt 6.12 Widgets.
     with the same settings always gets the same grain.
   - PNG and WebP are turned upright from their EXIF orientation, like JPEG (always on);
     the preview, the list thumbnail and the output agree.
+- 2.2:
+  - The AI runtime is the Microsoft Windows ML Runtime 2.5.96 (ONNX Runtime 1.28.3,
+    DirectML 1.15.4); results are the same as with 2.1. **The first start shows the Microsoft
+    license terms**; AnimeRestoreX continues only if you accept them (declining, Esc or
+    closing the window ends it). Help > About > License Agreement shows them again.
+  - Security fixes: a deliberately damaged image can no longer make the program use a lot of
+    memory through oversized metadata (an embedded colour profile is read up to 32 MB,
+    larger ones are skipped and the image is processed as usual); with "Keep EXIF", the EXIF
+    is left out when the original's thumbnail cannot be removed for certain.
+  - New third-party component: zlib 1.4 (only to decompress embedded PNG colour profiles).
 - Light and dark theme that follows the Windows setting.
 - User interface in 繁體中文, 日本語 and English; high-DPI aware.
 
@@ -62,13 +77,13 @@ same release. The executable is unsigned.
 v1.2 and older stay on the Releases page; they use waifu2x-ncnn-vulkan and need
 Windows 10 1809+ or Windows 11 (x64), a Vulkan-capable GPU and a compatible driver.
 
-## System requirements (v2.1)
+## System requirements (v2.2)
 
 | | Requirement | Basis |
 |---|---|---|
 | OS | **Windows 11 x64** (tested: 25H2, build 26200) | the only tested system |
-| | Windows 10: **not tested** | Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support); the minimum of the upstream runtime was not checked |
-| GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 |
+| | Windows 10: **not tested** | Qt 6.12: Windows 10 1809+ / 11 (Qt 6.12 is the last Qt with Windows 10 support); Windows ML package: Windows 10 19H1 (build 18362) or later |
+| GPU | DirectX 12 GPU with a current driver. **Tested: NVIDIA GeForce GTX 1060 6GB** only | DirectML 1.15.4 (Windows ML 2.5.96) |
 | GPU memory | Auto tile 256: about 1.2 GB at 1x/2x, 0.8 GB at 4x per model (twice that with transparency); tile 448 about 3 GB | measured on the GTX 1060 (P1 redo) |
 | RAM | **8 GB recommended**. Peak private memory of the app: about 1.3 GB at 1x, 1.7 GB at 2x, 1.2 GB at 4x, 2.1 GB at 4x with transparency | measured (1x/2x P1 close, 4x P3) |
 | RAM with TTA (2.1) | **16 GB recommended**. The largest 4x image with transparency (2634×1708 → 72 MP) peaks at about 4.4 GB (4,185 MiB) with TTA, 3.5 GB (3,359 MiB) without | measured (v2.1 P3) |
@@ -78,7 +93,10 @@ Not tested: AMD and Intel GPUs, GPUs with less than 6 GB, more than one GPU (the
 Windows default adapter is always used), Windows 10, ARM64, remote desktop and
 virtual machines.
 
-## Known limitations (v2.1)
+## Known limitations (v2.2)
+
+- **First start needs the Microsoft license terms accepted** (Windows ML Runtime). The
+  acceptance is stored in the settings; it is asked again only if the terms change.
 
 - **Cancel during encoding waits for the encoder.** A cancel during AI processing
   stops within about 0.1 s (GPU) or immediately (CPU), but a file that is being

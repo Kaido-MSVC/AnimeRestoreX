@@ -1,10 +1,12 @@
-AnimeRestoreX 2.1
+AnimeRestoreX 2.2
 =================
 
 動漫插畫 AI 降噪與 1×（只降噪）/ 2× / 4× 放大工具
-（waifu2x swin_unet_v3 / swin_unet 模型，ONNX Runtime + DirectML）。
+（waifu2x swin_unet_v3 / swin_unet 模型；ONNX Runtime + DirectML，
+由 Microsoft Windows ML Runtime 提供）。
 AI denoising and 1x (denoise only) / 2x / 4x upscaling for anime illustrations
-(waifu2x swin_unet_v3 / swin_unet models on ONNX Runtime + DirectML).
+(waifu2x swin_unet_v3 / swin_unet models on ONNX Runtime + DirectML from the
+Microsoft Windows ML Runtime).
 
 
 系統需求 / Requirements
@@ -39,9 +41,10 @@ every file is checked against the SHA256 in models\manifest.json.
 --------
 1. 將整個資料夾解壓縮到任意位置後，執行 AnimeRestoreX.exe。
    第一次啟動時會顯示 Microsoft Windows ML Runtime 的授權條款（英文原文），
-   同意後才會繼續；不同意時程式會關閉。條款改變時會再詢問一次。
+   同意後才會繼續；不同意、按 Esc 或關閉視窗時程式會結束。條款改變時會再詢問一次。
    On the first start, AnimeRestoreX shows the Microsoft Windows ML Runtime license
-   terms; it continues only if you accept them, otherwise it closes.
+   terms; it continues only if you accept them, otherwise (also Esc or closing the
+   window) it closes.
 2. 「匯入圖片…」或「匯入資料夾…」加入 PNG / JPEG / WebP 圖片，
    也可以直接把圖片或資料夾從檔案總管拖曳到清單
    （資料夾只匯入該層，不含子資料夾）。
@@ -57,6 +60,26 @@ every file is checked against the SHA256 in models\manifest.json.
 - 不會修改或覆寫原始圖片；同名輸出會自動加上 (1)、(2)…。
 - 輸入上限 4.5 MP（例如 3000 x 1500），輸出上限 75 MP；WebP 單邊上限 16383 px。
 - 不支援 16 位元、HDR、動畫圖片。
+
+
+2.2 變更 / Changes in 2.2
+-------------------------
+- 執行環境改為 Microsoft Windows ML Runtime 2.5.96（內含 ONNX Runtime 1.28.3、
+  DirectML 1.15.4），處理結果與 2.1 相同。第一次啟動時需要同意 Microsoft 的授權條款。
+- 安全性修正：開啟刻意做壞的圖片時，不會再因為檔案裡宣稱的超大中繼資料而用掉大量
+  記憶體（內嵌的色彩描述檔最多讀 32 MB，超過就略過，圖片照常處理）。
+- 安全性修正：開啟「保留 EXIF」時，如果原圖的縮圖無法確實移除，就不寫入 EXIF，
+  避免把原圖的縮圖帶進輸出檔。
+- 新增第三方元件 zlib 1.4（只用來解壓 PNG 內嵌的色彩描述檔）。
+
+- The AI runtime is the Microsoft Windows ML Runtime 2.5.96 (ONNX Runtime 1.28.3,
+  DirectML 1.15.4); results are the same as with 2.1. The first start asks you to accept
+  the Microsoft license terms.
+- Security fixes: a deliberately damaged image can no longer make the program use a lot
+  of memory through oversized metadata (embedded colour profiles are read up to 32 MB);
+  with "Keep EXIF", the EXIF is left out when the original's thumbnail cannot be removed
+  for certain.
+- New third-party component: zlib 1.4 (only for embedded PNG colour profiles).
 
 
 2.1 新功能 / New in 2.1
@@ -86,6 +109,7 @@ converting the pixels, PNG / WebP are turned upright from their EXIF orientation
   不足時改用 160，這些項目會在清單與完成摘要中標示。
 - 每批第一張會慢幾秒（載入並檢查模型）。
 - 用過 GPU 之後約有 280 MB 記憶體保留到程式關閉（不會隨張數增加）。
+- 第一次啟動需要同意 Microsoft Windows ML Runtime 的授權條款。
 
 - Cancelling during encoding waits until the current file is encoded (up to about
   6 s for 4x WebP lossless); no output file is left behind.
@@ -124,8 +148,8 @@ AnimeRestoreX (shared with AnimeRestoreX 1.x; the 2.x-only settings are under "v
   DirectML.dll 或 Microsoft.Windows.AI.MachineLearning.dll。
 - AnimeRestoreX: MIT License, Copyright (c) 2026 Kaido-MSVC（LICENSE）
 - 第三方元件（Qt 6.12.0 LGPLv3、Microsoft Windows ML Runtime（ONNX Runtime、
-  DirectML）、Visual C++ 執行階段、模型等）各自適用原授權，詳見
-  THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
+  DirectML）、zlib 1.4（zlib License）、Visual C++ 執行階段、模型等）各自適用原授權，
+  詳見 THIRD_PARTY_NOTICES.md 與 licenses\ 資料夾。
 - Qt 6.12.0 對應原始碼（qtbase / qtimageformats / qttranslations，未修改）
   與本 zip 一同發布於同一位置；檔名與 SHA256 見 THIRD_PARTY_NOTICES.md §2。
 - 各檔案的 SHA256 見 MANIFEST.txt。
